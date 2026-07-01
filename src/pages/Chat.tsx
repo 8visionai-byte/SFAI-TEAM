@@ -120,11 +120,25 @@ export default function Chat() {
     ]
     setMessages(nextHistory)
     setInput('')
+    // reset wysokosci pola po wyslaniu
+    if (taRef.current) taRef.current.style.height = 'auto'
     setLoading(true)
 
-    const reply = await sendMessage(agent.slug, nextHistory)
-    setMessages([...nextHistory, { role: 'assistant', content: reply }])
-    setLoading(false)
+    try {
+      const reply = await sendMessage(agent.slug, nextHistory)
+      setMessages([...nextHistory, { role: 'assistant', content: reply }])
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setMessages([
+        ...nextHistory,
+        {
+          role: 'assistant',
+          content: `Cos poszlo nie tak po mojej stronie: ${msg}. Sprobuj ponownie za chwile.`,
+        },
+      ])
+    } finally {
+      setLoading(false)
+    }
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -170,7 +184,13 @@ export default function Chat() {
       </header>
 
       {/* Lista wiadomosci */}
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto"
+        role="log"
+        aria-live="polite"
+        aria-label={`Rozmowa z agentem ${agent.name}`}
+      >
         <div className="mx-auto max-w-3xl space-y-5 px-5 py-6 sm:px-8">
           {!agent.hasPrompt && (
             <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-200/90">
@@ -229,13 +249,26 @@ export default function Chat() {
               >
                 {initials(agent.name)}
               </div>
-              <span className="flex items-center gap-1 text-sm">
-                mysli
-                <span className="thinking-dot">.</span>
-                <span className="thinking-dot" style={{ animationDelay: '0.2s' }}>
+              <span
+                className="flex items-center gap-1 text-sm"
+                aria-label={`${agent.name} mysli`}
+              >
+                <span aria-hidden>mysli</span>
+                <span className="thinking-dot" aria-hidden>
                   .
                 </span>
-                <span className="thinking-dot" style={{ animationDelay: '0.4s' }}>
+                <span
+                  className="thinking-dot"
+                  style={{ animationDelay: '0.2s' }}
+                  aria-hidden
+                >
+                  .
+                </span>
+                <span
+                  className="thinking-dot"
+                  style={{ animationDelay: '0.4s' }}
+                  aria-hidden
+                >
                   .
                 </span>
               </span>
@@ -250,18 +283,26 @@ export default function Chat() {
           <textarea
             ref={taRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value)
+              // auto-rosnace pole (do max-h ustawionego klasa)
+              const ta = e.currentTarget
+              ta.style.height = 'auto'
+              ta.style.height = `${ta.scrollHeight}px`
+            }}
             onKeyDown={onKeyDown}
             rows={1}
+            aria-label={`Napisz wiadomosc do agenta ${agent.name}`}
             placeholder={`Napisz do agenta ${agent.name}...`}
-            className="max-h-40 min-h-[48px] flex-1 resize-none rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-[0.95rem] text-zinc-100 placeholder:text-zinc-600 focus:border-brand/50"
+            className="max-h-40 min-h-[48px] flex-1 resize-none overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-[0.95rem] text-zinc-100 placeholder:text-zinc-600 focus:border-brand/50"
           />
           <button
             onClick={() => handleSend(input)}
             disabled={loading || !input.trim()}
+            aria-label="Wyslij wiadomosc"
             className="flex h-12 items-center gap-2 rounded-2xl bg-brand px-5 text-sm font-semibold text-zinc-950 transition-colors hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <Send size={16} />
+            <Send size={16} aria-hidden />
             <span className="hidden sm:inline">Wyslij</span>
           </button>
         </div>

@@ -42,7 +42,61 @@ npm run preview
 3. Opcjonalnie dodaj `VITE_ANTHROPIC_MODEL` (domyslnie `claude-sonnet-4-6`).
 4. Przebuduj. Od tego momentu agenci odpowiadaja realnie, z pelnym kontekstem mozgu i swoich person.
 
-Uwaga: klucz jest uzywany w przegladarce (naglowek `anthropic-dangerous-direct-browser-access`). To wygodne do panelu wewnetrznego. Do publicznego wdrozenia warto przeniesc wywolanie do funkcji serwerowej (proxy), zeby klucz nie trafil do klienta.
+Uwaga: w tym wariancie klucz jest uzywany w przegladarce (naglowek `anthropic-dangerous-direct-browser-access`). To wygodne do testow wewnetrznych, ale klucz trafia do klienta. Do publicznego wdrozenia uzyj proxy (ponizej).
+
+## Bezpieczne wdrozenie (proxy Supabase)
+
+To zalecany tryb do publicznego uzycia. Wywolanie modelu idzie przez funkcje serwerowa, a klucz API zostaje na serwerze i nigdy nie trafia do przegladarki.
+
+Aplikacja wybiera tryb w tej kolejnosci:
+
+1. jesli ustawiono `VITE_AGENT_API_URL` to **proxy** (bezpieczne, klucz na serwerze),
+2. inaczej jesli ustawiono `VITE_ANTHROPIC_API_KEY` to wywolanie **z przegladarki** (tylko testy wewnetrzne),
+3. inaczej **MOCK** (tryb demo).
+
+Kroki:
+
+1. Zainstaluj Supabase CLI i zaloguj sie:
+
+   ```bash
+   supabase login
+   ```
+
+2. Powiaz lokalny projekt ze swoim projektem Supabase (`<TWOJ_REF>` znajdziesz w panelu Supabase):
+
+   ```bash
+   supabase link --project-ref <TWOJ_REF>
+   ```
+
+3. Ustaw sekret z kluczem Anthropic (zostaje po stronie serwera):
+
+   ```bash
+   supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+   ```
+
+4. Wdroz funkcje `agent-chat` (kod w `supabase/functions/agent-chat/index.ts`):
+
+   ```bash
+   supabase functions deploy agent-chat
+   ```
+
+   Jesli chcesz wolac funkcje bez naglowka Authorization (anon key), wdroz z flaga:
+
+   ```bash
+   supabase functions deploy agent-chat --no-verify-jwt
+   ```
+
+5. We froncie (lokalnie w `.env`, na Lovable jako sekret) ustaw adres proxy:
+
+   ```bash
+   VITE_AGENT_API_URL=https://<TWOJ_REF>.supabase.co/functions/v1/agent-chat
+   ```
+
+6. Przebuduj aplikacje. Od tego momentu agenci odpowiadaja realnie, a klucz nie jest widoczny w przegladarce.
+
+Rekomendacja: do publicznego wdrozenia uzywaj proxy (`VITE_AGENT_API_URL`). Klucz `VITE_ANTHROPIC_API_KEY` w przegladarce zostaw wylacznie do testow wewnetrznych.
+
+Funkcja Deno (`supabase/functions/`) nie wchodzi do builda Vite, wiec nie wplywa na `npm run build`.
 
 ## Jak dziala mozg i persony
 
@@ -57,7 +111,7 @@ Przy kazdej rozmowie klient AI (`src/lib/ai.ts`) buduje system prompt z:
 2. persony agenta (pelny `AGENT.md` jesli istnieje, inaczej krotki opis roli z `src/data/agents.ts`),
 3. zasad stylu (odpowiedz po polsku, BLUF, zakaz em-dash, zero zmyslonych liczb).
 
-Agenci `operacje` i `opiekun-klienta` nie maja jeszcze pliku `AGENT.md`, wiec dzialaja w **trybie podstawowym** (opis roli plus mozg). Reszta ma pelny system prompt.
+Wszystkich 9 agentow ma osadzony plik `AGENT.md` (pelny system prompt) i status **Aktywny**. Tryb podstawowy (krotki opis roli zamiast pelnej persony) pozostaje jako bezpieczny fallback w kodzie na wypadek braku pliku, ale obecnie zaden agent z niego nie korzysta.
 
 ## Przenosnosc tresci
 

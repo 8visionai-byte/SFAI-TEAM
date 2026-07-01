@@ -24,11 +24,11 @@ Format do strony/oferty: "Co zrobiliśmy + twardy efekt + dla jakiej branży", b
 ## B. Szablony opinii (SZKIELET do wypełnienia realnym cytatem, NIE publikować pustych)
 Struktura dobrej opinii: [ból/proces] → [co wdrożył SF] → [efekt w godzinach lub liczbie] → [emocja/zaufanie]. Wstaw realny cytat klienta, gdy go zbierzesz (część C).
 
-- **Księgowość/biuro rachunkowe:** "Tonęliśmy w [ręcznym wprowadzaniu faktur]. SF wdrożył [skaner faktur/KSeF], teraz [EFEKT: ile godzin/tydz odzyskane]. [Zdanie o spokoju/kontroli]." — [SZABLON, wstaw realny cytat]
-- **Gabinet/przychodnia:** "Recepcja nie wyrabiała na telefonach, [X% połączeń przepadało]. Voicebot odbiera i umawia. [EFEKT]." — [SZABLON]
-- **E-commerce:** "BOK tonął w 'gdzie paczka'. Chatbot przejął powtarzalne pytania, [EFEKT]." — [SZABLON]
-- **Kancelaria:** "Pierwszy kontakt i przepisywanie z nagrań zjadały czas prawnika. [EFEKT]." — [SZABLON]
-- **Warsztat/usługi lokalne:** "Nie odbierałem, bo pracuję fizycznie, traciłem zlecenia. Teraz [EFEKT]." — [SZABLON]
+- **Księgowość/biuro rachunkowe:** "Tonęliśmy w [ręcznym wprowadzaniu faktur]. SF wdrożył [skaner faktur/KSeF], teraz [EFEKT: ile godzin/tydz odzyskane]. [Zdanie o spokoju/kontroli]." [SZABLON, wstaw realny cytat]
+- **Gabinet/przychodnia:** "Recepcja nie wyrabiała na telefonach, [X% połączeń przepadało]. Voicebot odbiera i umawia. [EFEKT]." [SZABLON]
+- **E-commerce:** "BOK tonął w 'gdzie paczka'. Chatbot przejął powtarzalne pytania, [EFEKT]." [SZABLON]
+- **Kancelaria:** "Pierwszy kontakt i przepisywanie z nagrań zjadały czas prawnika. [EFEKT]." [SZABLON]
+- **Warsztat/usługi lokalne:** "Nie odbierałem, bo pracuję fizycznie, traciłem zlecenia. Teraz [EFEKT]." [SZABLON]
 
 (Do każdej branży zostaw 2 szablony, łącznie ~10, ale każdy wypełniaj realnym cytatem przed publikacją.)
 

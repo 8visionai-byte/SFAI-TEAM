@@ -14,6 +14,32 @@ body,
 
 body {
   @apply bg-zinc-950 text-zinc-100 font-sans antialiased;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
+  text-rendering: optimizeLegibility;
+  /* Subtelne tlo: dwie ciemne poswiaty + delikatny grid, brand w lewym gornym rogu */
+  background-image:
+    radial-gradient(
+      60rem 40rem at 0% -10%,
+      rgba(91, 141, 239, 0.07),
+      transparent 60%
+    ),
+    radial-gradient(
+      48rem 36rem at 100% 0%,
+      rgba(91, 141, 239, 0.04),
+      transparent 55%
+    );
+  background-attachment: fixed;
+}
+
+/* Zaznaczenie tekstu w kolorze marki */
+::selection {
+  background-color: rgba(91, 141, 239, 0.3);
+  color: #f4f4f5;
+}
+
+/* Cyfry tabelaryczne dla danych liczbowych */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Custom scrollbar (dark) */
@@ -35,38 +61,49 @@ body {
   background-color: #52525b;
 }
 
-/* Focus ring spojny dla calej apki */
+/* Focus ring spojny dla calej apki (tylko klawiatura) */
 :focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px #09090b, 0 0 0 4px #5b8def;
+  box-shadow:
+    0 0 0 2px #09090b,
+    0 0 0 4px #5b8def;
+  border-radius: 0.5rem;
+}
+/* Mysz/dotyk nie zostawia obwodki na klikalnych elementach */
+:focus:not(:focus-visible) {
+  outline: none;
 }
 
-/* Subtelna animacja wejscia */
-@keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-.animate-fade-up {
-  animation: fadeUp 0.35s ease-out both;
-}
-
-/* Wskaznik "mysli" */
-@keyframes blink {
+/* Wskaznik "mysli": pulsujace kropki */
+@keyframes thinkPulse {
   0%,
-  80%,
+  70%,
   100% {
     opacity: 0.25;
+    transform: translateY(0) scale(0.8);
   }
-  40% {
+  35% {
     opacity: 1;
+    transform: translateY(-2px) scale(1);
   }
 }
 .thinking-dot {
-  animation: blink 1.4s infinite both;
+  display: inline-block;
+  height: 0.4rem;
+  width: 0.4rem;
+  border-radius: 9999px;
+  background-color: currentColor;
+  animation: thinkPulse 1.3s infinite both;
+}
+
+/* Szacunek dla uzytkownikow z ograniczona animacja */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

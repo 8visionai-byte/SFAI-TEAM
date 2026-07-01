@@ -1,11 +1,27 @@
-import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import Sidebar from './Sidebar'
 import Logo from './Logo'
 
 export default function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const location = useLocation()
+
+  // Zamknij menu mobilne przy zmianie trasy
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [location.pathname])
+
+  // Escape zamyka menu mobilne
+  useEffect(() => {
+    if (!mobileOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMobileOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mobileOpen])
 
   return (
     <div className="flex h-screen overflow-hidden bg-zinc-950">
@@ -22,7 +38,12 @@ export default function Layout() {
             onClick={() => setMobileOpen(false)}
             aria-hidden
           />
-          <aside className="absolute left-0 top-0 h-full w-64 border-r border-zinc-800 shadow-2xl animate-fade-up">
+          <aside
+            className="absolute left-0 top-0 h-full w-64 border-r border-zinc-800 shadow-2xl animate-fade-up"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu nawigacji"
+          >
             <button
               onClick={() => setMobileOpen(false)}
               className="absolute right-3 top-5 rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-900 hover:text-white"

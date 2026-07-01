@@ -75,59 +75,120 @@ function mockResponse(agentSlug: string): string {
     .join('\n')
 }
 
+type AnthropicMessage = { role: 'user' | 'assistant'; content: string }
+
 /**
- * Wysyla rozmowe do agenta. Z kluczem API odpytuje Anthropic, bez klucza zwraca MOCK.
+ * Tryb BEZPIECZNY: wywolanie przez proxy Supabase. Klucz API zostaje na serwerze,
+ * nie trafia do przegladarki. Zalecane do publicznego uzycia.
+ */
+async function callProxy(
+  proxyUrl: string,
+  system: string,
+  messages: AnthropicMessage[],
+  model: string,
+): Promise<string> {
+  const res = await fetch(proxyUrl, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ system, messages, model }),
+  })
+
+  if (!res.ok) {
+    let detail = ''
+    try {
+      const errBody = await res.json()
+      detail = errBody?.error ?? JSON.stringify(errBody)
+    } catch {
+      detail = await res.text().catch(() => '')
+    }
+    return `Nie udalo sie pobrac odpowiedzi z proxy (HTTP ${res.status}). ${detail}`.trim()
+  }
+
+  const data = await res.json()
+  const text: string | undefined = data?.text
+  if (!text) {
+    return 'Proxy zwrocilo pusta odpowiedz. Sprobuj ponownie albo przeformuluj pytanie.'
+  }
+  return text
+}
+
+/**
+ * Tryb TESTOWY (tylko wewnetrzny): wywolanie Anthropic bezposrednio z przegladarki.
+ * Klucz API trafia do klienta, wiec nie uzywaj tego na publicznym wdrozeniu.
+ */
+async function callDirect(
+  apiKey: string,
+  system: string,
+  messages: AnthropicMessage[],
+  model: string,
+): Promise<string> {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ model, max_tokens: 1500, system, messages }),
+  })
+
+  if (!res.ok) {
+    let detail = ''
+    try {
+      const errBody = await res.json()
+      detail = errBody?.error?.message ?? JSON.stringify(errBody)
+    } catch {
+      detail = await res.text().catch(() => '')
+    }
+    return `Nie udalo sie pobrac odpowiedzi (HTTP ${res.status}). ${detail}`.trim()
+  }
+
+  const data = await res.json()
+  const text: string | undefined = data?.content?.[0]?.text
+  if (!text) {
+    return 'Model zwrocil pusta odpowiedz. Sprobuj ponownie albo przeformuluj pytanie.'
+  }
+  return text
+}
+
+/**
+ * Wysyla rozmowe do agenta. Kolejnosc preferencji:
+ *  (a) VITE_AGENT_API_URL ustawiony -> proxy Supabase (klucz na serwerze, BEZPIECZNE),
+ *  (b) inaczej VITE_ANTHROPIC_API_KEY -> wywolanie z przegladarki (tylko testy wewnetrzne),
+ *  (c) inaczej -> MOCK (tryb demo).
  * Cala logika owinieta w try/catch, zwraca czytelny komunikat bledu.
  */
 export async function sendMessage(
   agentSlug: string,
   history: ChatMessage[],
 ): Promise<string> {
+  const proxyUrl = import.meta.env.VITE_AGENT_API_URL
   const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
 
-  if (!apiKey) {
+  // (c) Brak proxy i brak klucza -> tryb demo.
+  if (!proxyUrl && !apiKey) {
     return mockResponse(agentSlug)
   }
 
   try {
     const system = buildSystemPrompt(agentSlug)
     const model = import.meta.env.VITE_ANTHROPIC_MODEL || 'claude-sonnet-4-6'
+    const messages: AnthropicMessage[] = history.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }))
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 1500,
-        system,
-        messages: history.map((m) => ({ role: m.role, content: m.content })),
-      }),
-    })
-
-    if (!res.ok) {
-      let detail = ''
-      try {
-        const errBody = await res.json()
-        detail = errBody?.error?.message ?? JSON.stringify(errBody)
-      } catch {
-        detail = await res.text().catch(() => '')
-      }
-      return `Nie udalo sie pobrac odpowiedzi (HTTP ${res.status}). ${detail}`.trim()
+    // (a) Proxy ma pierwszenstwo: bezpieczne, klucz po stronie serwera.
+    if (proxyUrl) {
+      return await callProxy(proxyUrl, system, messages, model)
     }
 
-    const data = await res.json()
-    const text: string | undefined = data?.content?.[0]?.text
-    if (!text) {
-      return 'Model zwrocil pusta odpowiedz. Sprobuj ponownie albo przeformuluj pytanie.'
-    }
-    return text
+    // (b) Fallback: klucz w przegladarce, tylko do testow wewnetrznych.
+    // W tym punkcie apiKey jest na pewno ustawiony (gwarantuje to wczesniejszy return).
+    return await callDirect(apiKey as string, system, messages, model)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    return `Wystapil blad podczas rozmowy z agentem: ${msg}. Sprawdz klucz API i polaczenie z siecia.`
+    return `Wystapil blad podczas rozmowy z agentem: ${msg}. Sprawdz konfiguracje (proxy lub klucz API) i polaczenie z siecia.`
   }
 }

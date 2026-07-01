@@ -50,8 +50,8 @@ export const agents: Agent[] = [
     role: 'Operacje i back office',
     tileNo: '2',
     accent: '#2DD4BF',
-    claudeName: null,
-    hasPrompt: false,
+    claudeName: 'sf-operacje',
+    hasPrompt: true,
     mission:
       'Porzadkuje zadania, briefy i rytm, odciaza Cie z drobiazgow.',
   },
@@ -103,8 +103,8 @@ export const agents: Agent[] = [
     role: 'Obsluga klienta i relacje',
     tileNo: '7',
     accent: '#38BDF8',
-    claudeName: null,
-    hasPrompt: false,
+    claudeName: 'sf-opiekun-klienta',
+    hasPrompt: true,
     mission: 'Dba o retencje, onboarding i relacje po sprzedazy.',
   },
   {
