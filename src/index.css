@@ -16,19 +16,34 @@ body {
   @apply bg-zinc-950 text-zinc-100 font-sans antialiased;
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
   text-rendering: optimizeLegibility;
-  /* Subtelne tlo: dwie ciemne poswiaty + delikatny grid, brand w lewym gornym rogu */
+  line-height: 1.6;
+  /* Subtelne tlo: dwie ciemne poswiaty brandu + ledwo widoczna siatka techniczna (znak architektow) */
   background-image:
     radial-gradient(
       60rem 40rem at 0% -10%,
-      rgba(91, 141, 239, 0.07),
+      rgba(91, 141, 239, 0.08),
       transparent 60%
     ),
     radial-gradient(
       48rem 36rem at 100% 0%,
-      rgba(91, 141, 239, 0.04),
+      rgba(91, 141, 239, 0.045),
       transparent 55%
-    );
+    ),
+    linear-gradient(rgba(63, 63, 70, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(63, 63, 70, 0.05) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    100% 100%,
+    44px 44px,
+    44px 44px;
   background-attachment: fixed;
+}
+
+/* Naglowki: ciasniejszy trakting i mocna hierarchia (styl B2B premium) */
+h1,
+h2,
+h3 {
+  text-wrap: balance;
 }
 
 /* Zaznaczenie tekstu w kolorze marki */
@@ -94,6 +109,20 @@ body {
   border-radius: 9999px;
   background-color: currentColor;
   animation: thinkPulse 1.3s infinite both;
+}
+
+/* Delikatny puls "zywego" awatara podczas generowania odpowiedzi */
+@keyframes avatarBreath {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.06);
+  }
+}
+.avatar-breath {
+  animation: avatarBreath 1.6s ease-in-out infinite;
 }
 
 /* Szacunek dla uzytkownikow z ograniczona animacja */

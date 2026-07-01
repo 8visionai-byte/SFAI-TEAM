@@ -6,11 +6,15 @@ import AgentCard from '../components/AgentCard'
 export default function Team() {
   return (
     <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8">
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-zinc-50 sm:text-4xl">
+      <header className="mb-8 animate-fade-up">
+        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
+          Centrum Dowodzenia
+        </div>
+        <h1 className="text-3xl font-bold leading-tight tracking-tight text-zinc-50 sm:text-4xl">
           Twoj zespol AI
         </h1>
-        <p className="mt-2 max-w-2xl text-zinc-400">
+        <p className="mt-3 max-w-2xl text-[0.975rem] leading-relaxed text-zinc-400">
           Dziewieciu agentow SimpleFast.ai. Powiedz COO swoj cel, on rozlozy go
           na zadania i deleguje do reszty zespolu. Albo wejdz wprost do
           konkretnego specjalisty.
@@ -45,7 +49,7 @@ export default function Team() {
             <p className="mt-3 text-zinc-300">{coo.mission}</p>
           </div>
           <div className="flex flex-shrink-0">
-            <span className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-zinc-950 transition-transform group-hover:translate-x-1">
+            <span className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-zinc-950 shadow-glow transition-all group-hover:translate-x-1 group-hover:bg-brand-soft motion-reduce:group-hover:translate-x-0">
               Porozmawiaj z COO
               <ArrowRight size={17} />
             </span>
@@ -62,8 +66,14 @@ export default function Team() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {teamAgents.map((agent) => (
-          <AgentCard key={agent.slug} agent={agent} />
+        {teamAgents.map((agent, i) => (
+          <div
+            key={agent.slug}
+            className="animate-fade-up"
+            style={{ animationDelay: `${Math.min(i, 6) * 45}ms` }}
+          >
+            <AgentCard agent={agent} />
+          </div>
         ))}
       </div>
     </div>

@@ -19,28 +19,35 @@ export default function AgentCard({ agent }: AgentCardProps) {
   return (
     <Link
       to={`/czat/${agent.slug}`}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 shadow-card transition-all duration-200 hover:-translate-y-1 hover:border-zinc-700 hover:bg-zinc-900 hover:shadow-card-hover focus-visible:-translate-y-1"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 shadow-card transition-all duration-200 hover:-translate-y-1 hover:border-zinc-700 hover:bg-zinc-900 hover:shadow-card-hover focus-visible:-translate-y-1 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
     >
+      {/* Akcentowa hairline u gory, podswietla sie na hover */}
+      <span
+        className="pointer-events-none absolute inset-x-0 top-0 h-px opacity-0 transition-opacity duration-300 group-hover:opacity-70"
+        style={{
+          background: `linear-gradient(90deg, transparent, ${agent.accent}, transparent)`,
+        }}
+        aria-hidden
+      />
       {/* Akcentowy pasek po lewej, podswietla sie na hover */}
       <span
-        className="pointer-events-none absolute inset-y-0 left-0 w-[3px] opacity-70 transition-opacity duration-200 group-hover:opacity-100"
+        className="pointer-events-none absolute inset-y-4 left-0 w-[3px] rounded-r-full opacity-60 transition-all duration-200 group-hover:inset-y-0 group-hover:opacity-100"
         style={{ backgroundColor: agent.accent }}
         aria-hidden
       />
       {/* Subtelny poblysk akcentu w rogu na hover */}
       <span
-        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-20"
+        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-25"
         style={{ backgroundColor: agent.accent }}
         aria-hidden
       />
 
       <div className="mb-4 flex items-start justify-between gap-3">
         <div
-          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold ring-1"
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold transition-transform duration-200 group-hover:scale-105 motion-reduce:transform-none"
           style={{
-            backgroundColor: agent.accent + '1f',
+            background: `linear-gradient(135deg, ${agent.accent}2e, ${agent.accent}12)`,
             color: agent.accent,
-            borderColor: 'transparent',
             boxShadow: `inset 0 0 0 1px ${agent.accent}55`,
           }}
           aria-hidden
@@ -67,7 +74,12 @@ export default function AgentCard({ agent }: AgentCardProps) {
         </span>
       </div>
 
-      <div className="mb-1 text-[0.7rem] font-medium uppercase tracking-wider text-zinc-600">
+      <div className="mb-1.5 inline-flex w-fit items-center gap-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-zinc-600">
+        <span
+          className="h-1 w-1 rounded-full"
+          style={{ backgroundColor: agent.accent }}
+          aria-hidden
+        />
         Kafelek {agent.tileNo}
       </div>
       <h3 className="text-base font-semibold leading-snug text-zinc-50">
@@ -83,11 +95,16 @@ export default function AgentCard({ agent }: AgentCardProps) {
         {agent.mission}
       </p>
 
-      <div className="mt-5 flex items-center gap-1.5 text-sm font-medium text-zinc-400 transition-colors group-hover:text-zinc-100">
-        Rozmawiaj
+      <div
+        className="mt-5 flex items-center gap-1.5 text-sm font-semibold text-zinc-400 transition-colors group-hover:text-zinc-100"
+        style={{ ['--acc' as string]: agent.accent }}
+      >
+        <span className="transition-colors group-hover:[color:var(--acc)]">
+          Rozmawiaj
+        </span>
         <ArrowRight
           size={16}
-          className="transition-transform duration-200 group-hover:translate-x-1"
+          className="transition-transform duration-200 group-hover:translate-x-1 group-hover:[color:var(--acc)] motion-reduce:transform-none"
         />
       </div>
     </Link>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { FileText } from 'lucide-react'
+import { FileText, Brain as BrainIcon } from 'lucide-react'
 import {
   brainFiles,
   brainGroupOrder,
@@ -44,10 +44,14 @@ export default function Brain() {
   return (
     <div className="mx-auto flex h-full max-w-7xl flex-col">
       <header className="px-5 py-6 sm:px-8">
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-50 sm:text-3xl">
+        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+          <BrainIcon size={12} className="text-brand-soft" />
+          Wspolna wiedza
+        </div>
+        <h1 className="text-2xl font-bold leading-tight tracking-tight text-zinc-50 sm:text-3xl">
           Mozg firmy
         </h1>
-        <p className="mt-1 text-zinc-400">
+        <p className="mt-2 max-w-2xl text-[0.975rem] leading-relaxed text-zinc-400">
           Wspolna baza wiedzy. To samo zrodlo prawdy, ktore czyta kazdy agent
           przed odpowiedzia.
         </p>
@@ -59,10 +63,15 @@ export default function Brain() {
           <div className="space-y-5">
             {grouped.map((group) => (
               <div key={group.key}>
-                <div className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                  {group.label}
+                <div className="mb-2 flex items-center gap-2 px-1">
+                  <span className="text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                    {group.label}
+                  </span>
+                  <span className="rounded-full bg-zinc-800/80 px-1.5 py-px text-[0.65rem] font-medium tabular-nums text-zinc-500">
+                    {group.files.length}
+                  </span>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {group.files.map((f) => {
                     const isActive = f.path === activePath
                     return (
@@ -70,12 +79,18 @@ export default function Brain() {
                         key={f.path}
                         onClick={() => setActivePath(f.path)}
                         className={[
-                          'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                          'relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-all duration-150',
                           isActive
                             ? 'bg-brand/10 text-white ring-1 ring-brand/30'
                             : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200',
                         ].join(' ')}
                       >
+                        {isActive && (
+                          <span
+                            className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-brand"
+                            aria-hidden
+                          />
+                        )}
                         <FileText
                           size={15}
                           className={
@@ -95,11 +110,21 @@ export default function Brain() {
         </nav>
 
         {/* Podglad markdown */}
-        <article className="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6 sm:p-8 lg:overflow-y-auto">
+        <article className="min-w-0 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/40 lg:overflow-y-auto">
           {active ? (
-            <MarkdownView>{active.content}</MarkdownView>
+            <>
+              <div className="sticky top-0 z-10 flex items-center gap-2.5 border-b border-zinc-800 bg-zinc-900/80 px-6 py-3.5 backdrop-blur sm:px-8">
+                <FileText size={15} className="flex-shrink-0 text-brand-soft" />
+                <span className="truncate text-sm font-semibold capitalize text-zinc-200">
+                  {prettyName(active.name)}
+                </span>
+              </div>
+              <div className="p-6 sm:p-8">
+                <MarkdownView>{active.content}</MarkdownView>
+              </div>
+            </>
           ) : (
-            <p className="text-zinc-500">Wybierz dokument z listy.</p>
+            <p className="p-6 text-zinc-500 sm:p-8">Wybierz dokument z listy.</p>
           )}
         </article>
       </div>

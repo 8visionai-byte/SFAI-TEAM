@@ -163,14 +163,17 @@ export default function Chat() {
         </Link>
         <div className="flex items-center gap-3">
           <div
-            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold text-zinc-950"
-            style={{ backgroundColor: agent.accent }}
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold text-zinc-950 ring-1 ring-white/10"
+            style={{
+              backgroundColor: agent.accent,
+              boxShadow: `0 6px 18px -6px ${agent.accent}80`,
+            }}
             aria-hidden
           >
             {initials(agent.name)}
           </div>
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold text-zinc-50">
+            <h1 className="truncate text-lg font-semibold leading-tight text-zinc-50">
               {agent.name}
             </h1>
             <p
@@ -204,25 +207,45 @@ export default function Chat() {
 
           {messages.length === 0 && (
             <div className="animate-fade-up">
-              <p className="text-zinc-400">{agent.mission}</p>
+              <div
+                className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4"
+                style={{ ['--acc' as string]: agent.accent }}
+              >
+                <div
+                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold text-zinc-950 ring-1 ring-white/10"
+                  style={{ backgroundColor: agent.accent }}
+                  aria-hidden
+                >
+                  {initials(agent.name)}
+                </div>
+                <p className="text-sm leading-relaxed text-zinc-300">
+                  {agent.mission}
+                </p>
+              </div>
               {agent.slug === 'coo' && (
                 <p className="mt-3 rounded-xl border border-brand/20 bg-brand/5 px-4 py-3 text-sm text-brand-soft">
                   Powiedz mi cel sprzedazowy, rozloze go na zespol.
                 </p>
               )}
               {starters.length > 0 && (
-                <div className="mt-5">
-                  <div className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-600">
+                <div className="mt-6">
+                  <div className="mb-2.5 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-zinc-500">
                     Przyklady pytan
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                     {starters.map((s) => (
                       <button
                         key={s}
                         onClick={() => handleSend(s)}
-                        className="rounded-full border border-zinc-800 bg-zinc-900 px-3.5 py-1.5 text-left text-sm text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-800 hover:text-white"
+                        className="group flex items-start gap-2 rounded-xl border border-zinc-800 bg-zinc-900/70 px-3.5 py-2.5 text-left text-sm text-zinc-300 transition-all duration-200 hover:-translate-y-0.5 hover:bg-zinc-800 hover:text-white motion-reduce:hover:translate-y-0"
+                        style={{ ['--acc' as string]: agent.accent }}
                       >
-                        {s}
+                        <span
+                          className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full opacity-60 transition-opacity group-hover:opacity-100"
+                          style={{ backgroundColor: agent.accent }}
+                          aria-hidden
+                        />
+                        <span>{s}</span>
                       </button>
                     ))}
                   </div>
@@ -243,7 +266,7 @@ export default function Chat() {
           {loading && (
             <div className="flex items-center gap-3 text-zinc-500 animate-fade-up">
               <div
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold text-zinc-950"
+                className="avatar-breath flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold text-zinc-950 ring-1 ring-white/10"
                 style={{ backgroundColor: agent.accent }}
                 aria-hidden
               >
@@ -294,13 +317,13 @@ export default function Chat() {
             rows={1}
             aria-label={`Napisz wiadomosc do agenta ${agent.name}`}
             placeholder={`Napisz do agenta ${agent.name}...`}
-            className="max-h-40 min-h-[48px] flex-1 resize-none overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-[0.95rem] text-zinc-100 placeholder:text-zinc-600 focus:border-brand/50"
+            className="max-h-40 min-h-[48px] flex-1 resize-none overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-[0.95rem] leading-relaxed text-zinc-100 shadow-card outline-none transition-colors placeholder:text-zinc-600 focus:border-brand/50 focus:ring-1 focus:ring-brand/40"
           />
           <button
             onClick={() => handleSend(input)}
             disabled={loading || !input.trim()}
             aria-label="Wyslij wiadomosc"
-            className="flex h-12 items-center gap-2 rounded-2xl bg-brand px-5 text-sm font-semibold text-zinc-950 transition-colors hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-12 items-center gap-2 rounded-2xl bg-brand px-5 text-sm font-semibold text-zinc-950 shadow-glow transition-all hover:bg-brand-soft active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none motion-reduce:active:scale-100"
           >
             <Send size={16} aria-hidden />
             <span className="hidden sm:inline">Wyslij</span>

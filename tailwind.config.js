@@ -39,9 +39,14 @@ export default {
           from: { opacity: '0', transform: 'translateY(8px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
+        popIn: {
+          from: { opacity: '0', transform: 'scale(0.96)' },
+          to: { opacity: '1', transform: 'scale(1)' },
+        },
       },
       animation: {
         'fade-up': 'fadeUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both',
+        'pop-in': 'popIn 0.28s cubic-bezier(0.16, 1, 0.3, 1) both',
       },
     },
   },
