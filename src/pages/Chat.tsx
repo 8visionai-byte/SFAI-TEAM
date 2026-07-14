@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Send, Info } from 'lucide-react'
+import { ArrowLeft, Send, Info, Settings as SettingsIcon } from 'lucide-react'
 import { getAgent } from '../data/agents'
-import { sendMessage, type ChatMessage as Msg } from '../lib/ai'
+import { sendMessage, hasApiKey, type ChatMessage as Msg } from '../lib/ai'
 import ChatMessage from '../components/ChatMessage'
 
 function initials(name: string): string {
@@ -195,6 +195,24 @@ export default function Chat() {
         aria-label={`Rozmowa z agentem ${agent.name}`}
       >
         <div className="mx-auto max-w-3xl space-y-5 px-5 py-6 sm:px-8">
+          {!hasApiKey() && (
+            <div className="flex flex-col gap-2 rounded-xl border border-brand/25 bg-brand/5 px-4 py-3 text-sm text-brand-soft sm:flex-row sm:items-center sm:justify-between">
+              <span className="flex items-start gap-2.5">
+                <SettingsIcon size={16} className="mt-0.5 flex-shrink-0" aria-hidden />
+                <span>
+                  Tryb demo. Dodaj swoj klucz Anthropic w Ustawieniach, aby
+                  agenci odpowiadali naprawde.
+                </span>
+              </span>
+              <Link
+                to="/ustawienia"
+                className="inline-flex flex-shrink-0 items-center gap-1.5 self-start rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-zinc-950 transition-colors hover:bg-brand-soft sm:self-auto"
+              >
+                Przejdz do Ustawien
+              </Link>
+            </div>
+          )}
+
           {!agent.hasPrompt && (
             <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-200/90">
               <Info size={16} className="mt-0.5 flex-shrink-0" />

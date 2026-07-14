@@ -6,6 +6,64 @@ export interface ChatMessage {
   content: string
 }
 
+// --- Ustawienia uzytkownika (localStorage) ---------------------------------
+// Klucz API i model trzymamy WYLACZNIE w przegladarce uzytkownika.
+// Nie sa wbudowane w bundle i nie trafiaja na zaden serwer poza Anthropic.
+const KEY_STORAGE = 'sf_anthropic_key'
+const MODEL_STORAGE = 'sf_anthropic_model'
+const DEFAULT_MODEL = import.meta.env.VITE_ANTHROPIC_MODEL || 'claude-sonnet-4-6'
+
+/** Bezpieczny dostep do localStorage (SSR/prywatny tryb moga rzucic wyjatek). */
+function safeStorage(): Storage | null {
+  try {
+    return typeof window !== 'undefined' ? window.localStorage : null
+  } catch {
+    return null
+  }
+}
+
+/** Zwraca klucz API zapisany przez uzytkownika albo null. */
+export function getApiKey(): string | null {
+  const v = safeStorage()?.getItem(KEY_STORAGE)?.trim()
+  return v ? v : null
+}
+
+/** Zapisuje klucz API uzytkownika w localStorage. */
+export function setApiKey(value: string): void {
+  const v = value.trim()
+  if (!v) {
+    clearApiKey()
+    return
+  }
+  safeStorage()?.setItem(KEY_STORAGE, v)
+}
+
+/** Usuwa klucz API uzytkownika (powrot do trybu demo). */
+export function clearApiKey(): void {
+  safeStorage()?.removeItem(KEY_STORAGE)
+}
+
+/** Czy uzytkownik ma zapisany wlasny klucz (tryb realny). */
+export function hasApiKey(): boolean {
+  return getApiKey() !== null
+}
+
+/** Zwraca wybrany model albo domyslny. */
+export function getModel(): string {
+  const v = safeStorage()?.getItem(MODEL_STORAGE)?.trim()
+  return v ? v : DEFAULT_MODEL
+}
+
+/** Zapisuje wybrany model w localStorage. */
+export function setModel(value: string): void {
+  const v = value.trim()
+  if (!v) {
+    safeStorage()?.removeItem(MODEL_STORAGE)
+    return
+  }
+  safeStorage()?.setItem(MODEL_STORAGE, v)
+}
+
 const STYLE_RULES = [
   'Odpowiadaj po polsku, w stylu BLUF (wniosek najpierw).',
   'Zakaz myslnika em-dash (dluga kreska). Uzywaj przecinka, dwukropka albo krotszego zdania.',
@@ -153,42 +211,51 @@ async function callDirect(
 }
 
 /**
- * Wysyla rozmowe do agenta. Kolejnosc preferencji:
- *  (a) VITE_AGENT_API_URL ustawiony -> proxy Supabase (klucz na serwerze, BEZPIECZNE),
- *  (b) inaczej VITE_ANTHROPIC_API_KEY -> wywolanie z przegladarki (tylko testy wewnetrzne),
- *  (c) inaczej -> MOCK (tryb demo).
+ * Wysyla rozmowe do agenta. Kolejnosc wyboru trybu:
+ *  (a) klucz uzytkownika w localStorage -> wywolanie z przegladarki wprost do Anthropic,
+ *      model z getModel() (tryb REALNY, klucz zostaje w przegladarce uzytkownika),
+ *  (b) inaczej VITE_AGENT_API_URL -> proxy (klucz na serwerze, BEZPIECZNE),
+ *  (c) inaczej VITE_ANTHROPIC_API_KEY -> wywolanie z przegladarki (klucz z env),
+ *  (d) inaczej -> MOCK (tryb demo).
  * Cala logika owinieta w try/catch, zwraca czytelny komunikat bledu.
  */
 export async function sendMessage(
   agentSlug: string,
   history: ChatMessage[],
 ): Promise<string> {
+  const userKey = getApiKey()
   const proxyUrl = import.meta.env.VITE_AGENT_API_URL
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
+  const envKey = import.meta.env.VITE_ANTHROPIC_API_KEY
 
-  // (c) Brak proxy i brak klucza -> tryb demo.
-  if (!proxyUrl && !apiKey) {
+  // (d) Brak klucza uzytkownika, brak proxy i brak klucza env -> tryb demo.
+  if (!userKey && !proxyUrl && !envKey) {
     return mockResponse(agentSlug)
   }
 
   try {
     const system = buildSystemPrompt(agentSlug)
-    const model = import.meta.env.VITE_ANTHROPIC_MODEL || 'claude-sonnet-4-6'
     const messages: AnthropicMessage[] = history.map((m) => ({
       role: m.role,
       content: m.content,
     }))
 
-    // (a) Proxy ma pierwszenstwo: bezpieczne, klucz po stronie serwera.
+    // (a) Klucz uzytkownika ma pierwszenstwo: tryb realny z modelem z ustawien.
+    if (userKey) {
+      return await callDirect(userKey, system, messages, getModel())
+    }
+
+    const model = import.meta.env.VITE_ANTHROPIC_MODEL || 'claude-sonnet-4-6'
+
+    // (b) Proxy: bezpieczne, klucz po stronie serwera.
     if (proxyUrl) {
       return await callProxy(proxyUrl, system, messages, model)
     }
 
-    // (b) Fallback: klucz w przegladarce, tylko do testow wewnetrznych.
-    // W tym punkcie apiKey jest na pewno ustawiony (gwarantuje to wczesniejszy return).
-    return await callDirect(apiKey as string, system, messages, model)
+    // (c) Klucz z env w przegladarce, tylko do testow wewnetrznych.
+    // W tym punkcie envKey jest na pewno ustawiony (gwarantuje to wczesniejszy return).
+    return await callDirect(envKey as string, system, messages, model)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    return `Wystapil blad podczas rozmowy z agentem: ${msg}. Sprawdz konfiguracje (proxy lub klucz API) i polaczenie z siecia.`
+    return `Wystapil blad podczas rozmowy z agentem: ${msg}. Sprawdz konfiguracje (klucz API lub proxy) i polaczenie z siecia.`
   }
 }
