@@ -1,15 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Send, Info, Settings as SettingsIcon } from 'lucide-react'
+import {
+  ArrowLeft,
+  Send,
+  Info,
+  Settings as SettingsIcon,
+  History,
+  Plus,
+  Save,
+  Trash2,
+} from 'lucide-react'
 import { getAgent } from '../data/agents'
 import { sendMessage, hasApiKey, type ChatMessage as Msg } from '../lib/ai'
+import {
+  nowyId,
+  rozmowyAgenta,
+  wczytajRozmowy,
+  zapiszRozmowe,
+  usunRozmowe,
+  zapiszNotatke,
+  type Rozmowa,
+} from '../lib/storage'
 import ChatMessage from '../components/ChatMessage'
-
-function initials(name: string): string {
-  const words = name.trim().split(/\s+/)
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase()
-  return (words[0][0] + words[1][0]).toUpperCase()
-}
+import Avatar from '../components/Avatar'
+import Toast, { useToast } from '../components/Toast'
 
 /** Przykladowe pytania pokazywane na starcie rozmowy. */
 function starterPrompts(slug: string): string[] {
@@ -66,6 +80,25 @@ function starterPrompts(slug: string): string[] {
   }
 }
 
+/** Krotkie sformatowanie daty do listy rozmow. */
+function formatujDate(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString('pl-PL', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/** Tytul rozmowy = poczatek pierwszej wiadomosci uzytkownika. */
+function tytulRozmowy(messages: Msg[]): string {
+  const pierwsza = messages.find((m) => m.role === 'user')
+  const t = (pierwsza?.content ?? 'Rozmowa').trim()
+  return t.length > 60 ? `${t.slice(0, 60)}...` : t
+}
+
 export default function Chat() {
   const { slug } = useParams<{ slug: string }>()
   const agent = getAgent(slug)
@@ -73,15 +106,43 @@ export default function Chat() {
   const [messages, setMessages] = useState<Msg[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [convId, setConvId] = useState<string>(() => nowyId())
+  const [historia, setHistoria] = useState<Rozmowa[]>([])
+  const [pokazHistorie, setPokazHistorie] = useState(false)
+  const { toast, pokazToast } = useToast()
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
 
-  // reset rozmowy przy zmianie agenta
+  // reset rozmowy przy zmianie agenta + wczytanie historii tego agenta
   useEffect(() => {
     setMessages([])
     setInput('')
     setLoading(false)
+    setConvId(nowyId())
+    setHistoria(slug ? rozmowyAgenta(slug) : [])
+    setPokazHistorie(false)
   }, [slug])
+
+  // automatyczny zapis biezacej rozmowy do localStorage (sf_rozmowy)
+  useEffect(() => {
+    if (!agent || messages.length === 0) return
+    const zapisana = wczytajRozmowy().find((r) => r.id === convId)
+    // nie nadpisuj, gdy nic sie nie zmienilo (np. po wczytaniu starej rozmowy)
+    if (
+      zapisana &&
+      JSON.stringify(zapisana.messages) === JSON.stringify(messages)
+    ) {
+      return
+    }
+    zapiszRozmowe({
+      id: convId,
+      agentSlug: agent.slug,
+      tytul: tytulRozmowy(messages),
+      messages,
+      updatedAt: new Date().toISOString(),
+    })
+    setHistoria(rozmowyAgenta(agent.slug))
+  }, [messages, convId, agent])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -141,6 +202,52 @@ export default function Chat() {
     }
   }
 
+  /** Zaczyna nowa, pusta rozmowe (poprzednia jest juz auto-zapisana). */
+  function nowaRozmowa() {
+    if (loading) return
+    setConvId(nowyId())
+    setMessages([])
+    setInput('')
+  }
+
+  /** Wczytuje zapisana rozmowe do okna czatu. */
+  function wczytajDoCzatu(r: Rozmowa) {
+    if (loading) return
+    setConvId(r.id)
+    setMessages(r.messages)
+    setPokazHistorie(false)
+  }
+
+  /** Usuwa rozmowe z historii; jesli to biezaca, zaczyna nowa. */
+  function usunZHistorii(id: string) {
+    usunRozmowe(id)
+    if (agent) setHistoria(rozmowyAgenta(agent.slug))
+    if (id === convId) {
+      setConvId(nowyId())
+      setMessages([])
+    }
+  }
+
+  /** Zapisuje biezaca rozmowe jako notatke (sf_notatki). */
+  function zapiszDoPamieci() {
+    if (!agent || messages.length === 0) return
+    const tresc = messages
+      .map((m) =>
+        m.role === 'user' ? `**Ty:** ${m.content}` : `**${agent.name}:** ${m.content}`,
+      )
+      .join('\n\n')
+    zapiszNotatke({
+      id: nowyId(),
+      zrodlo: `Czat: ${agent.name}`,
+      data: new Date().toISOString(),
+      tytul: tytulRozmowy(messages),
+      tresc,
+    })
+    pokazToast(
+      'Zapisano notatkę. W kolejnej wersji trafi automatycznie do mózgu firmy.',
+    )
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -149,6 +256,8 @@ export default function Chat() {
   }
 
   const starters = starterPrompts(agent.slug)
+  const przyciskSm =
+    'inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/70 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-40'
 
   return (
     <div className="flex h-full flex-col">
@@ -161,18 +270,9 @@ export default function Chat() {
           <ArrowLeft size={14} />
           Wroc do zespolu
         </Link>
-        <div className="flex items-center gap-3">
-          <div
-            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold text-zinc-950 ring-1 ring-white/10"
-            style={{
-              backgroundColor: agent.accent,
-              boxShadow: `0 6px 18px -6px ${agent.accent}80`,
-            }}
-            aria-hidden
-          >
-            {initials(agent.name)}
-          </div>
-          <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-3">
+          <Avatar agent={agent} size="lg" glow />
+          <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg font-semibold leading-tight text-zinc-50">
               {agent.name}
             </h1>
@@ -183,7 +283,85 @@ export default function Chat() {
               {agent.role}
             </p>
           </div>
+          {/* Akcje rozmowy */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPokazHistorie((v) => !v)}
+              aria-expanded={pokazHistorie}
+              className={przyciskSm}
+            >
+              <History size={14} aria-hidden />
+              Poprzednie rozmowy
+              <span className="rounded-full bg-zinc-800 px-1.5 py-px text-[0.65rem] tabular-nums text-zinc-400">
+                {historia.length}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={nowaRozmowa}
+              disabled={loading || messages.length === 0}
+              className={przyciskSm}
+            >
+              <Plus size={14} aria-hidden />
+              Nowa rozmowa
+            </button>
+            <button
+              type="button"
+              onClick={zapiszDoPamieci}
+              disabled={loading || messages.length === 0}
+              className={przyciskSm}
+            >
+              <Save size={14} aria-hidden />
+              Zapisz do pamięci
+            </button>
+          </div>
         </div>
+
+        {/* Lista poprzednich rozmow tego agenta */}
+        {pokazHistorie && (
+          <div className="mt-3 max-h-60 space-y-1 overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-900/60 p-2">
+            {historia.length === 0 && (
+              <p className="px-2 py-1.5 text-xs text-zinc-500">
+                Brak zapisanych rozmow z tym agentem. Napisz cos, rozmowa
+                zapisze sie sama.
+              </p>
+            )}
+            {historia.map((r) => {
+              const biezaca = r.id === convId
+              return (
+                <div key={r.id} className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => wczytajDoCzatu(r)}
+                    className={[
+                      'flex min-w-0 flex-1 flex-col rounded-lg px-2.5 py-1.5 text-left transition-colors',
+                      biezaca
+                        ? 'bg-brand/10 ring-1 ring-brand/30'
+                        : 'hover:bg-zinc-800/80',
+                    ].join(' ')}
+                  >
+                    <span className="truncate text-xs font-medium text-zinc-200">
+                      {r.tytul}
+                    </span>
+                    <span className="text-[0.65rem] text-zinc-500">
+                      {formatujDate(r.updatedAt)}, wiadomosci: {r.messages.length}
+                      {biezaca ? ', otwarta teraz' : ''}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => usunZHistorii(r.id)}
+                    aria-label={`Usun rozmowe: ${r.tytul}`}
+                    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+                  >
+                    <Trash2 size={14} aria-hidden />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </header>
 
       {/* Lista wiadomosci */}
@@ -229,13 +407,7 @@ export default function Chat() {
                 className="flex items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4"
                 style={{ ['--acc' as string]: agent.accent }}
               >
-                <div
-                  className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold text-zinc-950 ring-1 ring-white/10"
-                  style={{ backgroundColor: agent.accent }}
-                  aria-hidden
-                >
-                  {initials(agent.name)}
-                </div>
+                <Avatar agent={agent} size="md" />
                 <p className="text-sm leading-relaxed text-zinc-300">
                   {agent.mission}
                 </p>
@@ -283,13 +455,7 @@ export default function Chat() {
 
           {loading && (
             <div className="flex items-center gap-3 text-zinc-500 animate-fade-up">
-              <div
-                className="avatar-breath flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold text-zinc-950 ring-1 ring-white/10"
-                style={{ backgroundColor: agent.accent }}
-                aria-hidden
-              >
-                {initials(agent.name)}
-              </div>
+              <Avatar agent={agent} size="sm" working />
               <span
                 className="flex items-center gap-1 text-sm"
                 aria-label={`${agent.name} mysli`}
@@ -348,9 +514,12 @@ export default function Chat() {
           </button>
         </div>
         <p className="mx-auto mt-2 max-w-3xl text-xs text-zinc-600">
-          Enter wysyla, Shift plus Enter dodaje nowa linie.
+          Enter wysyla, Shift plus Enter dodaje nowa linie. Rozmowa zapisuje
+          sie sama w tej przegladarce.
         </p>
       </div>
+
+      <Toast text={toast} />
     </div>
   )
 }

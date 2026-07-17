@@ -125,6 +125,46 @@ h3 {
   animation: avatarBreath 1.6s ease-in-out infinite;
 }
 
+/* Centrum Dowodzenia: przeplyw "nici" miedzy COO a specjalistami */
+@keyframes flowDash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+.thread-flow {
+  stroke-dasharray: 5 7;
+  animation: flowDash 0.7s linear infinite;
+}
+
+/* Pulsujaca poswiata wezla (COO gdy mysli, specjalista gdy pracuje).
+   Kolor poswiaty sterowany zmienna --glow ustawiana inline per wezel. */
+@keyframes nodePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--glow, rgba(91, 141, 239, 0.5));
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(0, 0, 0, 0);
+  }
+}
+.node-pulse {
+  animation: nodePulse 1.6s ease-in-out infinite;
+}
+
+/* Delikatne migotanie chipow subagentow, gdy ich specjalista pracuje */
+@keyframes chipFlicker {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.chip-flicker {
+  animation: chipFlicker 1.15s ease-in-out infinite;
+}
+
 /* Szacunek dla uzytkownikow z ograniczona animacja */
 @media (prefers-reduced-motion: reduce) {
   *,

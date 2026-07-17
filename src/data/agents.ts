@@ -15,6 +15,8 @@ export interface Agent {
   hasPrompt: boolean
   /** Jednozdaniowa misja agenta */
   mission: string
+  /** Zespol wykonawczy (subagenci) z pliku subagenci/_INDEX.md, krotkie polskie nazwy */
+  subagents: string[]
 }
 
 /**
@@ -32,6 +34,7 @@ export const agents: Agent[] = [
     hasPrompt: true,
     mission:
       'Rozklada Twoj cel na zadania, deleguje do zespolu i daje jedna rekomendacje.',
+    subagents: ['Rozklad celu', 'Delegacja zadan', 'Synteza rekomendacji'],
   },
   {
     slug: 'wiedza-produkt',
@@ -43,6 +46,13 @@ export const agents: Agent[] = [
     hasPrompt: true,
     mission:
       'Pilnuje, by sprzedaz miala wlasciwy material, dla wlasciwego klienta, w aktualnej wersji.',
+    subagents: [
+      'Budowniczy oferty',
+      'Autor e-bookow',
+      'Scenarzysta skryptow',
+      'Audytor contentu',
+      'Onboarder wiedzy',
+    ],
   },
   {
     slug: 'operacje',
@@ -54,6 +64,12 @@ export const agents: Agent[] = [
     hasPrompt: true,
     mission:
       'Porzadkuje zadania, briefy i rytm, odciaza Cie z drobiazgow.',
+    subagents: [
+      'Triage inboxa',
+      'Autor SOP',
+      'Monitor blokerow (RAID)',
+      'Generator briefow',
+    ],
   },
   {
     slug: 'analityk',
@@ -64,6 +80,13 @@ export const agents: Agent[] = [
     claudeName: 'sf-analityk',
     hasPrompt: true,
     mission: 'Daje przewage informacyjna, produkuje decyzje, nie raporty.',
+    subagents: [
+      'Monitor konkurencji',
+      'Segmentacja ICP',
+      'Sizing rynku',
+      'Syntezator battlecardow',
+      'Walidator win-loss',
+    ],
   },
   {
     slug: 'pamiec-zespolu',
@@ -75,6 +98,13 @@ export const agents: Agent[] = [
     hasPrompt: true,
     mission:
       'Trzyma jeden mozg firmy, wgrywa wiedze, wersjonuje, podaje kontekst reszcie.',
+    subagents: [
+      'Ingester wiedzy',
+      'Straznik metadanych',
+      'Retriever kontekstu',
+      'Lowca luk',
+      'Reconciler zrodel',
+    ],
   },
   {
     slug: 'copywriter',
@@ -86,6 +116,13 @@ export const agents: Agent[] = [
     hasPrompt: true,
     mission:
       'Zamienia jezyk klienta w tresc, ktora buduje zaufanie i konwertuje.',
+    subagents: [
+      'SEO/GEO Writer',
+      'Social B2B',
+      'Email Writer',
+      'VoC Miner',
+      'Brand Guardian',
+    ],
   },
   {
     slug: 'handlowiec',
@@ -96,6 +133,13 @@ export const agents: Agent[] = [
     claudeName: 'sf-handlowiec',
     hasPrompt: true,
     mission: 'Domyka przez diagnoze luki i wartosc, bez rabatowania.',
+    subagents: [
+      'Kwalifikator',
+      'Discovery luki',
+      'Business case ROI',
+      'Obsluga obiekcji',
+      'Oferta i pricing',
+    ],
   },
   {
     slug: 'opiekun-klienta',
@@ -106,6 +150,13 @@ export const agents: Agent[] = [
     claudeName: 'sf-opiekun-klienta',
     hasPrompt: true,
     mission: 'Dba o retencje, onboarding i relacje po sprzedazy.',
+    subagents: [
+      'Onboarder',
+      'Health-scorer',
+      'Renewal-play',
+      'AI tier-1',
+      'Save-play',
+    ],
   },
   {
     slug: 'drugi-glos',
@@ -116,6 +167,7 @@ export const agents: Agent[] = [
     claudeName: 'sf-strateg',
     hasPrompt: true,
     mission: 'Kwestionuje pomysly, broni marki i mowi nie z uzasadnieniem.',
+    subagents: ['Pre-mortem / red-team', 'Brand compliance', 'Monitor marki (SOV)'],
   },
 ]
 

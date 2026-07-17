@@ -1,16 +1,11 @@
 import MarkdownView from './MarkdownView'
+import Avatar from './Avatar'
 import type { Agent } from '../data/agents'
 
 interface ChatMessageProps {
   role: 'user' | 'assistant'
   content: string
   agent: Agent
-}
-
-function initials(name: string): string {
-  const words = name.trim().split(/\s+/)
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase()
-  return (words[0][0] + words[1][0]).toUpperCase()
 }
 
 /** Pojedyncza wiadomosc: user po prawej, agent po lewej (markdown). */
@@ -29,13 +24,7 @@ export default function ChatMessage({ role, content, agent }: ChatMessageProps) 
 
   return (
     <div className="flex justify-start gap-3 animate-fade-up">
-      <div
-        className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-xs font-bold text-zinc-950 shadow-sm ring-1 ring-white/10"
-        style={{ backgroundColor: agent.accent }}
-        aria-hidden
-      >
-        {initials(agent.name)}
-      </div>
+      <Avatar agent={agent} size="sm" className="mt-0.5 shadow-sm" />
       <div className="min-w-0 max-w-[85%]">
         <div
           className="mb-1 text-xs font-semibold"

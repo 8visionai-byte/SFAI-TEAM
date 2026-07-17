@@ -1,5 +1,5 @@
 import { getAgent } from '../data/agents'
-import { getAgentPrompt, getBrainCard } from './content'
+import { getAgentPrompt, getFullBrain } from './content'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -64,16 +64,19 @@ export function setModel(value: string): void {
   safeStorage()?.setItem(MODEL_STORAGE, v)
 }
 
-const STYLE_RULES = [
-  'Odpowiadaj po polsku, w stylu BLUF (wniosek najpierw).',
-  'Zakaz myslnika em-dash (dluga kreska). Uzywaj przecinka, dwukropka albo krotszego zdania.',
-  'Zero zmyslonych liczb, tylko dane z mozgu. Brak pokrycia oznaczaj jako "nie wiem" plus [INPUT PAWLA].',
-].join(' ')
+const CHAT_RULES = [
+  'ZASADY ROZMOWY W APLIKACJI (nadrzędne nad formatem raportowym z persony):',
+  '- Rozmawiasz z właścicielem firmy, nie piszesz raportu. Mów TYLKO prostym polskim.',
+  '- ZAKAZ angielskich etykiet i wtrąceń w odpowiedzi (BLUF, so what, insight, lead, framework itp.). Pojęcia tłumacz po polsku.',
+  '- Struktura odpowiedzi: najpierw wniosek i co KONKRETNIE zrobić (numerowane kroki jeśli pasują), potem krótkie uzasadnienie. Bez ścian tekstu.',
+  '- Zakaz myślnika em-dash. Zakaz zmyślonych liczb: liczby tylko z mózgu, inaczej powiedz czego brakuje.',
+  '- Jeśli czegoś nie ma w mózgu, powiedz wprost i zaproponuj, jakie dane uzupełnić.',
+].join('\n')
 
 /** Buduje system prompt dla danego agenta z osadzonego mozgu i persony. */
-function buildSystemPrompt(agentSlug: string): string {
+export function buildSystemPrompt(agentSlug: string): string {
   const agent = getAgent(agentSlug)
-  const card = getBrainCard()
+  const brain = getFullBrain()
 
   let persona: string
   if (agent?.hasPrompt) {
@@ -93,14 +96,13 @@ function buildSystemPrompt(agentSlug: string): string {
   }
 
   return [
-    '=== KARTA MOZGU (rdzen, czytaj przed odpowiedzia) ===',
-    card,
+    '=== MOZG FIRMY (pelna tresc, czytaj przed odpowiedzia) ===',
+    brain,
     '',
     '=== TWOJA PERSONA ===',
     persona,
     '',
-    '=== ZASADY STYLU (nadrzedne) ===',
-    STYLE_RULES,
+    CHAT_RULES,
   ].join('\n')
 }
 
@@ -116,7 +118,7 @@ function mockResponse(agentSlug: string): string {
     : 'Dzialam w trybie podstawowym (opis roli plus mozg firmy).'
 
   return [
-    `BLUF: Jestem ${name}, ${role}. Teraz dzialam w trybie demo, bez polaczenia z modelem.`,
+    `Jestem ${name}, ${role}. Teraz dzialam w trybie demo, bez polaczenia z modelem.`,
     '',
     mission ? `Moja misja: ${mission}` : '',
     '',
@@ -148,7 +150,7 @@ async function callProxy(
   const res = await fetch(proxyUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ system, messages, model }),
+    body: JSON.stringify({ system, messages, model, max_tokens: 4000 }),
   })
 
   if (!res.ok) {
@@ -188,7 +190,7 @@ async function callDirect(
       'anthropic-dangerous-direct-browser-access': 'true',
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ model, max_tokens: 1500, system, messages }),
+    body: JSON.stringify({ model, max_tokens: 4000, system, messages }),
   })
 
   if (!res.ok) {

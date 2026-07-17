@@ -1,15 +1,10 @@
 import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
+import Avatar from './Avatar'
 import type { Agent } from '../data/agents'
 
 interface AgentCardProps {
   agent: Agent
-}
-
-function initials(name: string): string {
-  const words = name.trim().split(/\s+/)
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase()
-  return (words[0][0] + words[1][0]).toUpperCase()
 }
 
 /** Kafelek agenta w siatce zespolu. Akcent koloru per agent. */
@@ -43,17 +38,11 @@ export default function AgentCard({ agent }: AgentCardProps) {
       />
 
       <div className="mb-4 flex items-start justify-between gap-3">
-        <div
-          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold transition-transform duration-200 group-hover:scale-105 motion-reduce:transform-none"
-          style={{
-            background: `linear-gradient(135deg, ${agent.accent}2e, ${agent.accent}12)`,
-            color: agent.accent,
-            boxShadow: `inset 0 0 0 1px ${agent.accent}55`,
-          }}
-          aria-hidden
-        >
-          {initials(agent.name)}
-        </div>
+        <Avatar
+          agent={agent}
+          size="lg"
+          className="transition-transform duration-200 group-hover:-translate-y-px group-hover:scale-105 motion-reduce:transform-none"
+        />
 
         <span
           className={[

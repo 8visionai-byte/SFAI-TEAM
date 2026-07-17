@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Users, Brain, Settings } from 'lucide-react'
+import { LayoutDashboard, Users, Brain, Settings } from 'lucide-react'
 import Logo from './Logo'
 
 interface SidebarProps {
@@ -8,7 +8,8 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { to: '/', label: 'Zespol', icon: Users, end: true },
+  { to: '/', label: 'Centrum', icon: LayoutDashboard, end: true },
+  { to: '/zespol', label: 'Zespol', icon: Users, end: false },
   { to: '/mozg', label: 'Mozg', icon: Brain, end: false },
   { to: '/ustawienia', label: 'Ustawienia', icon: Settings, end: false },
 ]

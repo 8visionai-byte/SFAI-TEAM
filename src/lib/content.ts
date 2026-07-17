@@ -72,6 +72,33 @@ export function getBrainCard(): string {
   return card?.content ?? ''
 }
 
+/** Sciezka wzgledna pliku mozgu (od src/content/mozg/) */
+function relativeBrainPath(path: string): string {
+  const marker = '/content/mozg/'
+  const idx = path.indexOf(marker)
+  return idx >= 0 ? path.slice(idx + marker.length) : path
+}
+
+/**
+ * CALY mozg jako jeden string: wszystkie pliki .md sklejone,
+ * kazdy poprzedzony naglowkiem "=== PLIK: <sciezka wzgledna> ===".
+ * Kolejnosc grup jak w brainGroupOrder (rdzen na poczatku).
+ */
+export function getFullBrain(): string {
+  const groupRank = (group: string): number => {
+    const idx = brainGroupOrder.findIndex((g) => g.key === group)
+    return idx >= 0 ? idx : brainGroupOrder.length
+  }
+  return [...brainFiles]
+    .sort((a, b) => {
+      const diff = groupRank(a.group) - groupRank(b.group)
+      if (diff !== 0) return diff
+      return a.name.localeCompare(b.name, 'pl')
+    })
+    .map((f) => `=== PLIK: ${relativeBrainPath(f.path)} ===\n${f.content.trim()}`)
+    .join('\n\n')
+}
+
 /** Pelny system prompt agenta (AGENT.md), jesli istnieje */
 export function getAgentPrompt(slug: string): string | null {
   const key = Object.keys(agentModules).find((k) =>
