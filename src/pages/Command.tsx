@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Save, Send, Settings as SettingsIcon, Sparkles, Trash2 } from 'lucide-react'
-import { coo, teamAgents, getAgent } from '../data/agents'
+import { coo, teamAgents, getAgent, type Agent } from '../data/agents'
 import { hasApiKey, getMode } from '../lib/ai'
 import { runOrchestration, type ZdarzenieOrk } from '../lib/orchestrator'
 import {
@@ -13,7 +13,7 @@ import {
   type WpisCentrum,
 } from '../lib/storage'
 import ChatMessage from '../components/ChatMessage'
-import Avatar from '../components/Avatar'
+import CharacterAvatar from '../components/CharacterAvatar'
 import Toast, { useToast } from '../components/Toast'
 
 // --- Pomocnicze -------------------------------------------------------------
@@ -37,9 +37,43 @@ const PRZYKLADY = [
 ]
 
 const KOLOR_DONE = '#34D399'
+/** Hairline oddzielajacy pierscienie-aure od portretu (prawie czern pod UI). */
+const HAIRLINE = '#0E0E11'
+/** Mikrozloty akcent syntezy (uzywany oszczednie, tylko przy skladaniu). */
+const ZLOTO = '#E8C879'
 
-/** Odstep okregu od krawedzi sceny (miejsce na wezel + etykiete roli). */
-const MARG = 78
+/** Odstep okregu od krawedzi sceny (miejsce na wezel 80px + podpis nazwa/rola). */
+const MARG = 108
+
+/**
+ * Podwojny pierscien-aura specjalisty (box-shadow, od wewnatrz).
+ * idle: cienki wygaszony pierscien. active: podwojny ring + glow w akcencie.
+ * done: pierscien zielony bez glow. Wartosci wg ART-SPEC-V18 sekcja 2.2.
+ */
+function auraSpecjalisty(stan: StanWezla, accent: string): string {
+  if (stan === 'active') {
+    return `0 0 0 3px ${HAIRLINE}, 0 0 0 5px ${accent}, 0 0 0 9px ${accent}44, 0 0 22px 2px ${accent}66`
+  }
+  if (stan === 'done') {
+    return `0 0 0 3px ${HAIRLINE}, 0 0 0 5px ${KOLOR_DONE}, 0 0 0 9px ${KOLOR_DONE}33`
+  }
+  return `0 0 0 3px ${HAIRLINE}, 0 0 0 4px ${accent}33`
+}
+
+/**
+ * Pierscien-aura COO (bazowy kolor brand). W thinking i synth ring aktywny.
+ * W synth dodatkowo mikrozloty hairline nad ringiem (moment zlozenia odpowiedzi).
+ */
+function auraCoo(stanCoo: StanCoo): string {
+  const brand = '#5B8DEF'
+  if (stanCoo === 'synth') {
+    return `0 0 0 3px ${HAIRLINE}, 0 0 0 4px ${ZLOTO}aa, 0 0 0 6px ${brand}, 0 0 0 10px ${brand}44, 0 0 22px 2px ${brand}66`
+  }
+  if (stanCoo === 'thinking') {
+    return `0 0 0 3px ${HAIRLINE}, 0 0 0 5px ${brand}, 0 0 0 9px ${brand}44, 0 0 22px 2px ${brand}66`
+  }
+  return `0 0 0 3px ${HAIRLINE}, 0 0 0 4px ${brand}33`
+}
 
 /** Wykrywa preferencje ograniczonej animacji i reaguje na jej zmiany. */
 function useReducedMotion(): boolean {
@@ -90,6 +124,82 @@ function punktBezier(
   const x = u * u * x0 + 2 * u * t * cxp + t * t * x1
   const y = u * u * y0 + 2 * u * t * cyp + t * t * y1
   return { x, y }
+}
+
+interface PortretProps {
+  agent: Agent
+  /** realny rozmiar w px (steruje bramka detali portretu wektorowego) */
+  px: number
+  /** klasy rozmiaru kontenera (skaluja portret na mniejszych ekranach) */
+  sizeClass: string
+  /** pierscien-aura jako box-shadow (2.2) */
+  aura: string
+  /** czy aura ma oddychac (node-pulse) */
+  pulsuj: boolean
+  /** kolor poswiaty pulsu (--glow) */
+  glow: string
+  /** wygaszenie w stanie idle */
+  przygaszony?: boolean
+}
+
+/**
+ * Okragly portret persony w scenie neuronu: wektorowy CharacterAvatar (shape
+ * 'circle') w kontenerze z podwojnym pierscieniem-aura (box-shadow). Puls aury
+ * jest osobna warstwa (node-pulse), zeby nie nadpisywac statycznego ringu.
+ * Gdy istnieje PNG (wersja premium z Higgsfield), przykrywa wektor po zaladowaniu.
+ */
+function Portret({
+  agent,
+  px,
+  sizeClass,
+  aura,
+  pulsuj,
+  glow,
+  przygaszony = false,
+}: PortretProps) {
+  const [loaded, setLoaded] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  return (
+    <div className={`relative ${sizeClass}`}>
+      {/* Puls aury jako osobna warstwa (nie koliduje ze statycznym ringiem) */}
+      {pulsuj && (
+        <span
+          className="node-pulse pointer-events-none absolute inset-0 rounded-full"
+          style={{ ['--glow' as string]: glow }}
+          aria-hidden
+        />
+      )}
+      <div
+        className={[
+          'relative h-full w-full overflow-hidden rounded-full transition-opacity duration-300',
+          przygaszony ? 'opacity-90' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        style={{
+          boxShadow: aura,
+          background: `linear-gradient(135deg, ${agent.accent}2e, ${agent.accent}12)`,
+        }}
+      >
+        <CharacterAvatar agent={agent} px={px} shape="circle" />
+        {!failed && (
+          <img
+            src={`${import.meta.env.BASE_URL}avatars/${agent.slug}.png`}
+            alt=""
+            loading="lazy"
+            draggable={false}
+            onLoad={() => setLoaded(true)}
+            onError={() => setFailed(true)}
+            className={[
+              'absolute inset-0 h-full w-full object-cover transition-opacity duration-300 motion-reduce:transition-none',
+              loaded ? 'opacity-100' : 'opacity-0',
+            ].join(' ')}
+          />
+        )}
+      </div>
+    </div>
+  )
 }
 
 /**
@@ -156,7 +266,7 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
   const cx = w / 2
   const cy = h / 2
   const N = teamAgents.length
-  const R = Math.max(120, w / 2 - MARG)
+  const R = Math.max(150, w / 2 - MARG)
 
   const wezly: Wezel[] = gotowe
     ? teamAgents.map((a, i) => {
@@ -181,12 +291,18 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
   return (
     <div
       ref={stageRef}
-      className="relative mx-auto aspect-square w-full max-w-[560px]"
+      className="relative mx-auto aspect-square w-full max-w-[640px]"
     >
+      {/* Warstwa 0: glebokie tlo sceny (radial + winieta + siatka) */}
+      <div
+        className="neuron-scene-bg pointer-events-none absolute inset-0 z-0 rounded-3xl"
+        aria-hidden
+      />
+
       {/* Warstwa nici (SVG) pod wezlami */}
       {gotowe && (
         <svg
-          className="pointer-events-none absolute inset-0 z-0"
+          className="pointer-events-none absolute inset-0 z-[1]"
           width={w}
           height={h}
           viewBox={`0 0 ${w} ${h}`}
@@ -200,7 +316,7 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
               width="200%"
               height="200%"
             >
-              <feGaussianBlur stdDeviation="2.2" />
+              <feGaussianBlur stdDeviation="3.0" />
             </filter>
             {wezly.map((n) => {
               const agent = getAgent(n.slug)
@@ -222,6 +338,18 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
             })}
           </defs>
 
+          {/* Orbita-prowadnica: ledwo widoczny slad okregu wezlow (premium) */}
+          <circle
+            cx={cx}
+            cy={cy}
+            r={R}
+            stroke="#ffffff"
+            strokeOpacity={0.04}
+            strokeWidth={1}
+            fill="none"
+            strokeDasharray="2 6"
+          />
+
           {wezly.map((n) => {
             const stan = stany[n.slug] ?? 'idle'
             const agent = getAgent(n.slug)
@@ -239,7 +367,7 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
                 <path
                   d={n.d}
                   stroke="#3f3f46"
-                  strokeWidth={1.4}
+                  strokeWidth={1.6}
                   fill="none"
                   opacity={0.5}
                 />
@@ -251,10 +379,10 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
                       stroke={
                         stan === 'active' ? `url(#grad-${n.slug})` : KOLOR_DONE
                       }
-                      strokeWidth={stan === 'active' ? 2.6 : 2}
+                      strokeWidth={stan === 'active' ? 3.4 : 2.6}
                       strokeLinecap="round"
                       fill="none"
-                      opacity={0.5}
+                      opacity={0.55}
                       filter="url(#nicGlow)"
                     />
                     {/* Ostra nakladka: aktywna z gradientem, gotowa na zielono */}
@@ -264,7 +392,7 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
                       stroke={
                         stan === 'active' ? `url(#grad-${n.slug})` : KOLOR_DONE
                       }
-                      strokeWidth={stan === 'active' ? 2.6 : 2}
+                      strokeWidth={stan === 'active' ? 3.4 : 2.6}
                       strokeLinecap="round"
                       fill="none"
                       className={
@@ -277,9 +405,9 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
 
                 {/* Czasteczka plynaca podczas pracy (COO -> specjalista) */}
                 {stan === 'active' && !reduced && (
-                  <circle r={3.2} fill={accent} filter="url(#nicGlow)">
+                  <circle r={4.6} fill={accent} filter="url(#nicGlow)">
                     <animateMotion
-                      dur="1.15s"
+                      dur="1.05s"
                       repeatCount="indefinite"
                       keyPoints="0;1"
                       keyTimes="0;1"
@@ -292,7 +420,7 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
 
                 {/* Czasteczka powrotu po zakonczeniu (specjalista -> COO) */}
                 {powrot && !reduced && (
-                  <circle r={3} fill={KOLOR_DONE} filter="url(#nicGlow)">
+                  <circle r={4.0} fill={KOLOR_DONE} filter="url(#nicGlow)">
                     <animateMotion
                       dur="0.7s"
                       repeatCount="1"
@@ -306,10 +434,30 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
                 )}
 
                 {/* Ograniczony ruch: statyczny wskaznik zamiast czasteczki */}
-                {p60 && <circle cx={p60.x} cy={p60.y} r={3.2} fill={kolor} />}
+                {p60 && <circle cx={p60.x} cy={p60.y} r={4.6} fill={kolor} />}
               </g>
             )
           })}
+
+          {/* Synteza: 1-2 zlote krople "esencji" plyna do COO (oszczednie) */}
+          {stanCoo === 'synth' &&
+            !reduced &&
+            wezly
+              .filter((n) => (stany[n.slug] ?? 'idle') === 'done')
+              .slice(0, 2)
+              .map((n) => (
+                <circle key={`zloto-${n.slug}`} r={1.6} fill={ZLOTO} opacity={0.75}>
+                  <animateMotion
+                    dur="1.4s"
+                    repeatCount="indefinite"
+                    keyPoints="1;0"
+                    keyTimes="0;1"
+                    calcMode="linear"
+                  >
+                    <mpath href={`#nic-${n.slug}`} />
+                  </animateMotion>
+                </circle>
+              ))}
         </svg>
       )}
 
@@ -317,13 +465,16 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
       {gotowe &&
         (() => {
           const zawartoscCoo = (
-            <>
-              <Avatar
+            <div className="flex flex-col items-center text-center">
+              <Portret
                 agent={coo}
-                size="lg"
-                className={cooAktywny ? 'node-pulse' : ''}
+                px={112}
+                sizeClass="h-24 w-24 sm:h-28 sm:w-28"
+                aura={auraCoo(stanCoo)}
+                pulsuj={cooAktywny}
+                glow="#5B8DEFaa"
               />
-              <div className="leading-tight">
+              <div className="mt-2 w-40 leading-tight">
                 <div className="text-sm font-semibold text-zinc-50">
                   {coo.name}
                 </div>
@@ -335,28 +486,23 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
                       : coo.role}
                 </div>
               </div>
-            </>
+            </div>
           )
-          const klasyCoo = [
-            'absolute z-10 flex items-center gap-3 rounded-2xl border px-4 py-3 transition-colors duration-300',
-            cooAktywny
-              ? 'border-brand/60 bg-brand/10'
-              : 'border-zinc-800 bg-zinc-900/70',
-          ].join(' ')
           const stylCoo = {
             left: cx,
             top: cy,
             transform: 'translate(-50%,-50%)',
           }
           return running ? (
-            <div className={klasyCoo} style={stylCoo}>
+            <div className="absolute z-10" style={stylCoo}>
               {zawartoscCoo}
             </div>
           ) : (
             <Link
               to={`/agent/${coo.slug}`}
               aria-label={`Profil agenta ${coo.name}`}
-              className={`${klasyCoo} hover:border-brand/60`}
+              title={coo.name}
+              className="absolute z-10 rounded-3xl outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
               style={stylCoo}
             >
               {zawartoscCoo}
@@ -369,58 +515,57 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
         const a = getAgent(n.slug)!
         const stan = stany[n.slug] ?? 'idle'
         const pokazChipy = stan === 'active' || stan === 'done'
+        // Kolor roli w podpisie: akcent gdy pracuje, zielony gdy gotowe.
+        const rolaKolor =
+          stan === 'active' ? a.accent : stan === 'done' ? KOLOR_DONE : undefined
         const zawartoscWezla = (
-          <>
+          <div className="flex flex-col items-center text-center">
+            <Portret
+              agent={a}
+              px={80}
+              sizeClass="h-16 w-16 sm:h-20 sm:w-20"
+              aura={auraSpecjalisty(stan, a.accent)}
+              pulsuj={stan === 'active'}
+              glow={`${a.accent}aa`}
+              przygaszony={stan === 'idle'}
+            />
             <div
-              className={[
-                'rounded-xl bg-zinc-900/70 p-0.5 transition-all duration-300',
-                stan === 'active' ? 'border-2' : 'border',
-              ].join(' ')}
-              style={{
-                borderColor:
-                  stan === 'active'
-                    ? a.accent
-                    : stan === 'done'
-                      ? KOLOR_DONE
-                      : '#27272a',
-              }}
+              className="mt-2 w-[96px] text-[0.72rem] font-medium leading-tight"
+              style={{ color: rolaKolor }}
             >
-              <Avatar
-                agent={a}
-                size="md"
-                className={[
-                  stan === 'active' ? 'node-pulse' : '',
-                  stan === 'idle' ? 'opacity-80' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-              />
+              <span className={rolaKolor ? undefined : 'text-zinc-300'}>
+                {a.role}
+              </span>
             </div>
-            <div className="mt-1.5 text-[0.7rem] font-medium leading-tight text-zinc-300">
-              {a.role}
-            </div>
-          </>
+          </div>
         )
         return (
           <div
             key={n.slug}
-            className="absolute z-10 flex w-[92px] flex-col items-center text-center"
+            className="absolute z-10 flex flex-col items-center"
             style={{ left: n.nx, top: n.ny, transform: 'translate(-50%,-50%)' }}
           >
             {/* Klik w wezel (gdy nie trwa praca) otwiera profil agenta */}
             {running ? (
-              <div className="flex flex-col items-center">{zawartoscWezla}</div>
+              <div
+                className="flex flex-col items-center"
+                title={a.name}
+                aria-label={a.name}
+              >
+                {zawartoscWezla}
+              </div>
             ) : (
               <Link
                 to={`/agent/${n.slug}`}
                 aria-label={`Profil agenta ${a.name}`}
-                className="flex flex-col items-center"
+                title={a.name}
+                className="flex flex-col items-center rounded-3xl outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
               >
                 {zawartoscWezla}
               </Link>
             )}
 
-            {/* Chipy zespolu wykonawczego (poza okregiem, nie zaslaniaja sasiadow) */}
+            {/* Chipy zespolu wykonawczego (pod podpisem, nie zaslaniaja sasiadow) */}
             {pokazChipy && (
               <div className="pointer-events-none absolute left-1/2 top-full mt-1 flex -translate-x-1/2 flex-wrap justify-center gap-1">
                 {a.subagents.slice(0, 3).map((s) => (

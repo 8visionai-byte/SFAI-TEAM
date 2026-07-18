@@ -1,15 +1,27 @@
 import { useState } from 'react'
 import type { Agent } from '../data/agents'
+import CharacterAvatar from './CharacterAvatar'
 
 export type AvatarSize = 'sm' | 'md' | 'lg' | 'xl'
 
-/** Rozmiary zgodne z obecnym UI (sm: wiadomosc, md: wezly mapy, lg: naglowek i kafelek, xl: hero). */
+/** Realny rozmiar w px per rozmiar UI (steruje bramka detali w portrecie). */
+const SIZE_PX: Record<AvatarSize, number> = {
+  sm: 32,
+  md: 40,
+  lg: 48,
+  xl: 96,
+}
+
+/** Rozmiary zgodne z obecnym UI (sm: wiadomosc, md: wezly mapy, lg: naglowek i kafelek, xl: hero profilu, 96px wg ART-SPEC-V18 1.1). */
 const SIZE_CLASSES: Record<AvatarSize, string> = {
   sm: 'h-8 w-8 rounded-lg text-xs',
   md: 'h-10 w-10 rounded-xl text-xs',
-  lg: 'h-11 w-11 rounded-xl text-sm',
-  xl: 'h-16 w-16 rounded-2xl text-base',
+  lg: 'h-12 w-12 rounded-xl text-sm',
+  xl: 'h-24 w-24 rounded-[22px] text-xl',
 }
+
+/** Hairline tla rozdzielajacy portret od pierscienia-aury (jak w scenie neuronu). */
+const HAIRLINE = '#0E0E11'
 
 function initials(name: string): string {
   const words = name.trim().split(/\s+/)
@@ -28,24 +40,45 @@ interface AvatarProps {
   working?: boolean
   /** Poswiata akcentu pod kaflem (np. naglowek czatu). */
   glow?: boolean
+  /**
+   * Pierscien-aura w odcieniu agenta (spojny z tokenami sceny neuronu, 2.2):
+   * 'soft' = cienki wygaszony ring (kafelki, naglowki), 'strong' = podwojny
+   * ring z poswiata (hero profilu).
+   */
+  aura?: 'soft' | 'strong'
   /** Dodatkowe klasy (np. node-pulse w Centrum Dowodzenia). */
   className?: string
 }
 
 /**
- * Awatar agenta. Probuje obrazka /avatars/<slug>.png (webapp/public/avatars/).
- * Gdy pliku nie ma, pokazuje dotychczasowy kafelek inicjalow na tle akcentu,
- * wiec brak grafik niczego nie psuje. Obrazek pojawia sie plynnie po zaladowaniu.
+ * Awatar agenta. Kolejnosc warstw (od spodu): inicjaly -> wektorowy portret
+ * CharacterAvatar -> obrazek PNG /avatars/<slug>.png (webapp/public/avatars/).
+ * Domyslnie widac wektorowy portret persony (ostry w kazdym rozmiarze, bez
+ * assetow). Gdy istnieje PNG (wersja premium z Higgsfield), przykrywa wektor
+ * plynnie po zaladowaniu. Gdy brak karty postaci, zostaja inicjaly. Zaden
+ * brakujacy element niczego nie psuje.
  */
 export default function Avatar({
   agent,
   size = 'md',
   working = false,
   glow = false,
+  aura,
   className = '',
 }: AvatarProps) {
   const [loaded, setLoaded] = useState(false)
   const [failed, setFailed] = useState(false)
+
+  // Pierscien-aura (box-shadow podaza za border-radius, wiec dziala i na squircle).
+  const auraShadow =
+    aura === 'strong'
+      ? `0 0 0 3px ${HAIRLINE}, 0 0 0 5px ${agent.accent}66, 0 0 0 9px ${agent.accent}22, 0 0 26px 4px ${agent.accent}40`
+      : aura === 'soft'
+        ? `0 0 0 3px ${HAIRLINE}, 0 0 0 4px ${agent.accent}33`
+        : undefined
+  const glowShadow = glow ? `0 6px 18px -6px ${agent.accent}80` : undefined
+  const boxShadow =
+    [auraShadow, glowShadow].filter(Boolean).join(', ') || undefined
 
   return (
     <div
@@ -60,13 +93,15 @@ export default function Avatar({
       style={{
         background: `linear-gradient(135deg, ${agent.accent}2e, ${agent.accent}12)`,
         color: agent.accent,
-        boxShadow: glow ? `0 6px 18px -6px ${agent.accent}80` : undefined,
+        boxShadow,
         ['--glow' as string]: `${agent.accent}88`,
       }}
       aria-hidden
     >
-      {/* Fallback: inicjaly rysowane zawsze pod obrazkiem (zero skoku layoutu) */}
+      {/* Fallback: inicjaly rysowane zawsze pod portretem (zero skoku layoutu) */}
       <span aria-hidden>{initials(agent.name)}</span>
+      {/* Wektorowy portret persony (domyslny, gdy brak PNG) */}
+      <CharacterAvatar agent={agent} px={SIZE_PX[size]} />
       {!failed && (
         <img
           src={`${import.meta.env.BASE_URL}avatars/${agent.slug}.png`}

@@ -24,6 +24,14 @@ export default function AgentCard({ agent }: AgentCardProps) {
         aria-label={`Profil agenta ${agent.name}`}
         className="absolute inset-0 z-10 rounded-2xl"
       />
+      {/* Stala aura odcienia agenta (radial od naroznika portretu), mocniejsza na hover */}
+      <span
+        className="pointer-events-none absolute inset-0 opacity-70 transition-opacity duration-300 group-hover:opacity-100"
+        style={{
+          background: `radial-gradient(130% 90% at 18% 0%, ${agent.accent}14, transparent 55%)`,
+        }}
+        aria-hidden
+      />
       {/* Akcentowa hairline u gory, podswietla sie na hover */}
       <span
         className="pointer-events-none absolute inset-x-0 top-0 h-px opacity-0 transition-opacity duration-300 group-hover:opacity-70"
@@ -49,6 +57,7 @@ export default function AgentCard({ agent }: AgentCardProps) {
         <Avatar
           agent={agent}
           size="lg"
+          aura="soft"
           className="transition-transform duration-200 group-hover:-translate-y-px group-hover:scale-105 motion-reduce:transform-none"
         />
 

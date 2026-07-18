@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { ArrowRight, Sparkles } from 'lucide-react'
 import { coo, teamAgents } from '../data/agents'
 import AgentCard from '../components/AgentCard'
+import Avatar from '../components/Avatar'
 
 export default function Team() {
   return (
@@ -32,7 +33,9 @@ export default function Team() {
           aria-hidden
         />
         <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="max-w-2xl">
+          {/* Portret COO z aura (spojny z reszta postaci) */}
+          <Avatar agent={coo} size="xl" aura="strong" className="flex-shrink-0" />
+          <div className="max-w-2xl sm:flex-1">
             <div className="mb-3 flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-3 py-1 text-xs font-semibold text-brand-soft ring-1 ring-brand/30">
                 <Sparkles size={13} />

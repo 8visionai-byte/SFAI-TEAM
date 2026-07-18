@@ -113,7 +113,13 @@ export default function AgentProfile() {
           style={{ background: agent.accent }}
           aria-hidden
         />
-        <Avatar agent={agent} size="xl" glow />
+        {/* Aura odcienia agenta za portretem hero */}
+        <div
+          className="pointer-events-none absolute -left-10 -top-10 h-44 w-44 rounded-full opacity-20 blur-3xl"
+          style={{ background: agent.accent }}
+          aria-hidden
+        />
+        <Avatar agent={agent} size="xl" aura="strong" />
         <h1 className="mt-4 text-2xl font-bold text-zinc-50 sm:text-3xl">
           {agent.name}
         </h1>

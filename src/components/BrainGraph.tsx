@@ -12,7 +12,9 @@ import {
   type LinkKind,
   GROUP_OPIS,
 } from '../lib/brainGraph'
-import { getAgent } from '../data/agents'
+import { getAgent, type Agent } from '../data/agents'
+import { getCharacter } from '../data/characters'
+import CharacterAvatar from './CharacterAvatar'
 
 /** Wewnetrzny wezel symulacji (statyka z modelu + stan fizyki). */
 interface SimNode extends GraphNode {
@@ -77,6 +79,12 @@ function personaInicjaly(node: GraphNode): string {
   const slug = node.id.startsWith('persona:') ? node.id.slice(8) : ''
   const agent = getAgent(slug)
   return inicjaly(agent?.name ?? node.label)
+}
+
+/** Agent dla wezla persony (do miniatury portretu) lub undefined. */
+function personaAgent(node: GraphNode): Agent | undefined {
+  if (!node.id.startsWith('persona:')) return undefined
+  return getAgent(node.id.slice(8))
 }
 
 /** Sciezka zakrzywionej krawedzi (Q-bezier) dla spojnego, "neuronowego" wygladu. */
@@ -438,6 +446,13 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
             const breathing =
               !reduced && activeGroup != null && s.group === activeGroup
             const selected = s.id === selectedId
+            // Miniatura postaci w wezle persony (wektorowy portret, spojny
+            // z reszta aplikacji). Brak karty postaci => inicjaly jak dotad.
+            const agentPersony =
+              s.kind === 'persona' ? personaAgent(s) : undefined
+            const zPortretem =
+              agentPersony != null &&
+              getCharacter(agentPersony.slug) != null
             const showLabel =
               s.kind === 'hub' ||
               s.kind === 'persona' ||
@@ -500,20 +515,26 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
                   className="pointer-events-none"
                 />
 
-                {/* Glowne kolo wezla */}
+                {/* Glowne kolo wezla; przy portrecie persony robi za ring-aure */}
                 <circle
                   r={s.size}
                   fill={
-                    s.kind === 'hub' ? `url(#hubgrad-${s.group})` : s.color
+                    zPortretem
+                      ? '#0E0E11'
+                      : s.kind === 'hub'
+                        ? `url(#hubgrad-${s.group})`
+                        : s.color
                   }
                   fillOpacity={
-                    s.kind === 'hub'
+                    zPortretem
                       ? 1
-                      : s.kind === 'persona'
-                        ? 0.9
-                        : s.kind === 'note'
-                          ? 0.7
-                          : 0.85
+                      : s.kind === 'hub'
+                        ? 1
+                        : s.kind === 'persona'
+                          ? 0.9
+                          : s.kind === 'note'
+                            ? 0.7
+                            : 0.85
                   }
                   stroke={s.color}
                   strokeWidth={s.kind === 'hub' ? 2 : 1.5}
@@ -521,8 +542,28 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
                   className={breathing ? 'graph-breath' : undefined}
                 />
 
-                {/* Inicjaly w personach (zamiast pustego kola) */}
-                {s.kind === 'persona' && (
+                {/* Miniatura postaci (portret wektorowy przyciety do kola) */}
+                {zPortretem && agentPersony && (
+                  <foreignObject
+                    x={-s.size + 1}
+                    y={-s.size + 1}
+                    width={s.size * 2 - 2}
+                    height={s.size * 2 - 2}
+                    className="pointer-events-none"
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    <div className="relative h-full w-full overflow-hidden rounded-full">
+                      <CharacterAvatar
+                        agent={agentPersony}
+                        px={s.size * 2}
+                        shape="circle"
+                      />
+                    </div>
+                  </foreignObject>
+                )}
+
+                {/* Inicjaly w personach bez karty postaci (fallback) */}
+                {s.kind === 'persona' && !zPortretem && (
                   <text
                     textAnchor="middle"
                     y={3}

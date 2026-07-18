@@ -244,7 +244,7 @@ export function buildBrainGraph(
       label: shortLabel(agent.name, 20),
       group: 'zespol',
       color: agent.accent, // wlasny akcent persony
-      size: 11,
+      size: 13, // wiekszy wezel: w srodku renderuje sie miniatura postaci
     })
     personaIdByName.set(agent.name, pid)
     links.push({ source: pid, target: hubId('zespol'), kind: 'hub' })

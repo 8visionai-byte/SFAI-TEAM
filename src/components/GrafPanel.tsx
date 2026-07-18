@@ -201,7 +201,7 @@ function TrescPersony({ node }: { node: GraphNode }) {
   return (
     <div>
       <div className="flex items-center gap-3.5">
-        <Avatar agent={agent} size="lg" glow />
+        <Avatar agent={agent} size="lg" aura="soft" glow />
         <div className="min-w-0">
           <h3 className="truncate text-base font-semibold text-zinc-50">
             {agent.name}

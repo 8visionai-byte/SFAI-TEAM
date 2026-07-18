@@ -271,7 +271,7 @@ export default function Chat() {
           Wroc do zespolu
         </Link>
         <div className="flex flex-wrap items-center gap-3">
-          <Avatar agent={agent} size="lg" glow />
+          <Avatar agent={agent} size="lg" aura="soft" glow />
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg font-semibold leading-tight text-zinc-50">
               {agent.name}
