@@ -5,7 +5,7 @@ export interface Agent {
   name: string
   /** Rola pokazywana na kafelku */
   role: string
-  /** Numer kafelka ("COO" dla orkiestratora, "1".."8" dla reszty) */
+  /** Numer kafelka ("COO" dla orkiestratora, "1".."10" dla reszty) */
   tileNo: string
   /** Kolor akcentu (hex) */
   accent: string
@@ -20,8 +20,8 @@ export interface Agent {
 }
 
 /**
- * Zespol 9 agentow AI SimpleFast.ai.
- * COO jest orkiestratorem nad pozostala osemka.
+ * Zespol 10 agentow AI SimpleFast.ai.
+ * COO jest orkiestratorem nad pozostala dziewiatka.
  */
 export const agents: Agent[] = [
   {
@@ -169,12 +169,30 @@ export const agents: Agent[] = [
     mission: 'Kwestionuje pomysly, broni marki i mowi nie z uzasadnieniem.',
     subagents: ['Pre-mortem / red-team', 'Brand compliance', 'Monitor marki (SOV)'],
   },
+  {
+    slug: 'analityk-social',
+    name: 'Analityk Social Mediów',
+    role: 'Marketing i social media',
+    tileNo: '10',
+    accent: '#F97316',
+    claudeName: 'sf-analityk-social',
+    hasPrompt: true,
+    mission:
+      'Czyta wyniki social mediow i zamienia je w decyzje: co skalowac, co wygasic, gdzie budzet.',
+    subagents: [
+      'Zbieracz danych platform',
+      'Analityk organiczny',
+      'Analityk płatny',
+      'Łącznik atrybucji',
+      'Syntezator kierunku',
+    ],
+  },
 ]
 
 /** COO, wyrozniony orkiestrator */
 export const coo: Agent = agents.find((a) => a.slug === 'coo')!
 
-/** Pozostala osemka (kafelki 1..8) */
+/** Pozostali specjalisci (kafelki 1..10, bez COO) */
 export const teamAgents: Agent[] = agents.filter((a) => a.slug !== 'coo')
 
 /** Szybki dostep po slugu */

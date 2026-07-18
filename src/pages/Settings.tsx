@@ -2,19 +2,26 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowLeft,
+  BarChart3,
+  Check,
+  Database,
+  ExternalLink,
   Eye,
   EyeOff,
+  FolderOpen,
+  ImageIcon,
   KeyRound,
+  Mic,
   ShieldCheck,
   Trash2,
-  Check,
-  ExternalLink,
+  Workflow,
+  type LucideIcon,
 } from 'lucide-react'
 import {
   getApiKey,
   setApiKey,
   clearApiKey,
-  hasApiKey,
+  getMode,
   getModel,
   setModel,
 } from '../lib/ai'
@@ -23,6 +30,81 @@ const MODELS: { value: string; label: string }[] = [
   { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (domyslny)' },
   { value: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
   { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+]
+
+type StatusIntegracji = 'aktywne' | 'w-budowie' | 'do-wygenerowania'
+
+const STATUS_BADGE: Record<StatusIntegracji, { label: string; klasa: string }> =
+  {
+    aktywne: {
+      label: 'Aktywne',
+      klasa: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
+    },
+    'do-wygenerowania': {
+      label: 'Do wygenerowania',
+      klasa: 'border-sky-500/25 bg-sky-500/10 text-sky-300',
+    },
+    'w-budowie': {
+      label: 'W budowie',
+      klasa: 'border-zinc-700 bg-zinc-800/60 text-zinc-400',
+    },
+  }
+
+interface Integracja {
+  tytul: string
+  /** Jedno zdanie: co ta integracja da wlascicielowi firmy. */
+  opis: string
+  /** Dodatkowa informacja techniczna (sciezki plikow itp.). */
+  meta?: string
+  /** Uczciwe "kiedy" wg roadmapy 2.0 (tylko karty w budowie). */
+  kiedy?: string
+  status: StatusIntegracji
+  Ikona: LucideIcon
+}
+
+const INTEGRACJE: Integracja[] = [
+  {
+    tytul: 'Awatary person (Higgsfield)',
+    opis: 'Kazda persona dostaje twarz zamiast inicjalow na kafelkach zespolu.',
+    meta: 'Prompty gotowe w pliku AWATARY-HIGGSFIELD-PROMPTY.md, wygenerowane obrazki wrzucasz do webapp/public/avatars.',
+    status: 'do-wygenerowania',
+    Ikona: ImageIcon,
+  },
+  {
+    tytul: 'Glos JARVIS (rozmowa na zywo)',
+    opis: 'Rozmowa glosowa z zespolem i delegacja zadan w tle.',
+    kiedy: 'Wkrotce · Faza 8 roadmapy 2.0',
+    status: 'w-budowie',
+    Ikona: Mic,
+  },
+  {
+    tytul: 'Google Drive (foldery wiedzy do mozgu)',
+    opis: 'Wrzucasz plik do folderu na Drive, a mozg zespolu poznaje go bez Twojej recznej roboty.',
+    kiedy: 'Wkrotce · Faza 7 roadmapy 2.0',
+    status: 'w-budowie',
+    Ikona: FolderOpen,
+  },
+  {
+    tytul: 'Social media i GA4 (dane marketingowe)',
+    opis: 'Analityk odpowiada realnymi liczbami z Twoich kanalow, ze zrodlem i data pobrania.',
+    kiedy: 'Wkrotce · Faza 7 roadmapy 2.0',
+    status: 'w-budowie',
+    Ikona: BarChart3,
+  },
+  {
+    tytul: 'Make.com (most danych z firmowych systemow)',
+    opis: 'Dane z firmowych systemow same splywaja do mozgu zespolu.',
+    kiedy: 'Wkrotce · Faza 7 roadmapy 2.0',
+    status: 'w-budowie',
+    Ikona: Workflow,
+  },
+  {
+    tytul: 'Mozg w bazie (RAG, upload plikow)',
+    opis: 'Nowa wiedza trafia do zespolu bez przebudowy aplikacji.',
+    kiedy: 'Wkrotce · Faza 3 roadmapy 2.0',
+    status: 'w-budowie',
+    Ikona: Database,
+  },
 ]
 
 /** Maskuje klucz: pokazuje prefiks i 4 ostatnie znaki. */
@@ -39,7 +121,9 @@ export default function Settings() {
   const [savedKey, setSavedKey] = useState<string | null>(getApiKey())
   const [confirmation, setConfirmation] = useState<string | null>(null)
 
-  const realMode = hasApiKey()
+  // Tryb realny = jakiekolwiek dzialajace polaczenie z modelem
+  // (klucz uzytkownika, proxy serwera albo klucz z env), nie tylko klucz lokalny.
+  const realMode = getMode() !== 'demo'
 
   function handleSave() {
     setApiKey(keyInput)
@@ -80,27 +164,33 @@ export default function Settings() {
         </p>
       </header>
 
-      {/* Status trybu */}
-      <div
-        className={[
-          'mb-6 flex items-center gap-2.5 rounded-2xl border px-4 py-3 text-sm font-medium',
-          realMode
-            ? 'border-emerald-500/25 bg-emerald-500/5 text-emerald-200'
-            : 'border-amber-500/25 bg-amber-500/5 text-amber-200',
-        ].join(' ')}
-        role="status"
-      >
-        <span
-          className={[
-            'h-2 w-2 flex-shrink-0 rounded-full',
-            realMode ? 'bg-emerald-400' : 'bg-amber-400',
-          ].join(' ')}
-          aria-hidden
-        />
-        {realMode ? 'Tryb realny aktywny' : 'Tryb demo'}
-      </div>
+      {/* Sekcja: polaczenie z modelem */}
+      <section aria-label="Polaczenie z modelem">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+            Polaczenie z modelem
+          </h2>
+          <span
+            className={[
+              'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium',
+              realMode
+                ? 'border-emerald-500/25 bg-emerald-500/5 text-emerald-200'
+                : 'border-amber-500/25 bg-amber-500/5 text-amber-200',
+            ].join(' ')}
+            role="status"
+          >
+            <span
+              className={[
+                'h-2 w-2 flex-shrink-0 rounded-full',
+                realMode ? 'bg-emerald-400' : 'bg-amber-400',
+              ].join(' ')}
+              aria-hidden
+            />
+            {realMode ? 'Tryb realny aktywny' : 'Tryb demo'}
+          </span>
+        </div>
 
-      <div className="space-y-6 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 sm:p-6">
+        <div className="space-y-6 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 sm:p-6">
         {/* Klucz API */}
         <div>
           <label
@@ -201,20 +291,81 @@ export default function Settings() {
         )}
       </div>
 
-      {/* Informacja o prywatnosci */}
-      <div className="mt-6 flex items-start gap-2.5 rounded-2xl border border-zinc-800 bg-zinc-900/30 px-4 py-3.5 text-sm leading-relaxed text-zinc-400">
-        <ShieldCheck
-          size={18}
-          className="mt-0.5 flex-shrink-0 text-brand-soft"
-          aria-hidden
-        />
-        <p>
-          Twoj klucz zostaje wylacznie w tej przegladarce (localStorage). Nie
-          trafia do naszego kodu ani na nasz serwer, wysylany jest tylko
-          bezposrednio do Anthropic. Zalecenie: na czas testow uzyj klucza z
-          ustawionym limitem wydatkow (spend limit) w panelu Anthropic.
+        {/* Informacja o prywatnosci */}
+        <div className="mt-6 flex items-start gap-2.5 rounded-2xl border border-zinc-800 bg-zinc-900/30 px-4 py-3.5 text-sm leading-relaxed text-zinc-400">
+          <ShieldCheck
+            size={18}
+            className="mt-0.5 flex-shrink-0 text-brand-soft"
+            aria-hidden
+          />
+          <p>
+            Twoj klucz zostaje wylacznie w tej przegladarce (localStorage). Nie
+            trafia do naszego kodu ani na nasz serwer, wysylany jest tylko
+            bezposrednio do Anthropic. Zalecenie: na czas testow uzyj klucza z
+            ustawionym limitem wydatkow (spend limit) w panelu Anthropic.
+          </p>
+        </div>
+      </section>
+
+      {/* Sekcja: integracje i mozliwosci */}
+      <section aria-label="Integracje i mozliwosci" className="mt-10">
+        <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-zinc-400">
+          Integracje i mozliwosci
+        </h2>
+        <p className="mb-4 text-xs leading-relaxed text-zinc-500">
+          Stan faktyczny na dzis: karty oznaczone "W budowie" nie maja jeszcze
+          zadnych dzialajacych funkcji, terminy wg roadmapy 2.0.
         </p>
-      </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {INTEGRACJE.map((item) => {
+            const badge = STATUS_BADGE[item.status]
+            const wBudowie = item.status === 'w-budowie'
+            return (
+              <div
+                key={item.tytul}
+                className={[
+                  'flex flex-col gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4',
+                  wBudowie ? 'opacity-75' : '',
+                ]
+                  .join(' ')
+                  .trim()}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <item.Ikona
+                    size={18}
+                    className="mt-0.5 flex-shrink-0 text-brand-soft"
+                    aria-hidden
+                  />
+                  <span
+                    className={[
+                      'inline-flex flex-shrink-0 items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium',
+                      badge.klasa,
+                    ].join(' ')}
+                  >
+                    {badge.label}
+                  </span>
+                </div>
+                <h3 className="text-sm font-semibold text-zinc-100">
+                  {item.tytul}
+                </h3>
+                <p className="text-xs leading-relaxed text-zinc-400">
+                  {item.opis}
+                </p>
+                {item.meta && (
+                  <p className="text-[11px] leading-relaxed text-zinc-500">
+                    {item.meta}
+                  </p>
+                )}
+                {item.kiedy && (
+                  <p className="mt-auto pt-1 text-[11px] font-medium text-zinc-500">
+                    {item.kiedy}
+                  </p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </section>
     </div>
   )
 }

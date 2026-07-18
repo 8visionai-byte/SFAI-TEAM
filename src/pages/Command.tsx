@@ -8,7 +8,7 @@ import {
 import { Link } from 'react-router-dom'
 import { Save, Send, Settings as SettingsIcon, Sparkles } from 'lucide-react'
 import { coo, teamAgents, getAgent } from '../data/agents'
-import { hasApiKey } from '../lib/ai'
+import { hasApiKey, getMode } from '../lib/ai'
 import { runOrchestration, type ZdarzenieOrk } from '../lib/orchestrator'
 import { nowyId, zapiszNotatke } from '../lib/storage'
 import ChatMessage from '../components/ChatMessage'
@@ -191,8 +191,8 @@ function MapaHierarchii({ stanCoo, stany }: MapaProps) {
           aria-hidden
         />
 
-        {/* Siatka specjalistow */}
-        <div className="grid w-full grid-cols-2 gap-3 sm:grid-cols-4">
+        {/* Siatka specjalistow: 9 wezlow, rowna siatka 3x3 */}
+        <div className="grid w-full grid-cols-3 gap-3">
           {teamAgents.map((a) => {
             const stan = stany[a.slug] ?? 'idle'
             const pokazChipy = stan === 'active' || stan === 'done'
@@ -277,6 +277,9 @@ export default function Command() {
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
+
+  // Tryb pracy (demo/realny) do dyskretnego wskaznika nad czatem.
+  const tryb = getMode()
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -426,6 +429,17 @@ export default function Command() {
 
       {/* Prawa czesc: panel czatu (~40%) */}
       <section className="flex min-h-0 flex-1 flex-col lg:w-2/5">
+        {/* Wskaznik trybu nad czatem (dyskretny) */}
+        <div className="flex items-center gap-2 border-b border-zinc-800/80 bg-zinc-950/80 px-5 py-2 text-[0.7rem] font-medium text-zinc-500 sm:px-6">
+          <span
+            className={[
+              'h-1.5 w-1.5 flex-shrink-0 rounded-full',
+              tryb === 'demo' ? 'bg-amber-400/70' : 'bg-emerald-400/80',
+            ].join(' ')}
+            aria-hidden
+          />
+          <span>{tryb === 'demo' ? 'Tryb demo, symulacja przeplywu' : 'Tryb realny'}</span>
+        </div>
         <div
           ref={scrollRef}
           className="min-h-0 flex-1 overflow-y-auto"

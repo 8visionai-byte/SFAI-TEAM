@@ -6,7 +6,8 @@
  * Reuzywa sendMessage (a przez to buildSystemPrompt) z ai.ts, wiec dziedziczy
  * pelny tryb pracy (klucz uzytkownika / proxy / env / demo) bez duplikacji.
  */
-import { sendMessage, buildSystemPrompt } from './ai'
+import { sendMessage, buildSystemPrompt, callModel, getMode } from './ai'
+import { getAgentPrompt } from './content'
 import { agents, getAgent } from '../data/agents'
 
 // buildSystemPrompt jest reuzywany posrednio przez sendMessage; reeksportujemy,
@@ -131,21 +132,62 @@ function parsujPlan(surowe: string): WynikPlanu | null {
   return { tryb: trybRaw, plan, odpowiedz }
 }
 
-/** Instrukcja dla COO na etapie PLAN. Wymusza czysty JSON. */
-function promptPlanu(pytanie: string): string {
+/**
+ * DEDYKOWANY system prompt etapu PLAN. Krotki i szybki: persona COO plus lista
+ * agentow plus twarda instrukcja "tylko JSON". Swiadomie BEZ pelnego mozgu firmy
+ * i BEZ zasad rozmowy (CHAT_RULES) z ai.ts, bo one kaza pisac proza i psuja parser.
+ */
+function systemPlanu(): string {
+  const persona = getAgentPrompt('coo') ?? ''
+  const listaAgentow = agents
+    .filter((a) => a.slug !== 'coo')
+    .map((a) => `- ${a.slug}: ${a.role}`)
+    .join('\n')
+
   return [
-    'ZADANIE ORKIESTRACJI. Jestes COO i planujesz prace zespolu.',
-    'Przeanalizuj pytanie wlasciciela i zdecyduj, czy odpowiadasz sam, czy delegujesz do specjalistow.',
+    persona,
     '',
-    'Odpowiedz WYLACZNIE czystym JSON, bez komentarza, bez blokow kodu, bez tekstu przed ani po. Dokladnie taki ksztalt:',
-    '{"tryb":"sam"|"deleguj","plan":[{"agent":"<slug>","zadanie":"<konkretne zadanie po polsku>"}],"odpowiedz":"<jesli tryb sam: pelna odpowiedz prostym polskim; przy deleguj: pusty string>"}',
+    '=== ZADANIE: PLANOWANIE DELEGACJI ===',
+    'Jestes planista delegacji. Na podstawie pytania wlasciciela zdecyduj, czy odpowiadasz sam, czy delegujesz do specjalistow.',
+    '',
+    'Dostepni specjalisci (slug: rola):',
+    listaAgentow,
+    '',
+    'Odpowiedz WYLACZNIE czystym obiektem JSON, bez tekstu przed i po, bez markdown, bez blokow kodu. Dokladnie taki ksztalt:',
+    '{"tryb":"sam"|"deleguj","plan":[{"agent":"<slug>","zadanie":"<konkretne zadanie po polsku>"}],"odpowiedz":"<tryb sam: pelna odpowiedz prostym polskim; tryb deleguj: pusty string>"}',
     '',
     `Dozwolone slugi agentow: ${DOZWOLONE_SLUGI.join(', ')}.`,
     'Deleguj maksymalnie do 4 agentow i tylko gdy realnie potrzeba ich roznych kompetencji. Proste pytania rob sam (tryb "sam").',
     'Zadania musza byc konkretne i wykonalne, po polsku.',
-    '',
-    `PYTANIE WLASCICIELA: ${pytanie}`,
   ].join('\n')
+}
+
+/**
+ * Buduje plan przez callModel z dedykowanym system promptem. Odporny: gdy parser
+ * padnie (model odpowiedzial proza), ponawia RAZ z ostrzejsza instrukcja.
+ * Zwraca surowa odpowiedz (do ewentualnego fallbacku) oraz sparsowany wynik (albo null).
+ */
+async function zbudujPlan(
+  pytanie: string,
+): Promise<{ surowy: string; wynik: WynikPlanu | null }> {
+  const system = systemPlanu()
+
+  const surowy = await callModel(system, [{ role: 'user', content: pytanie }])
+  const wynik = parsujPlan(surowy)
+  if (wynik) return { surowy, wynik }
+
+  // Ponow RAZ: pokazujemy modelowi jego wlasna (nieczytelna) odpowiedz i zaostrzamy.
+  const surowy2 = await callModel(system, [
+    { role: 'user', content: pytanie },
+    { role: 'assistant', content: surowy },
+    {
+      role: 'user',
+      content:
+        'Poprzednia odpowiedz nie byla czystym JSON. Zwroc tylko JSON w podanym ksztalcie, bez zadnego innego tekstu.',
+    },
+  ])
+  const wynik2 = parsujPlan(surowy2)
+  return { surowy: surowy2, wynik: wynik2 }
 }
 
 /** Instrukcja dla COO na etapie SYNTEZA. */
@@ -170,6 +212,93 @@ function promptSyntezy(pytanie: string, raporty: RaportSpecjalisty[]): string {
   ].join('\n')
 }
 
+// --- TRYB DEMO: symulacja przeplywu (bez klucza API) ------------------------
+
+/** Krotka pauza, zeby animacja delegacji byla widoczna. */
+function czekaj(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+/** Losowy czas kroku 800..1500 ms. */
+function losowaPauza(): number {
+  return 800 + Math.floor(Math.random() * 701)
+}
+
+/** Slowa kluczowe -> specjalista. Prosty dobor pod tresc pytania w demo. */
+const MAPA_SLOW: { slug: string; slowa: string[] }[] = [
+  { slug: 'analityk', slowa: ['rynek', 'rynk', 'konkurenc', 'research', 'analiz', 'dane', 'trend', 'segment', 'icp', 'badani'] },
+  { slug: 'handlowiec', slowa: ['sprzeda', 'oferta', 'ofert', 'cena', 'cen', 'pricing', 'klient', 'domkni', 'obiekcj', 'lead', 'deal', 'diagnoz'] },
+  { slug: 'copywriter', slowa: ['tresc', 'tekst', 'content', 'kampani', 'linkedin', 'social', 'post', 'marketing', 'seo', 'email', 'mail', 'reklam'] },
+  { slug: 'opiekun-klienta', slowa: ['obsluga', 'retencj', 'onboarding', 'relacj', 'utrzyman', 'opieka'] },
+  { slug: 'wiedza-produkt', slowa: ['material', 'ebook', 'skrypt', 'produkt', 'wiedza', 'szkoleni'] },
+  { slug: 'operacje', slowa: ['zadani', 'proces', 'sop', 'brief', 'organizac', 'ogarn', 'porzadek', 'rytm'] },
+  { slug: 'pamiec-zespolu', slowa: ['pamiec', 'mozg', 'kontekst', 'wersj', 'historia'] },
+  { slug: 'drugi-glos', slowa: ['decyzj', 'strategi', 'ryzyko', 'marka', 'red team', 'kontr', 'pomysl', 'watpliw'] },
+]
+
+/** Gotowe, generyczne zadania demo dla poszczegolnych specjalistow. */
+const ZADANIA_DEMO: Record<string, string> = {
+  analityk: 'Zbadaj kontekst rynkowy i konkurencje pod to pytanie.',
+  handlowiec: 'Ujmij to od strony sprzedazy i wartosci dla klienta.',
+  copywriter: 'Zaproponuj tresci i komunikaty do tego celu.',
+  'opiekun-klienta': 'Sprawdz watek relacji i utrzymania klienta.',
+  'wiedza-produkt': 'Wskaz materialy i wiedze potrzebne do tego zadania.',
+  operacje: 'Rozpisz to na konkretne kroki i zadania.',
+  'pamiec-zespolu': 'Podaj kontekst z mozgu firmy do tego tematu.',
+  'drugi-glos': 'Zakwestionuj plan i wskaz ryzyka.',
+}
+
+/** Dobiera 2-3 agentow po slowach kluczowych; domyslnie analityk plus handlowiec. */
+function dobierzAgentow(pytanie: string): string[] {
+  const t = pytanie.toLowerCase()
+  const trafienia: string[] = []
+  for (const { slug, slowa } of MAPA_SLOW) {
+    if (slowa.some((w) => t.includes(w))) trafienia.push(slug)
+  }
+  if (trafienia.length === 0) return ['analityk', 'handlowiec']
+  if (trafienia.length === 1) {
+    const dodatkowy = trafienia[0] === 'analityk' ? 'handlowiec' : 'analityk'
+    return [trafienia[0], dodatkowy]
+  }
+  return trafienia.slice(0, 3)
+}
+
+/**
+ * SYMULACJA delegacji w trybie demo. Sztuczny plan, zdarzenia start/koniec
+ * rozlozone w czasie, synteza i finalny tekst demo. Dzieki temu animacja mapy
+ * jest widoczna ZAWSZE, nawet bez klucza API.
+ */
+async function symulujOrkiestracje(
+  pytanie: string,
+  onEvent: OnEvent,
+): Promise<void> {
+  const slugi = dobierzAgentow(pytanie)
+  const plan: KrokPlanu[] = slugi.map((slug) => ({
+    agent: slug,
+    zadanie: ZADANIA_DEMO[slug] ?? 'Przeanalizuj to pytanie w swojej domenie.',
+  }))
+
+  onEvent({ typ: 'plan', tryb: 'deleguj', plan })
+
+  // Specjalisci zapalaja sie po kolei (widoczny start delegacji).
+  for (const krok of plan) {
+    onEvent({ typ: 'start', agent: krok.agent })
+    await czekaj(300)
+  }
+  // Po chwili pracy kolejno koncza.
+  for (const krok of plan) {
+    await czekaj(losowaPauza())
+    onEvent({ typ: 'koniec', agent: krok.agent })
+  }
+
+  onEvent({ typ: 'synteza' })
+  await czekaj(losowaPauza())
+  onEvent({
+    typ: 'final',
+    text: 'To symulacja przeplywu. Dodaj klucz w Ustawieniach, aby zespol pracowal naprawde.',
+  })
+}
+
 /**
  * Uruchamia pelna orkiestracje dla pytania. Emituje zdarzenia przez onEvent.
  * Nigdy nie rzuca w gore: bledy pojedynczych agentow sa raportowane jako
@@ -185,10 +314,19 @@ export async function runOrchestration(
     return
   }
 
-  // --- Krok PLAN ---
+  // --- TRYB DEMO: symulacja przeplywu, animacja widoczna bez klucza API ---
+  if (getMode() === 'demo') {
+    await symulujOrkiestracje(tekst, onEvent)
+    return
+  }
+
+  // --- Krok PLAN (dedykowany system prompt, callModel, retry raz) ---
   let surowyPlan: string
+  let wynik: WynikPlanu | null
   try {
-    surowyPlan = await sendMessage('coo', [{ role: 'user', content: promptPlanu(tekst) }])
+    const r = await zbudujPlan(tekst)
+    surowyPlan = r.surowy
+    wynik = r.wynik
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     onEvent({ typ: 'blad', wiadomosc: `Nie udalo sie zbudowac planu: ${msg}` })
@@ -199,11 +337,13 @@ export async function runOrchestration(
     return
   }
 
-  const wynik = parsujPlan(surowyPlan)
-
-  // Parsowanie padlo lub COO od razu dal odpowiedz tekstowa: traktuj jako odpowiedz bezposrednia.
+  // Parsowanie padlo dwa razy: fallback jak dotad plus wpis procesu w logu.
   if (!wynik) {
     onEvent({ typ: 'plan', tryb: 'sam', plan: [] })
+    onEvent({
+      typ: 'blad',
+      wiadomosc: 'COO odpowiedzial bez delegacji (plan nieczytelny)',
+    })
     onEvent({ typ: 'final', text: surowyPlan.trim() })
     return
   }

@@ -15,7 +15,7 @@ export default function Team() {
           Twoj zespol AI
         </h1>
         <p className="mt-3 max-w-2xl text-[0.975rem] leading-relaxed text-zinc-400">
-          Dziewieciu agentow SimpleFast.ai. Powiedz COO swoj cel, on rozlozy go
+          Dziesieciu agentow SimpleFast.ai. Powiedz COO swoj cel, on rozlozy go
           na zadania i deleguje do reszty zespolu. Albo wejdz wprost do
           konkretnego specjalisty.
         </p>
@@ -62,7 +62,7 @@ export default function Team() {
           Specjalisci
         </h2>
         <div className="h-px flex-1 bg-zinc-800" />
-        <span className="text-xs text-zinc-600">8 kafelkow</span>
+        <span className="text-xs text-zinc-600">9 kafelkow</span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

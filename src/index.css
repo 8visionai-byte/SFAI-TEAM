@@ -165,6 +165,22 @@ h3 {
   animation: chipFlicker 1.15s ease-in-out infinite;
 }
 
+/* Graf wiedzy: delikatny "oddech" wezlow aktywnej grupy */
+@keyframes graphBreath {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.16);
+  }
+}
+.graph-breath {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: graphBreath 2.2s ease-in-out infinite;
+}
+
 /* Szacunek dla uzytkownikow z ograniczona animacja */
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -5,6 +5,7 @@ import {
   StickyNote,
   Trash2,
   Download,
+  Share2,
 } from 'lucide-react'
 import {
   brainFiles,
@@ -17,6 +18,8 @@ import {
   type Notatka,
 } from '../lib/storage'
 import MarkdownView from '../components/MarkdownView'
+import BrainGraph from '../components/BrainGraph'
+import { buildBrainGraph } from '../lib/brainGraph'
 
 /** Ladniejsza nazwa pliku do listy. */
 function prettyName(name: string): string {
@@ -58,7 +61,7 @@ function pobierzNotatke(n: Notatka) {
   URL.revokeObjectURL(url)
 }
 
-type Widok = 'baza' | 'notatki'
+type Widok = 'baza' | 'notatki' | 'graf'
 
 export default function Brain() {
   const [widok, setWidok] = useState<Widok>('baza')
@@ -89,6 +92,14 @@ export default function Brain() {
     }
     return ordered
   }, [])
+
+  // Statystyki grafu (liczba wezlow / powiazan) do naglowka zakladki Graf.
+  const grafStats = useMemo(() => buildBrainGraph(notatki).stats, [notatki])
+
+  function otworzPlikZGrafu(path: string) {
+    setActivePath(path)
+    setWidok('baza')
+  }
 
   const active = brainFiles.find((f) => f.path === activePath)
   const aktywnaNotatka =
@@ -151,6 +162,14 @@ export default function Brain() {
             <span className="rounded-full bg-zinc-800/80 px-1.5 py-px text-[0.65rem] font-medium tabular-nums text-zinc-400">
               {notatki.length}
             </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setWidok('graf')}
+            className={zakladka(widok === 'graf')}
+          >
+            <Share2 size={15} aria-hidden />
+            Graf
           </button>
         </div>
       </header>
@@ -229,7 +248,7 @@ export default function Brain() {
             )}
           </article>
         </div>
-      ) : (
+      ) : widok === 'notatki' ? (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 px-5 pb-10 sm:px-8 lg:grid-cols-[320px_1fr]">
           {/* Lista notatek */}
           <nav className="lg:overflow-y-auto lg:pr-1">
@@ -311,6 +330,39 @@ export default function Brain() {
               </p>
             )}
           </article>
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col px-5 pb-8 sm:px-8">
+          {/* Licznik wezlow i powiazan */}
+          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500">
+            <span>
+              <span className="font-semibold tabular-nums text-zinc-300">
+                {grafStats.files +
+                  grafStats.personas +
+                  grafStats.notes +
+                  grafStats.hubs}
+              </span>{' '}
+              wezlow
+            </span>
+            <span>
+              <span className="font-semibold tabular-nums text-zinc-300">
+                {grafStats.links}
+              </span>{' '}
+              powiazan
+            </span>
+            <span className="text-zinc-600">
+              {grafStats.files} plikow, {grafStats.personas} person,{' '}
+              {grafStats.notes} notatek, {grafStats.readsLinks} relacji "czyta",{' '}
+              {grafStats.refLinks} odwolan miedzy plikami
+            </span>
+            <span className="ml-auto hidden text-zinc-600 sm:inline">
+              Najedz, aby podswietlic sasiadow. Kliknij plik, aby otworzyc
+              podglad. Przeciagnij wezel, aby ulozyc.
+            </span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
+            <BrainGraph notatki={notatki} onOpenFile={otworzPlikZGrafu} />
+          </div>
         </div>
       )}
     </div>

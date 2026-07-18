@@ -23,7 +23,7 @@ bez zmian w kodzie.
 | `handlowiec.png` | Handlowiec od korzyści |
 | `opiekun-klienta.png` | Opiekun klienta |
 | `drugi-glos.png` | Drugi głos przy decyzjach |
-| `analityk-social.png` | Analityk Social Mediów (persona w przygotowaniu, plik możesz wrzucić już teraz) |
+| `analityk-social.png` | Analityk Social Mediów |
 
 Prompty do wygenerowania obrazków: plik `AWATARY-HIGGSFIELD-PROMPTY.md`
 w głównym katalogu projektu.

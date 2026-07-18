@@ -137,6 +137,23 @@ function mockResponse(agentSlug: string): string {
 
 type AnthropicMessage = { role: 'user' | 'assistant'; content: string }
 
+/** Tryb, w ktorym zadziala wywolanie modelu (wg kolejnosci wyboru w sendMessage). */
+export type TrybModelu = 'klucz' | 'proxy' | 'env' | 'demo'
+
+/**
+ * Zwraca tryb, ktory zostanie realnie uzyty:
+ *  - 'klucz'  klucz uzytkownika z localStorage (wywolanie wprost z przegladarki),
+ *  - 'proxy'  VITE_AGENT_API_URL (klucz na serwerze),
+ *  - 'env'    VITE_ANTHROPIC_API_KEY w bundlu (tylko testy wewnetrzne),
+ *  - 'demo'   brak jakiegokolwiek polaczenia z modelem.
+ */
+export function getMode(): TrybModelu {
+  if (getApiKey()) return 'klucz'
+  if (import.meta.env.VITE_AGENT_API_URL) return 'proxy'
+  if (import.meta.env.VITE_ANTHROPIC_API_KEY) return 'env'
+  return 'demo'
+}
+
 /**
  * Tryb BEZPIECZNY: wywolanie przez proxy Supabase. Klucz API zostaje na serwerze,
  * nie trafia do przegladarki. Zalecane do publicznego uzycia.
@@ -213,6 +230,57 @@ async function callDirect(
 }
 
 /**
+ * Niskopoziomowe wywolanie modelu z GOTOWYM system promptem i historia rozmowy.
+ * Wybiera tryb wg getMode() i NIE doklada zadnych zasad (system jest podawany
+ * w calosci przez wolajacego). Uzywane przez sendMessage oraz przez orkiestracje,
+ * ktora na etapie planu potrzebuje wlasnego, dedykowanego system promptu.
+ *
+ * W trybie demo rzuca wyjatek: brak polaczenia z modelem. Wolajacy powinien
+ * najpierw sprawdzic getMode() === 'demo' i obsluzyc to po swojemu.
+ */
+export async function callModel(
+  system: string,
+  history: ChatMessage[],
+): Promise<string> {
+  const messages: AnthropicMessage[] = history.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }))
+
+  const mode = getMode()
+
+  // (a) Klucz uzytkownika ma pierwszenstwo: tryb realny z modelem z ustawien.
+  if (mode === 'klucz') {
+    return await callDirect(getApiKey() as string, system, messages, getModel())
+  }
+
+  const model = import.meta.env.VITE_ANTHROPIC_MODEL || 'claude-sonnet-4-6'
+
+  // (b) Proxy: bezpieczne, klucz po stronie serwera.
+  if (mode === 'proxy') {
+    return await callProxy(
+      import.meta.env.VITE_AGENT_API_URL as string,
+      system,
+      messages,
+      model,
+    )
+  }
+
+  // (c) Klucz z env w przegladarce, tylko do testow wewnetrznych.
+  if (mode === 'env') {
+    return await callDirect(
+      import.meta.env.VITE_ANTHROPIC_API_KEY as string,
+      system,
+      messages,
+      model,
+    )
+  }
+
+  // (d) Tryb demo: brak realnego polaczenia z modelem.
+  throw new Error('Tryb demo: brak polaczenia z modelem.')
+}
+
+/**
  * Wysyla rozmowe do agenta. Kolejnosc wyboru trybu:
  *  (a) klucz uzytkownika w localStorage -> wywolanie z przegladarki wprost do Anthropic,
  *      model z getModel() (tryb REALNY, klucz zostaje w przegladarce uzytkownika),
@@ -225,37 +293,14 @@ export async function sendMessage(
   agentSlug: string,
   history: ChatMessage[],
 ): Promise<string> {
-  const userKey = getApiKey()
-  const proxyUrl = import.meta.env.VITE_AGENT_API_URL
-  const envKey = import.meta.env.VITE_ANTHROPIC_API_KEY
-
   // (d) Brak klucza uzytkownika, brak proxy i brak klucza env -> tryb demo.
-  if (!userKey && !proxyUrl && !envKey) {
+  if (getMode() === 'demo') {
     return mockResponse(agentSlug)
   }
 
   try {
     const system = buildSystemPrompt(agentSlug)
-    const messages: AnthropicMessage[] = history.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }))
-
-    // (a) Klucz uzytkownika ma pierwszenstwo: tryb realny z modelem z ustawien.
-    if (userKey) {
-      return await callDirect(userKey, system, messages, getModel())
-    }
-
-    const model = import.meta.env.VITE_ANTHROPIC_MODEL || 'claude-sonnet-4-6'
-
-    // (b) Proxy: bezpieczne, klucz po stronie serwera.
-    if (proxyUrl) {
-      return await callProxy(proxyUrl, system, messages, model)
-    }
-
-    // (c) Klucz z env w przegladarce, tylko do testow wewnetrznych.
-    // W tym punkcie envKey jest na pewno ustawiony (gwarantuje to wczesniejszy return).
-    return await callDirect(envKey as string, system, messages, model)
+    return await callModel(system, history)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     return `Wystapil blad podczas rozmowy z agentem: ${msg}. Sprawdz konfiguracje (klucz API lub proxy) i polaczenie z siecia.`
