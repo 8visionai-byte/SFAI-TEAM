@@ -1,5 +1,8 @@
 import { getAgent } from '../data/agents'
 import { getAgentPrompt, getFullBrain } from './content'
+// Import bezpieczny: storage.ts bierze z ai.ts wylacznie typ (import type),
+// wiec nie powstaje cykl w czasie dzialania.
+import { aktywneSkilleAgenta } from './storage'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -95,12 +98,25 @@ export function buildSystemPrompt(agentSlug: string): string {
       : ''
   }
 
+  // Wlasne umiejetnosci od wlasciciela (localStorage, sf_skille): tylko aktywne.
+  // Dziala w kazdym trybie polaczenia (klucz/proxy/env), bo kazdy z nich
+  // dostaje ten sam system prompt z buildSystemPrompt.
+  const skille = aktywneSkilleAgenta(agentSlug)
+  const sekcjaSkilli =
+    skille.length > 0
+      ? [
+          '=== DODATKOWE UMIEJETNOSCI OD WLASCICIELA (stosuj) ===',
+          ...skille.map((s) => `- ${s.nazwa}: ${s.instrukcja}`),
+        ].join('\n')
+      : ''
+
   return [
     '=== MOZG FIRMY (pelna tresc, czytaj przed odpowiedzia) ===',
     brain,
     '',
     '=== TWOJA PERSONA ===',
     persona,
+    ...(sekcjaSkilli ? ['', sekcjaSkilli] : []),
     '',
     CHAT_RULES,
   ].join('\n')

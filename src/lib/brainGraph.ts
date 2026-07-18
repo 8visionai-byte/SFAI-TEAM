@@ -4,7 +4,7 @@
  * Pure: bez fizyki i bez DOM. Fizyke liczy komponent BrainGraph.tsx.
  */
 
-import { brainFiles, getAgentPrompt } from './content'
+import { getBrainFiles, getAgentPrompt, type BrainFile } from './content'
 import { agents } from '../data/agents'
 import type { Notatka } from './storage'
 
@@ -25,6 +25,10 @@ export interface GraphNode {
   size: number
   /** Sciezka pliku mozgu (tylko kind === 'file'), do otwarcia podgladu. */
   path?: string
+  /** Plik z trescia nadpisana lokalnie (delikatna obwodka w grafie). */
+  zmieniony?: boolean
+  /** Wlasny plik uzytkownika. */
+  wlasny?: boolean
 }
 
 export interface GraphLink {
@@ -66,6 +70,7 @@ const GROUP_COLOR: Record<string, string> = {
   proof: '#FBBF24',
   'zespol-i-decyzje': '#F472B6',
   zespol: '#FB923C', // persony (kazda ma tez wlasny akcent)
+  wlasne: '#2DD4BF', // wlasne pliki uzytkownika
   notatki: '#E4E4E7', // twoje notatki
 }
 
@@ -78,6 +83,7 @@ const GROUP_LABEL: Record<string, string> = {
   proof: 'Dowody',
   'zespol-i-decyzje': 'Zespol i decyzje',
   zespol: 'Persony zespolu',
+  wlasne: 'Wlasne pliki',
   notatki: 'Twoje notatki',
 }
 
@@ -90,14 +96,36 @@ const GROUP_RANK = [
   'proof',
   'zespol-i-decyzje',
   'zespol',
+  'wlasne',
   'notatki',
 ]
 
-function groupColor(key: string): string {
+/** Opisy grup (1-2 zdania, prosty polski) do panelu bocznego i tooltipow legendy. */
+export const GROUP_OPIS: Record<string, string> = {
+  root: 'Serce mozgu firmy. Karta Mozgu i pliki-korzenie, ktore kazdy agent wczytuje na starcie, zanim cokolwiek odpowie.',
+  tozsamosc:
+    'Kim jest SimpleFast.ai: misja, glos marki i zasady. Nadaje ton kazdej wypowiedzi zespolu.',
+  'rynek-klient':
+    'Kto jest naszym klientem: profil idealnego klienta, jego bole, jezyk i miejsca, w ktorych go szukamy.',
+  'oferta-komercja':
+    'Co sprzedajemy i za ile: uslugi, pakiety, model wyceny oraz sciezka od diagnozy do umowy.',
+  proof:
+    'Twarde dowody do sprzedazy: przyklady wdrozen, liczby i argumenty, ktore rozbrajaja obiekcje klienta.',
+  'zespol-i-decyzje':
+    'Jak zespol pracuje i decyduje: role, zasady wspolpracy i sposob rozstrzygania sporow.',
+  zespol:
+    'Agenci AI jako wezly. Kazda persona ma wlasny kolor i nici do plikow mozgu, ktore realnie czyta.',
+  wlasne:
+    'Pliki dodane recznie w aplikacji. Zapisane w tej przegladarce i czytane przez agentow razem z reszta mozgu.',
+  notatki:
+    'Rozmowy i ustalenia zapisane recznie przyciskiem Zapisz do pamieci. Twoja warstwa wiedzy dopieta do grafu.',
+}
+
+export function groupColor(key: string): string {
   return GROUP_COLOR[key] ?? '#71717A'
 }
 
-function groupLabel(key: string): string {
+export function groupLabel(key: string): string {
   return GROUP_LABEL[key] ?? key
 }
 
@@ -121,15 +149,20 @@ function fileRadius(len: number): number {
 
 /**
  * Buduje model grafu z aktualnej tresci mozgu + person + przekazanych notatek.
- * Notatki podajemy z zewnatrz (localStorage), zeby funkcja byla czysta.
+ * Pliki mozgu ida przez warstwe nadpisow (getBrainFiles), wiec nadpisane
+ * i wlasne pliki tez sa widoczne w grafie. Liste mozna podac z zewnatrz,
+ * zeby memoizacja w Brain.tsx reagowala na edycje.
  */
-export function buildBrainGraph(notatki: Notatka[]): BrainGraphModel {
+export function buildBrainGraph(
+  notatki: Notatka[],
+  pliki: BrainFile[] = getBrainFiles(),
+): BrainGraphModel {
   const nodes: GraphNode[] = []
   const links: GraphLink[] = []
 
-  // --- 1. Huby grup folderow (obecne w brainFiles) + backbone do rdzenia ---
+  // --- 1. Huby grup folderow (obecne w plikach mozgu) + backbone do rdzenia ---
   const folderGroups = new Set<string>()
-  for (const f of brainFiles) folderGroups.add(f.group)
+  for (const f of pliki) folderGroups.add(f.group)
 
   const hubId = (g: string) => `hub:${g}`
   for (const g of folderGroups) {
@@ -152,7 +185,7 @@ export function buildBrainGraph(notatki: Notatka[]): BrainGraphModel {
 
   // --- 2. Wezly plikow + krawedz do huba grupy ---
   const relToId = new Map<string, string>() // "rynek-klient/icp.md" -> node id
-  for (const f of brainFiles) {
+  for (const f of pliki) {
     const id = `file:${f.path}`
     nodes.push({
       id,
@@ -162,17 +195,20 @@ export function buildBrainGraph(notatki: Notatka[]): BrainGraphModel {
       color: groupColor(f.group),
       size: fileRadius(f.content.length),
       path: f.path,
+      zmieniony: f.zmieniony,
+      wlasny: f.wlasny,
     })
-    relToId.set(relativePathOf(f.group, f.name), id)
+    // Relacje "czyta" (AGENT.md) dotycza tylko plikow z repo, nie wlasnych.
+    if (!f.wlasny) relToId.set(relativePathOf(f.group, f.name), id)
     links.push({ source: id, target: hubId(f.group), kind: 'hub' })
   }
 
   // --- 3. Odwolania miedzy plikami (skan tresci pod nazwy innych plikow) ---
   const refSeen = new Set<string>() // nieskierowane, unikamy duplikatow
   let refLinks = 0
-  for (const a of brainFiles) {
+  for (const a of pliki) {
     const aId = `file:${a.path}`
-    for (const b of brainFiles) {
+    for (const b of pliki) {
       if (a.path === b.path) continue
       const needle = `${b.name}.md`
       if (!a.content.includes(needle)) continue
@@ -208,7 +244,7 @@ export function buildBrainGraph(notatki: Notatka[]): BrainGraphModel {
       label: shortLabel(agent.name, 20),
       group: 'zespol',
       color: agent.accent, // wlasny akcent persony
-      size: 9,
+      size: 11,
     })
     personaIdByName.set(agent.name, pid)
     links.push({ source: pid, target: hubId('zespol'), kind: 'hub' })
@@ -280,7 +316,7 @@ export function buildBrainGraph(notatki: Notatka[]): BrainGraphModel {
     links,
     groups,
     stats: {
-      files: brainFiles.length,
+      files: pliki.length,
       personas: agents.length,
       notes: noteCount,
       hubs,

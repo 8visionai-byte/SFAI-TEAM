@@ -17,6 +17,8 @@ export interface Agent {
   mission: string
   /** Zespol wykonawczy (subagenci) z pliku subagenci/_INDEX.md, krotkie polskie nazwy */
   subagents: string[]
+  /** Umiejetnosci wbudowane (frameworki i sekcje z AGENT.md agenta), po polsku */
+  skills: string[]
 }
 
 /**
@@ -35,6 +37,14 @@ export const agents: Agent[] = [
     mission:
       'Rozklada Twoj cel na zadania, deleguje do zespolu i daje jedna rekomendacje.',
     subagents: ['Rozklad celu', 'Delegacja zadan', 'Synteza rekomendacji'],
+    skills: [
+      'RAPID: prawa decyzyjne',
+      'OKR i kadencja operacyjna',
+      'Petla orkiestracji celu',
+      'Formaty zlecen i raportow',
+      'Mapa dzwigni sprzedazy',
+      'Regula 70% przy eskalacji',
+    ],
   },
   {
     slug: 'wiedza-produkt',
@@ -53,6 +63,13 @@ export const agents: Agent[] = [
       'Audytor contentu',
       'Onboarder wiedzy',
     ],
+    skills: [
+      'StoryBrand SB7',
+      'Hero-Guide w B2B',
+      'Wiedza just-in-time',
+      'Audyt aktualnosci materialow',
+      'Dopasowanie materialu do etapu sprzedazy',
+    ],
   },
   {
     slug: 'operacje',
@@ -70,6 +87,13 @@ export const agents: Agent[] = [
       'Monitor blokerow (RAID)',
       'Generator briefow',
     ],
+    skills: [
+      'Piec rol Chief of Staff',
+      'Rhythm of Business',
+      'Rejestr RAID blokerow',
+      'RACI i prawa decyzyjne',
+      'Briefy i SOP jako produkt',
+    ],
   },
   {
     slug: 'analityk',
@@ -86,6 +110,14 @@ export const agents: Agent[] = [
       'Sizing rynku',
       'Syntezator battlecardow',
       'Walidator win-loss',
+    ],
+    skills: [
+      'SWOT i PESTLE',
+      'JTBD: zadania klienta',
+      'Segmentacja ICP',
+      'Battlecardy konkurencji',
+      'Analiza win-loss',
+      'Traffic Light: etyka zrodel',
     ],
   },
   {
@@ -105,6 +137,13 @@ export const agents: Agent[] = [
       'Lowca luk',
       'Reconciler zrodel',
     ],
+    skills: [
+      'Ingestia nowej wiedzy',
+      'Wersjonowanie i sunsetting',
+      'Podawanie kontekstu agentom',
+      'Weryfikacja danych u zrodla',
+      'Regula "nie zmyslaj"',
+    ],
   },
   {
     slug: 'copywriter',
@@ -123,6 +162,13 @@ export const agents: Agent[] = [
       'VoC Miner',
       'Brand Guardian',
     ],
+    skills: [
+      'Jezyk korzysci z glosu klienta (VoC)',
+      'Sekwencje PAS i PASTOR',
+      'Tresci SEO i GEO cytowalne przez AI',
+      'Social B2B',
+      'Straznik glosu marki',
+    ],
   },
   {
     slug: 'handlowiec',
@@ -139,6 +185,13 @@ export const agents: Agent[] = [
       'Business case ROI',
       'Obsluga obiekcji',
       'Oferta i pricing',
+    ],
+    skills: [
+      'Gap Selling i SPIN',
+      'Challenger: ucz i prowadz',
+      'Business case ROI',
+      'Obsluga obiekcji bez rabatu',
+      'Kwalifikacja i discovery luki',
     ],
   },
   {
@@ -157,6 +210,13 @@ export const agents: Agent[] = [
       'AI tier-1',
       'Save-play',
     ],
+    skills: [
+      'Desired Outcome Framework',
+      'Health Score klienta',
+      'Cykl zycia klienta w 5 etapach',
+      'Service Recovery Paradox',
+      'Triada CSAT, NPS i CES',
+    ],
   },
   {
     slug: 'drugi-glos',
@@ -168,6 +228,13 @@ export const agents: Agent[] = [
     hasPrompt: true,
     mission: 'Kwestionuje pomysly, broni marki i mowi nie z uzasadnieniem.',
     subagents: ['Pre-mortem / red-team', 'Brand compliance', 'Monitor marki (SOV)'],
+    skills: [
+      'Pre-mortem decyzji',
+      'Red-team i adwokat diabla',
+      'Inwersja: jak to sie rozsypie',
+      'Weto brandowe w RAPID',
+      'Share of Voice marki',
+    ],
   },
   {
     slug: 'analityk-social',
@@ -185,6 +252,13 @@ export const agents: Agent[] = [
       'Analityk płatny',
       'Łącznik atrybucji',
       'Syntezator kierunku',
+    ],
+    skills: [
+      'Filtr Pareto 20/80',
+      'Analiza organiczna i platna',
+      'Atrybucja publikacji do wynikow',
+      'Decyzje: skaluj albo wygas',
+      'Spinanie danych platform',
     ],
   },
 ]

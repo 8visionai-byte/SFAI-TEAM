@@ -7,12 +7,12 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import {
-  buildBrainGraph,
   type BrainGraphModel,
   type GraphNode,
   type LinkKind,
+  GROUP_OPIS,
 } from '../lib/brainGraph'
-import type { Notatka } from '../lib/storage'
+import { getAgent } from '../data/agents'
 
 /** Wewnetrzny wezel symulacji (statyka z modelu + stan fizyki). */
 interface SimNode extends GraphNode {
@@ -25,10 +25,12 @@ interface SimNode extends GraphNode {
 }
 
 interface Props {
-  /** Notatki uzytkownika (localStorage) do wpiecia w graf. */
-  notatki: Notatka[]
-  /** Klik na wezel-plik: otwiera jego podglad w zakladce Baza wiedzy. */
-  onOpenFile: (path: string) => void
+  /** Gotowy model grafu (budowany raz w Brain.tsx i wspoldzielony z panelem). */
+  model: BrainGraphModel
+  /** Id aktualnie wybranego wezla (podglad w panelu obok) lub null. */
+  selectedId: string | null
+  /** Klik na dowolny wezel: pokazuje jego karte w panelu bocznym (nie nawiguje). */
+  onSelect: (node: GraphNode) => void
 }
 
 /** Docelowa dlugosc sprezyny wg typu krawedzi. */
@@ -60,12 +62,45 @@ function seeded(i: number): number {
   return x - Math.floor(x)
 }
 
-export default function BrainGraph({ notatki, onOpenFile }: Props) {
-  const model: BrainGraphModel = useMemo(
-    () => buildBrainGraph(notatki),
-    [notatki],
-  )
+/** Inicjaly persony (ta sama logika co w Avatar.tsx). */
+function inicjaly(name: string): string {
+  const words = name.trim().split(/\s+/)
+  if (words.length === 1) {
+    if (words[0].length <= 3) return words[0].toUpperCase()
+    return words[0].slice(0, 2).toUpperCase()
+  }
+  return (words[0][0] + words[1][0]).toUpperCase()
+}
 
+/** Etykieta persony do inicjalow: pelna nazwa agenta (nie skrocona z modelu). */
+function personaInicjaly(node: GraphNode): string {
+  const slug = node.id.startsWith('persona:') ? node.id.slice(8) : ''
+  const agent = getAgent(slug)
+  return inicjaly(agent?.name ?? node.label)
+}
+
+/** Sciezka zakrzywionej krawedzi (Q-bezier) dla spojnego, "neuronowego" wygladu. */
+function edgePath(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): string {
+  const dx = bx - ax
+  const dy = by - ay
+  const len = Math.hypot(dx, dy) || 1
+  const mx = (ax + bx) / 2
+  const my = (ay + by) / 2
+  // Normalna do odcinka, staly znak => wszystkie nici wygiete w te sama strone.
+  const nrmx = -dy / len
+  const nrmy = dx / len
+  const bow = 0.12 * len
+  const cx = mx + nrmx * bow
+  const cy = my + nrmy * bow
+  return `M ${ax} ${ay} Q ${cx} ${cy} ${bx} ${by}`
+}
+
+export default function BrainGraph({ model, selectedId, onSelect }: Props) {
   // Sasiedzi kazdego wezla (do podswietlania przy hover).
   const neighbors = useMemo(() => {
     const m = new Map<string, Set<string>>()
@@ -258,11 +293,14 @@ export default function BrainGraph({ notatki, onOpenFile }: Props) {
     return { x: loc.x, y: loc.y }
   }, [])
 
+  const movedRef = useRef(false)
+
   const onNodePointerDown = (e: ReactPointerEvent, id: string) => {
     e.stopPropagation()
     const node = byId.current.get(id)
     if (!node) return
     draggingId.current = id
+    movedRef.current = false
     node.fixed = true
     ;(e.target as Element).setPointerCapture?.(e.pointerId)
   }
@@ -273,6 +311,10 @@ export default function BrainGraph({ notatki, onOpenFile }: Props) {
     const node = byId.current.get(id)
     const p = toLogical(e.clientX, e.clientY)
     if (!node || !p) return
+    // Odroznij realne przeciaganie od zwyklego klikniecia.
+    if (Math.abs(node.x - p.x) > 1.5 || Math.abs(node.y - p.y) > 1.5) {
+      movedRef.current = true
+    }
     node.x = p.x
     node.y = p.y
     node.vx = 0
@@ -323,18 +365,48 @@ export default function BrainGraph({ notatki, onOpenFile }: Props) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="relative flex h-full min-h-0 flex-col">
+      {/* Winieta tla: rozjasnia srodek, przyciemnia rogi (glebia, fokus na wezly) */}
+      <div
+        className="pointer-events-none absolute inset-0 z-0"
+        style={{
+          background:
+            'radial-gradient(120% 100% at 50% 40%, rgba(91,141,239,0.06), transparent 60%), radial-gradient(80% 80% at 50% 50%, transparent 55%, rgba(0,0,0,0.45))',
+        }}
+        aria-hidden
+      />
+
       <svg
         ref={svgRef}
         role="img"
         aria-label="Graf wiedzy mozgu firmy: pliki, persony i notatki jako siec powiazan"
         viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
-        className="h-full w-full touch-none select-none"
+        className="relative z-[1] h-full w-full touch-none select-none"
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerUp}
       >
-        {/* Krawedzie */}
+        <defs>
+          {/* Poswiata wezlow (glebia) */}
+          <filter
+            id="wezelGlow"
+            x="-60%"
+            y="-60%"
+            width="220%"
+            height="220%"
+          >
+            <feGaussianBlur stdDeviation="3" />
+          </filter>
+          {/* Gradient wypelnienia hubow: mocny w srodku, gasnie na brzegu */}
+          {model.groups.map((g) => (
+            <radialGradient key={g.key} id={`hubgrad-${g.key}`}>
+              <stop offset="0%" stopColor={g.color} stopOpacity={0.4} />
+              <stop offset="100%" stopColor={g.color} stopOpacity={0.05} />
+            </radialGradient>
+          ))}
+        </defs>
+
+        {/* Krawedzie (zakrzywione) */}
         <g>
           {model.links.map((l, i) => {
             const a = byId.current.get(l.source)
@@ -345,15 +417,14 @@ export default function BrainGraph({ notatki, onOpenFile }: Props) {
             const dim = highlight && !active
             const stroke = active ? '#93b4f4' : '#52525b'
             return (
-              <line
+              <path
                 key={i}
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
+                d={edgePath(a.x, a.y, b.x, b.y)}
+                fill="none"
                 stroke={stroke}
                 strokeWidth={active ? st.w + 0.6 : st.w}
                 strokeOpacity={dim ? 0.06 : active ? 0.9 : st.o}
+                strokeLinecap="round"
                 strokeDasharray={l.kind === 'reads' ? '3 4' : undefined}
               />
             )
@@ -366,13 +437,19 @@ export default function BrainGraph({ notatki, onOpenFile }: Props) {
             const dim = isDim(s.id)
             const breathing =
               !reduced && activeGroup != null && s.group === activeGroup
-            const clickable = s.kind === 'file'
+            const selected = s.id === selectedId
+            const showLabel =
+              s.kind === 'hub' ||
+              s.kind === 'persona' ||
+              s.kind === 'file' ||
+              s.id === highlight ||
+              (hoverNeighbors?.has(s.id) ?? false)
             return (
               <g
                 key={s.id}
                 transform={`translate(${s.x} ${s.y})`}
-                style={{ cursor: clickable ? 'pointer' : 'grab' }}
-                opacity={dim ? 0.18 : 1}
+                style={{ cursor: 'pointer' }}
+                opacity={dim ? 0.2 : 1}
                 onPointerDown={(e) => onNodePointerDown(e, s.id)}
                 onPointerEnter={() => {
                   setHovered(s.id)
@@ -382,40 +459,100 @@ export default function BrainGraph({ notatki, onOpenFile }: Props) {
                   setHovered((h) => (h === s.id ? null : h))
                 }}
                 onClick={() => {
-                  if (s.kind === 'file' && s.path) onOpenFile(s.path)
+                  // Klik = podglad w panelu; ignoruj jesli to bylo przeciaganie.
+                  if (movedRef.current) return
+                  onSelect(s)
                 }}
               >
+                {/* Pierscien wyboru */}
+                {selected && (
+                  <circle
+                    r={s.size + 5}
+                    fill="none"
+                    stroke="#f4f4f5"
+                    strokeWidth={1.6}
+                    strokeOpacity={0.85}
+                    className="pointer-events-none"
+                  />
+                )}
+
+                {/* Delikatna obwodka: plik nadpisany lokalnie (amber) lub wlasny (kreskowana) */}
+                {s.kind === 'file' && (s.zmieniony || s.wlasny) && (
+                  <circle
+                    r={s.size + 3}
+                    fill="none"
+                    stroke={s.zmieniony ? '#F59E0B' : s.color}
+                    strokeWidth={1}
+                    strokeOpacity={0.55}
+                    strokeDasharray={
+                      s.wlasny && !s.zmieniony ? '2.5 3' : undefined
+                    }
+                    className="pointer-events-none"
+                  />
+                )}
+
+                {/* Poswiata pod wezlem (glebia) */}
+                <circle
+                  r={s.size * 1.7}
+                  fill={s.color}
+                  opacity={s.kind === 'hub' ? 0.22 : 0.16}
+                  filter="url(#wezelGlow)"
+                  className="pointer-events-none"
+                />
+
+                {/* Glowne kolo wezla */}
                 <circle
                   r={s.size}
-                  fill={s.color}
+                  fill={
+                    s.kind === 'hub' ? `url(#hubgrad-${s.group})` : s.color
+                  }
                   fillOpacity={
-                    s.kind === 'hub' ? 0.22 : s.kind === 'note' ? 0.7 : 0.85
+                    s.kind === 'hub'
+                      ? 1
+                      : s.kind === 'persona'
+                        ? 0.9
+                        : s.kind === 'note'
+                          ? 0.7
+                          : 0.85
                   }
                   stroke={s.color}
                   strokeWidth={s.kind === 'hub' ? 2 : 1.5}
                   strokeOpacity={0.9}
                   className={breathing ? 'graph-breath' : undefined}
                 />
-                {(s.kind === 'hub' ||
-                  s.kind === 'persona' ||
-                  s.kind === 'file' ||
-                  s.id === highlight ||
-                  (hoverNeighbors?.has(s.id) ?? false)) && (
+
+                {/* Inicjaly w personach (zamiast pustego kola) */}
+                {s.kind === 'persona' && (
                   <text
-                    x={s.size + 4}
+                    textAnchor="middle"
+                    y={3}
+                    fontSize={8}
+                    fontWeight={700}
+                    fill="#09090b"
+                    className="pointer-events-none select-none"
+                  >
+                    {personaInicjaly(s)}
+                  </text>
+                )}
+
+                {showLabel && (
+                  <text
+                    x={s.size + 5}
                     y={3.5}
                     fontSize={s.kind === 'hub' ? 11 : 9.5}
-                    fontWeight={s.kind === 'hub' ? 700 : 500}
+                    fontWeight={s.kind === 'hub' ? 700 : 600}
                     fill={
-                      s.kind === 'hub' || s.id === highlight
+                      s.kind === 'hub' ||
+                      s.id === highlight ||
+                      (hoverNeighbors?.has(s.id) ?? false)
                         ? '#f4f4f5'
-                        : '#a1a1aa'
+                        : '#d4d4d8'
                     }
                     className="pointer-events-none"
                     style={{ paintOrder: 'stroke' }}
                     stroke="#09090b"
-                    strokeWidth={2.6}
-                    strokeOpacity={0.65}
+                    strokeWidth={2.8}
+                    strokeOpacity={0.7}
                   >
                     {s.label}
                   </text>
@@ -426,29 +563,38 @@ export default function BrainGraph({ notatki, onOpenFile }: Props) {
         </g>
       </svg>
 
-      {/* Legenda grup */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-zinc-800 px-1 pt-3">
-        {model.groups.map((g) => (
-          <button
-            key={g.key}
-            type="button"
-            onPointerEnter={() => setActiveGroup(g.key)}
-            onPointerLeave={() => setActiveGroup(null)}
-            className={[
-              'inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs transition-colors',
-              activeGroup === g.key
-                ? 'bg-zinc-800/70 text-zinc-100'
-                : 'text-zinc-400 hover:text-zinc-200',
-            ].join(' ')}
-          >
-            <span
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: g.color }}
-              aria-hidden
-            />
-            {g.label}
-          </button>
-        ))}
+      {/* Legenda grup jako pigulki z opisem (tooltip) */}
+      <div className="relative z-[1] flex flex-wrap items-center gap-2 border-t border-zinc-800 px-1 pt-3">
+        {model.groups.map((g) => {
+          const aktywna = activeGroup === g.key
+          return (
+            <button
+              key={g.key}
+              type="button"
+              title={GROUP_OPIS[g.key] ?? g.label}
+              onPointerEnter={() => setActiveGroup(g.key)}
+              onPointerLeave={() => setActiveGroup(null)}
+              onClick={() => {
+                const hub = model.nodes.find((n) => n.id === `hub:${g.key}`)
+                if (hub) onSelect(hub)
+              }}
+              className={[
+                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
+                aktywna
+                  ? 'bg-zinc-800/70 text-zinc-100'
+                  : 'text-zinc-400 hover:text-zinc-200',
+              ].join(' ')}
+              style={{ borderColor: aktywna ? g.color : `${g.color}44` }}
+            >
+              <span
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: g.color }}
+                aria-hidden
+              />
+              {g.label}
+            </button>
+          )
+        })}
       </div>
     </div>
   )

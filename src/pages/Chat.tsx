@@ -285,6 +285,10 @@ export default function Chat() {
           </div>
           {/* Akcje rozmowy */}
           <div className="flex flex-wrap items-center gap-2">
+            <Link to={`/agent/${agent.slug}`} className={przyciskSm}>
+              <Info size={14} aria-hidden />
+              Profil
+            </Link>
             <button
               type="button"
               onClick={() => setPokazHistorie((v) => !v)}

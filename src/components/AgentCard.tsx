@@ -7,15 +7,23 @@ interface AgentCardProps {
   agent: Agent
 }
 
-/** Kafelek agenta w siatce zespolu. Akcent koloru per agent. */
+/**
+ * Kafelek agenta w siatce zespolu. Akcent koloru per agent.
+ * Klik w karte otwiera PROFIL agenta (/agent/slug), a przycisk "Rozmawiaj"
+ * prowadzi do czatu. Rozwiazane wzorcem rozciagnietego linku (link-nakladka),
+ * zeby nie zagniezdzac <a> w <a>.
+ */
 export default function AgentCard({ agent }: AgentCardProps) {
   const active = agent.hasPrompt
 
   return (
-    <Link
-      to={`/czat/${agent.slug}`}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 shadow-card transition-all duration-200 hover:-translate-y-1 hover:border-zinc-700 hover:bg-zinc-900 hover:shadow-card-hover focus-visible:-translate-y-1 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
-    >
+    <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 shadow-card transition-all duration-200 hover:-translate-y-1 hover:border-zinc-700 hover:bg-zinc-900 hover:shadow-card-hover focus-within:-translate-y-1 motion-reduce:transition-none motion-reduce:hover:translate-y-0">
+      {/* Link-nakladka: cala karta prowadzi do profilu agenta */}
+      <Link
+        to={`/agent/${agent.slug}`}
+        aria-label={`Profil agenta ${agent.name}`}
+        className="absolute inset-0 z-10 rounded-2xl"
+      />
       {/* Akcentowa hairline u gory, podswietla sie na hover */}
       <span
         className="pointer-events-none absolute inset-x-0 top-0 h-px opacity-0 transition-opacity duration-300 group-hover:opacity-70"
@@ -84,8 +92,11 @@ export default function AgentCard({ agent }: AgentCardProps) {
         {agent.mission}
       </p>
 
-      <div
-        className="mt-5 flex items-center gap-1.5 text-sm font-semibold text-zinc-400 transition-colors group-hover:text-zinc-100"
+      {/* Przycisk "Rozmawiaj": nad linkiem-nakladka, prowadzi wprost do czatu */}
+      <Link
+        to={`/czat/${agent.slug}`}
+        aria-label={`Rozmawiaj z agentem ${agent.name}`}
+        className="relative z-20 mt-5 inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-zinc-400 transition-colors hover:text-zinc-100 group-hover:text-zinc-100"
         style={{ ['--acc' as string]: agent.accent }}
       >
         <span className="transition-colors group-hover:[color:var(--acc)]">
@@ -95,7 +106,7 @@ export default function AgentCard({ agent }: AgentCardProps) {
           size={16}
           className="transition-transform duration-200 group-hover:translate-x-1 group-hover:[color:var(--acc)] motion-reduce:transform-none"
         />
-      </div>
-    </Link>
+      </Link>
+    </div>
   )
 }
