@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Agent } from '../data/agents'
 import CharacterAvatar from './CharacterAvatar'
 
-export type AvatarSize = 'sm' | 'md' | 'lg' | 'xl'
+export type AvatarSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl'
 
 /** Realny rozmiar w px per rozmiar UI (steruje bramka detali w portrecie). */
 const SIZE_PX: Record<AvatarSize, number> = {
@@ -10,18 +10,38 @@ const SIZE_PX: Record<AvatarSize, number> = {
   md: 40,
   lg: 48,
   xl: 96,
+  '2xl': 160,
 }
 
-/** Rozmiary zgodne z obecnym UI (sm: wiadomosc, md: wezly mapy, lg: naglowek i kafelek, xl: hero profilu, 96px wg ART-SPEC-V18 1.1). */
+/** Rozmiary zgodne z obecnym UI (sm: wiadomosc, md: wezly mapy, lg: naglowek, xl: hero, 2xl: portret-first na kafelku i w hero profilu, 160px). */
 const SIZE_CLASSES: Record<AvatarSize, string> = {
   sm: 'h-8 w-8 rounded-lg text-xs',
   md: 'h-10 w-10 rounded-xl text-xs',
   lg: 'h-12 w-12 rounded-xl text-sm',
   xl: 'h-24 w-24 rounded-[22px] text-xl',
+  '2xl': 'h-40 w-40 rounded-[28px] text-2xl',
 }
 
 /** Hairline tla rozdzielajacy portret od pierscienia-aury (jak w scenie neuronu). */
 const HAIRLINE = '#0E0E11'
+
+/** Czy urzadzenie potrafi hover (mysz). Na dotyku steruje tapniecie. */
+function canHover(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(hover: hover)').matches
+  )
+}
+
+/** Czy uzytkownik prosi o ograniczona animacje. */
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+}
 
 function initials(name: string): string {
   const words = name.trim().split(/\s+/)
@@ -48,17 +68,23 @@ interface AvatarProps {
   aura?: 'soft' | 'strong'
   /** Animacja po najechaniu: uniesienie + poswiata w kolorze agenta. */
   hover?: boolean
+  /**
+   * Hero profilu (nie lista). Na urzadzeniach dotykowych wideo odtwarza sie
+   * dopiero po tapnieciu i tylko gdy true, zeby listy nie odgrywaly klipow.
+   */
+  profile?: boolean
   /** Dodatkowe klasy (np. node-pulse w Centrum Dowodzenia). */
   className?: string
 }
 
 /**
  * Awatar agenta. Kolejnosc warstw (od spodu): inicjaly -> wektorowy portret
- * CharacterAvatar -> obrazek PNG /avatars/<slug>.png (webapp/public/avatars/).
- * Domyslnie widac wektorowy portret persony (ostry w kazdym rozmiarze, bez
- * assetow). Gdy istnieje PNG (wersja premium z Higgsfield), przykrywa wektor
- * plynnie po zaladowaniu. Gdy brak karty postaci, zostaja inicjaly. Zaden
- * brakujacy element niczego nie psuje.
+ * CharacterAvatar -> obrazek PNG /avatars/<slug>.png -> wideo /avatars/<slug>.mp4
+ * (webapp/public/avatars/). Domyslnie widac wektorowy portret persony (ostry w
+ * kazdym rozmiarze, bez assetow). Gdy istnieje PNG (wersja premium z Higgsfield),
+ * przykrywa wektor plynnie po zaladowaniu. Gdy istnieje MP4, po najechaniu myszka
+ * (a na dotyku po tapnieciu w profilu) odtwarza sie krotki klip nad portretem.
+ * Gdy brak karty postaci, zostaja inicjaly. Zaden brakujacy element niczego nie psuje.
  */
 export default function Avatar({
   agent,
@@ -67,10 +93,45 @@ export default function Avatar({
   glow = false,
   aura,
   hover = false,
+  profile = false,
   className = '',
 }: AvatarProps) {
   const [loaded, setLoaded] = useState(false)
   const [failed, setFailed] = useState(false)
+  // Warstwa wideo: gdy brak pliku, onError wylacza ja na stale (zero bledow petli).
+  const [videoFailed, setVideoFailed] = useState(false)
+  const [videoPlaying, setVideoPlaying] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  const playVideo = () => {
+    const v = videoRef.current
+    if (!v || videoFailed || prefersReducedMotion()) return
+    try {
+      v.currentTime = 0
+    } catch {
+      // ignorujemy: metadane moga jeszcze nie byc gotowe
+    }
+    const p = v.play()
+    if (p && typeof p.then === 'function') {
+      p.then(() => setVideoPlaying(true)).catch(() => {
+        // przegladarka moze odmowic autoodtwarzania: zostajemy na portrecie
+      })
+    } else {
+      setVideoPlaying(true)
+    }
+  }
+
+  const stopVideo = () => {
+    const v = videoRef.current
+    setVideoPlaying(false)
+    if (!v) return
+    v.pause()
+    try {
+      v.currentTime = 0
+    } catch {
+      // ignorujemy
+    }
+  }
 
   // Pierscien-aura (box-shadow podaza za border-radius, wiec dziala i na squircle).
   const auraShadow =
@@ -101,6 +162,18 @@ export default function Avatar({
         ['--glow' as string]: `${agent.accent}88`,
         ['--accent-ring' as string]: `${agent.accent}59`,
       }}
+      onMouseEnter={() => {
+        if (canHover()) playVideo()
+      }}
+      onMouseLeave={() => {
+        if (canHover()) stopVideo()
+      }}
+      onClick={() => {
+        // Dotyk: tap odtwarza tylko w hero profilu, nigdy w listach.
+        if (canHover() || !profile) return
+        if (videoPlaying) stopVideo()
+        else playVideo()
+      }}
       aria-hidden
     >
       {/* Fallback: inicjaly rysowane zawsze pod portretem (zero skoku layoutu) */}
@@ -119,6 +192,25 @@ export default function Avatar({
             'absolute inset-0 h-full w-full object-cover transition-opacity duration-300 motion-reduce:transition-none',
             loaded ? 'opacity-100' : 'opacity-0',
           ].join(' ')}
+        />
+      )}
+      {/* Warstwa wideo NAD portretem. Brak pliku -> onError wylacza ja na stale. */}
+      {!videoFailed && (
+        <video
+          ref={videoRef}
+          src={`${import.meta.env.BASE_URL}avatars/${agent.slug}.mp4`}
+          muted
+          playsInline
+          loop={false}
+          preload="metadata"
+          onEnded={stopVideo}
+          onError={() => setVideoFailed(true)}
+          draggable={false}
+          className={[
+            'pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-300 motion-reduce:transition-none',
+            videoPlaying ? 'opacity-100' : 'opacity-0',
+          ].join(' ')}
+          aria-hidden
         />
       )}
     </div>

@@ -1,10 +1,43 @@
+import { useState } from 'react'
+
 interface LogoProps {
   size?: number
   className?: string
 }
 
-/** Znak marki SF AI TEAM: stylizowany cyrkiel z literami SF. */
+/**
+ * Znak marki SF AI TEAM. Kolejnosc prob (lancuszek onError, bez skoku layoutu):
+ * 1) /logo-mark.png  (sam wykadrowany znak, robi go osobny skrypt),
+ * 2) /logo.png       (pelne logo dostarczone przez klienta),
+ * 3) wektorowy cyrkiel SVG ponizej (zawsze dziala, czytelny w malym rozmiarze).
+ * Pliki wrzuca sie do webapp/public/ (patrz webapp/public/BRANDING.md).
+ */
 export default function Logo({ size = 36, className = '' }: LogoProps) {
+  const sources = [
+    `${import.meta.env.BASE_URL}logo-mark.png`,
+    `${import.meta.env.BASE_URL}logo.png`,
+  ]
+  const [idx, setIdx] = useState(0)
+  const [useSvg, setUseSvg] = useState(false)
+
+  if (!useSvg) {
+    return (
+      <img
+        src={sources[idx]}
+        width={size}
+        height={size}
+        alt="SF AI TEAM"
+        draggable={false}
+        onError={() => {
+          if (idx < sources.length - 1) setIdx(idx + 1)
+          else setUseSvg(true)
+        }}
+        className={['object-contain', className].filter(Boolean).join(' ')}
+        style={{ width: size, height: size }}
+      />
+    )
+  }
+
   return (
     <svg
       width={size}

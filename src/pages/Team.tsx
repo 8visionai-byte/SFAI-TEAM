@@ -33,8 +33,8 @@ export default function Team() {
           aria-hidden
         />
         <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-          {/* Portret COO z aura (spojny z reszta postaci) */}
-          <Avatar agent={coo} size="xl" aura="strong" className="flex-shrink-0" />
+          {/* Portret COO z aura (zdjecie-first, wiekszy niz kafelki specjalistow) */}
+          <Avatar agent={coo} size="2xl" aura="strong" profile className="mx-auto flex-shrink-0 sm:mx-0" />
           <div className="max-w-2xl sm:flex-1">
             <div className="mb-3 flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-brand/15 px-3 py-1 text-xs font-semibold text-brand-soft ring-1 ring-brand/30">
@@ -68,7 +68,7 @@ export default function Team() {
         <span className="text-xs text-zinc-600">9 kafelkow</span>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
         {teamAgents.map((agent, i) => (
           <div
             key={agent.slug}

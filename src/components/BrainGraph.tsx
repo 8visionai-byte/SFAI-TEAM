@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import {
@@ -53,6 +54,30 @@ const LINK_STYLE: Record<LinkKind, { w: number; o: number }> = {
   note: { w: 0.9, o: 0.4 },
 }
 
+const TAU = Math.PI * 2
+/** Maks. jednoczesnych impulsow (wydajnosc). */
+const IMPULSE_MAX = 5
+/** Liczba probek wstegi krawedzi (kompromis gladkosc/koszt). */
+const EDGE_SAMPLES = 8
+/** Amplituda falowania punktu kontrolnego krawedzi (px, "tkanka zyje"). */
+const WAVE_AMP = 3
+/** Odstep miedzy probami odpalenia impulsu (ms). */
+const SPAWN_MS = 850
+/** Throttling warstwy zycia (~30 fps wystarczy dla falowania). */
+const LIFE_FRAME_MS = 33
+
+/** Swietlny impuls biegnacy wzdluz jednej krawedzi (jak wyladowanie neuronu). */
+interface Impulse {
+  /** Indeks krawedzi w model.links. */
+  edge: number
+  /** Postep 0..1 wzdluz krzywej (source -> target). */
+  t: number
+  /** Predkosc w jednostkach t na sekunde. */
+  speed: number
+  /** Kolor impulsu (kolor grupy wezla zrodlowego). */
+  color: string
+}
+
 const prefersReducedMotion = (): boolean => {
   if (typeof window === 'undefined' || !window.matchMedia) return false
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -87,13 +112,20 @@ function personaAgent(node: GraphNode): Agent | undefined {
   return getAgent(node.id.slice(8))
 }
 
-/** Sciezka zakrzywionej krawedzi (Q-bezier) dla spojnego, "neuronowego" wygladu. */
-function edgePath(
+/**
+ * Punkt kontrolny krawedzi: bazowy luk + delikatne falowanie w czasie.
+ * Dwie skladowe sinusa o roznych fazach daja organiczny, nieregularny ruch
+ * (tkanka zyje). amp=0 => statyka (prefers-reduced-motion).
+ */
+function edgeControl(
   ax: number,
   ay: number,
   bx: number,
   by: number,
-): string {
+  phase: number,
+  time: number,
+  amp: number,
+): { cx: number; cy: number } {
   const dx = bx - ax
   const dy = by - ay
   const len = Math.hypot(dx, dy) || 1
@@ -103,9 +135,68 @@ function edgePath(
   const nrmx = -dy / len
   const nrmy = dx / len
   const bow = 0.12 * len
-  const cx = mx + nrmx * bow
-  const cy = my + nrmy * bow
-  return `M ${ax} ${ay} Q ${cx} ${cy} ${bx} ${by}`
+  const wave =
+    amp *
+    (0.7 * Math.sin(time * 0.9 + phase) + 0.3 * Math.sin(time * 1.7 + phase * 1.4))
+  const off = bow + wave
+  return { cx: mx + nrmx * off, cy: my + nrmy * off }
+}
+
+/**
+ * Wstega krawedzi o zmiennej grubosci: grubsza przy wezlach, cienka w srodku
+ * (jak nic dendrytu wtapiajaca sie w jadro). Zamknieta sciezka wypelniana kolorem.
+ */
+function ribbonPath(
+  ax: number,
+  ay: number,
+  cx: number,
+  cy: number,
+  bx: number,
+  by: number,
+  wEnd: number,
+  wMid: number,
+  samples: number,
+): string {
+  const left: string[] = []
+  const right: string[] = []
+  for (let k = 0; k <= samples; k++) {
+    const t = k / samples
+    const mt = 1 - t
+    // Punkt na krzywej kwadratowej.
+    const px = mt * mt * ax + 2 * mt * t * cx + t * t * bx
+    const py = mt * mt * ay + 2 * mt * t * cy + t * t * by
+    // Styczna (pochodna krzywej) -> normalna do offsetu grubosci.
+    let tx = 2 * mt * (cx - ax) + 2 * t * (bx - cx)
+    let ty = 2 * mt * (cy - ay) + 2 * t * (by - cy)
+    const tl = Math.hypot(tx, ty) || 1
+    tx /= tl
+    ty /= tl
+    const nx = -ty
+    const ny = tx
+    // |2t-1| => 1 przy koncach, 0 w srodku => grubiej przy wezlach.
+    const half = (wMid + (wEnd - wMid) * Math.abs(2 * t - 1)) / 2
+    left.push(`${(px + nx * half).toFixed(2)} ${(py + ny * half).toFixed(2)}`)
+    right.push(`${(px - nx * half).toFixed(2)} ${(py - ny * half).toFixed(2)}`)
+  }
+  right.reverse()
+  return `M ${left.join(' L ')} L ${right.join(' L ')} Z`
+}
+
+/** Punkt na krzywej kwadratowej (pozycja impulsu wzdluz krawedzi). */
+function quadPoint(
+  ax: number,
+  ay: number,
+  cx: number,
+  cy: number,
+  bx: number,
+  by: number,
+  t: number,
+): { x: number; y: number } {
+  const mt = 1 - t
+  return {
+    x: mt * mt * ax + 2 * mt * t * cx + t * t * bx,
+    y: mt * mt * ay + 2 * mt * t * cy + t * t * by,
+  }
 }
 
 export default function BrainGraph({ model, selectedId, onSelect }: Props) {
@@ -124,7 +215,30 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
   const byId = useRef<Map<string, SimNode>>(new Map())
   const rafRef = useRef<number | null>(null)
   const svgRef = useRef<SVGSVGElement | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const draggingId = useRef<string | null>(null)
+
+  // --- Warstwa "zycia" (imperatywna, bez React re-render): falowanie + impulsy ---
+  /** Refy do sciezek krawedzi (setAttribute 'd' per klatke). */
+  const edgeRefs = useRef<(SVGPathElement | null)[]>([])
+  /** Ostatni punkt kontrolny + konce kazdej krawedzi (dla pozycji impulsow). */
+  const edgeCtrl = useRef<
+    { cx: number; cy: number; ax: number; ay: number; bx: number; by: number }[]
+  >([])
+  /** Refy do kropek impulsow (pula o stalym rozmiarze). */
+  const impulseRefs = useRef<(SVGCircleElement | null)[]>([])
+  /** Aktywne impulsy w puli (null = wolny slot). */
+  const impulsesRef = useRef<(Impulse | null)[]>([])
+  /** Handle pętli zycia (osobny od fizyki rafRef). */
+  const lifeRafRef = useRef<number | null>(null)
+  /** Czas animacji (s) do falowania. */
+  const timeRef = useRef(0)
+  const lastFrameRef = useRef(0)
+  const lastSpawnRef = useRef(0)
+  /** Czy graf jest widoczny w viewport (IntersectionObserver). */
+  const visibleRef = useRef(true)
+  /** Losowa faza falowania per krawedz (rozne fazy => tkanka nie pulsuje rowno). */
+  const edgePhaseRef = useRef<number[]>([])
   const viewRef = useRef<{ x: number; y: number; w: number; h: number }>({
     x: -400,
     y: -300,
@@ -158,6 +272,14 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
     simRef.current = sim
     byId.current = new Map(sim.map((s) => [s.id, s]))
 
+    // Reset warstwy zycia dla nowego modelu.
+    edgeRefs.current = new Array(model.links.length).fill(null)
+    edgeCtrl.current = new Array(model.links.length)
+    impulsesRef.current = new Array(IMPULSE_MAX).fill(null)
+    edgePhaseRef.current = model.links.map((_, i) => seeded(i * 5 + 1) * TAU)
+    timeRef.current = 0
+    lastSpawnRef.current = 0
+
     fitView(true)
 
     const reduced = prefersReducedMotion()
@@ -165,7 +287,9 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
       for (let i = 0; i < 480; i++) step()
       fitView(true)
       setTick((t) => t + 1)
-      return
+      // Krawedzie sa malowane imperatywnie => jednorazowy paint po commicie.
+      const once = requestAnimationFrame(() => paintEdges())
+      return () => cancelAnimationFrame(once)
     }
 
     let frames = 0
@@ -173,6 +297,7 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
       let energy = 0
       for (let s = 0; s < 2; s++) energy = step()
       fitView(false)
+      paintEdges() // krawedzie sledza wezly podczas ustawiania ukladu
       frames++
       setTick((t) => t + 1)
       // Zatrzymanie po ustabilizowaniu lub twardy limit klatek.
@@ -184,9 +309,37 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
     }
     rafRef.current = requestAnimationFrame(loop)
 
+    // Warstwa zycia (falowanie + impulsy) niezalezna od fizyki; pauza gdy
+    // karta w tle (document.hidden) lub graf poza ekranem (IntersectionObserver).
+    const onVis = () => {
+      if (document.hidden) stopLife()
+      else if (visibleRef.current) startLife()
+    }
+    document.addEventListener('visibilitychange', onVis)
+
+    let io: IntersectionObserver | null = null
+    if (typeof IntersectionObserver !== 'undefined' && containerRef.current) {
+      io = new IntersectionObserver(
+        (entries) => {
+          const vis = entries.some((e) => e.isIntersecting)
+          visibleRef.current = vis
+          if (vis && !document.hidden) startLife()
+          else stopLife()
+        },
+        { threshold: 0 },
+      )
+      io.observe(containerRef.current)
+    } else {
+      visibleRef.current = true
+    }
+    startLife()
+
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       rafRef.current = null
+      stopLife()
+      document.removeEventListener('visibilitychange', onVis)
+      if (io) io.disconnect()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model])
@@ -288,6 +441,130 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
     cur.h += (th - cur.h) * k
   }
 
+  // --- Warstwa "zycia": imperatywne malowanie krawedzi i impulsow ---
+
+  /** Przelicza 'd' wszystkich krawedzi (wstega + falowanie) prosto na DOM. */
+  function paintEdges() {
+    const links = model.links
+    const amp = prefersReducedMotion() ? 0 : WAVE_AMP
+    const time = timeRef.current
+    const phases = edgePhaseRef.current
+    for (let i = 0; i < links.length; i++) {
+      const el = edgeRefs.current[i]
+      if (!el) continue
+      const l = links[i]
+      const a = byId.current.get(l.source)
+      const b = byId.current.get(l.target)
+      if (!a || !b) {
+        el.setAttribute('d', '')
+        continue
+      }
+      const st = LINK_STYLE[l.kind]
+      const { cx, cy } = edgeControl(a.x, a.y, b.x, b.y, phases[i] ?? 0, time, amp)
+      edgeCtrl.current[i] = { cx, cy, ax: a.x, ay: a.y, bx: b.x, by: b.y }
+      const wEnd = st.w * 1.5 + 1.2
+      const wMid = st.w * 0.4 + 0.2
+      el.setAttribute(
+        'd',
+        ribbonPath(a.x, a.y, cx, cy, b.x, b.y, wEnd, wMid, EDGE_SAMPLES),
+      )
+    }
+  }
+
+  /** Odpala impuls na losowej krawedzi, jesli jest wolny slot w puli. */
+  function spawnImpulse() {
+    const links = model.links
+    if (links.length === 0) return
+    let slot = -1
+    for (let k = 0; k < IMPULSE_MAX; k++) {
+      if (!impulsesRef.current[k]) {
+        slot = k
+        break
+      }
+    }
+    if (slot === -1) return
+    const i = Math.floor(Math.random() * links.length)
+    const l = links[i]
+    const a = byId.current.get(l.source)
+    if (!a || !byId.current.get(l.target)) return
+    impulsesRef.current[slot] = {
+      edge: i,
+      t: 0,
+      speed: 0.6 + Math.random() * 0.5,
+      color: a.color,
+    }
+  }
+
+  /** Przesuwa i maluje impulsy wzdluz ich krawedzi; gasnie po dojsciu do konca. */
+  function paintImpulses(dt: number) {
+    for (let k = 0; k < IMPULSE_MAX; k++) {
+      const c = impulseRefs.current[k]
+      if (!c) continue
+      const imp = impulsesRef.current[k]
+      if (!imp) {
+        c.setAttribute('opacity', '0')
+        continue
+      }
+      imp.t += imp.speed * dt
+      const ec = edgeCtrl.current[imp.edge]
+      if (imp.t >= 1 || !ec) {
+        impulsesRef.current[k] = null
+        c.setAttribute('opacity', '0')
+        continue
+      }
+      const p = quadPoint(ec.ax, ec.ay, ec.cx, ec.cy, ec.bx, ec.by, imp.t)
+      // Jasnosc narasta i gasnie (dzwon) => impuls "przeplywa".
+      const fade = Math.sin(imp.t * Math.PI)
+      c.setAttribute('cx', p.x.toFixed(2))
+      c.setAttribute('cy', p.y.toFixed(2))
+      c.setAttribute('fill', imp.color)
+      c.setAttribute('opacity', (fade * 0.9).toFixed(3))
+    }
+  }
+
+  /** Zatrzymuje pętlę zycia (pauza gdy karta/graf niewidoczne, sprzatanie). */
+  function stopLife() {
+    if (lifeRafRef.current != null) {
+      cancelAnimationFrame(lifeRafRef.current)
+      lifeRafRef.current = null
+    }
+  }
+
+  /** Jedna klatka warstwy zycia (throttlowana ~30 fps, pauzowana gdy niewidoczne). */
+  function life(now: number) {
+    if (typeof document !== 'undefined' && document.hidden) {
+      lifeRafRef.current = null
+      return
+    }
+    if (!visibleRef.current) {
+      lifeRafRef.current = null
+      return
+    }
+    const elapsed = now - lastFrameRef.current
+    if (elapsed < LIFE_FRAME_MS) {
+      lifeRafRef.current = requestAnimationFrame(life)
+      return
+    }
+    const dt = Math.min(0.05, elapsed / 1000)
+    lastFrameRef.current = now
+    timeRef.current += dt
+    if (now - lastSpawnRef.current > SPAWN_MS) {
+      spawnImpulse()
+      lastSpawnRef.current = now
+    }
+    paintEdges()
+    paintImpulses(dt)
+    lifeRafRef.current = requestAnimationFrame(life)
+  }
+
+  /** Startuje pętlę zycia (nic nie robi przy reduced-motion lub gdy juz biegnie). */
+  function startLife() {
+    if (prefersReducedMotion()) return
+    if (lifeRafRef.current != null) return
+    lastFrameRef.current = performance.now()
+    lifeRafRef.current = requestAnimationFrame(life)
+  }
+
   // --- Przeciaganie wezlow ---
   const toLogical = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current
@@ -327,12 +604,15 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
     node.y = p.y
     node.vx = 0
     node.vy = 0
+    // Krawedzie sledza wezel od razu (dziala tez przy reduced-motion).
+    paintEdges()
     // Ozyw symulacje, jesli stoi.
     if (rafRef.current === null && !prefersReducedMotion()) {
       const loop = () => {
         let energy = 0
         for (let s = 0; s < 2; s++) energy = step()
         fitView(false)
+        paintEdges()
         setTick((t) => t + 1)
         if (draggingId.current || energy > 0.03 * simRef.current.length) {
           rafRef.current = requestAnimationFrame(loop)
@@ -373,7 +653,7 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
   }
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col">
+    <div ref={containerRef} className="relative flex h-full min-h-0 flex-col">
       {/* Winieta tla: rozjasnia srodek, przyciemnia rogi (glebia, fokus na wezly) */}
       <div
         className="pointer-events-none absolute inset-0 z-0"
@@ -405,16 +685,28 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
           >
             <feGaussianBlur stdDeviation="3" />
           </filter>
-          {/* Gradient wypelnienia hubow: mocny w srodku, gasnie na brzegu */}
+          {/* Miekki blask swietlnego impulsu */}
+          <filter
+            id="impulseGlow"
+            x="-200%"
+            y="-200%"
+            width="500%"
+            height="500%"
+          >
+            <feGaussianBlur stdDeviation="1.6" />
+          </filter>
+          {/* Gradient wypelnienia hubow: jadro neuronu (mocny rdzen -> gasnie) */}
           {model.groups.map((g) => (
             <radialGradient key={g.key} id={`hubgrad-${g.key}`}>
-              <stop offset="0%" stopColor={g.color} stopOpacity={0.4} />
+              <stop offset="0%" stopColor={g.color} stopOpacity={0.6} />
+              <stop offset="45%" stopColor={g.color} stopOpacity={0.32} />
               <stop offset="100%" stopColor={g.color} stopOpacity={0.05} />
             </radialGradient>
           ))}
         </defs>
 
-        {/* Krawedzie (zakrzywione) */}
+        {/* Krawedzie: wstegi o zmiennej grubosci (grubsze przy wezlach), falujace
+            w czasie i malowane imperatywnie w warstwie zycia (atrybut 'd'). */}
         <g>
           {model.links.map((l, i) => {
             const a = byId.current.get(l.source)
@@ -423,29 +715,53 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
             const st = LINK_STYLE[l.kind]
             const active = isEdgeActive(l.source, l.target)
             const dim = highlight && !active
-            const stroke = active ? '#93b4f4' : '#52525b'
+            const fill = active ? '#93b4f4' : '#5b6472'
             return (
               <path
                 key={i}
-                d={edgePath(a.x, a.y, b.x, b.y)}
-                fill="none"
-                stroke={stroke}
-                strokeWidth={active ? st.w + 0.6 : st.w}
-                strokeOpacity={dim ? 0.06 : active ? 0.9 : st.o}
-                strokeLinecap="round"
-                strokeDasharray={l.kind === 'reads' ? '3 4' : undefined}
+                ref={(el) => {
+                  edgeRefs.current[i] = el
+                }}
+                fill={fill}
+                fillOpacity={dim ? 0.05 : active ? 0.85 : st.o}
+                className="pointer-events-none"
               />
             )
           })}
         </g>
 
+        {/* Impulsy: pula kropek (max IMPULSE_MAX) pozycjonowana w warstwie zycia */}
+        <g className="pointer-events-none">
+          {Array.from({ length: IMPULSE_MAX }).map((_, k) => (
+            <circle
+              key={k}
+              ref={(el) => {
+                impulseRefs.current[k] = el
+              }}
+              r={2.6}
+              fill="#93b4f4"
+              opacity={0}
+              filter="url(#impulseGlow)"
+            />
+          ))}
+        </g>
+
         {/* Wezly */}
         <g>
-          {nodes.map((s) => {
+          {nodes.map((s, ni) => {
             const dim = isDim(s.id)
             const breathing =
               !reduced && activeGroup != null && s.group === activeGroup
             const selected = s.id === selectedId
+            const isHovered = s.id === highlight
+            // Miekka, oddychajaca poswiata z rozna faza per wezel (tkanka zyje).
+            const glowStyle: CSSProperties = reduced
+              ? { opacity: s.kind === 'hub' ? 0.22 : 0.16 }
+              : ({
+                  animationDelay: `${(seeded(ni * 13 + 7) * 4).toFixed(2)}s`,
+                  '--glow-min': s.kind === 'hub' ? '0.18' : '0.1',
+                  '--glow-max': s.kind === 'hub' ? '0.34' : '0.22',
+                } as CSSProperties)
             // Miniatura postaci w wezle persony (wektorowy portret, spojny
             // z reszta aplikacji). Brak karty postaci => inicjaly jak dotad.
             const agentPersony =
@@ -506,13 +822,33 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
                   />
                 )}
 
-                {/* Poswiata pod wezlem (glebia) */}
+                {/* Rozszerzajace sie halo przy hover (jak rozblysk neuronu) */}
+                {isHovered && (
+                  <circle
+                    r={s.size + 6}
+                    fill="none"
+                    stroke={s.color}
+                    strokeWidth={1.4}
+                    strokeOpacity={0.5}
+                    className={
+                      reduced
+                        ? 'pointer-events-none'
+                        : 'graph-hover-halo pointer-events-none'
+                    }
+                  />
+                )}
+
+                {/* Miekka, oddychajaca poswiata pod wezlem (glebia + zycie) */}
                 <circle
                   r={s.size * 1.7}
                   fill={s.color}
-                  opacity={s.kind === 'hub' ? 0.22 : 0.16}
                   filter="url(#wezelGlow)"
-                  className="pointer-events-none"
+                  className={
+                    reduced
+                      ? 'pointer-events-none'
+                      : 'graph-glow pointer-events-none'
+                  }
+                  style={glowStyle}
                 />
 
                 {/* Glowne kolo wezla; przy portrecie persony robi za ring-aure */}

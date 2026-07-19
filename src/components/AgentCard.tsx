@@ -8,27 +8,28 @@ interface AgentCardProps {
 }
 
 /**
- * Kafelek agenta w siatce zespolu. Akcent koloru per agent.
+ * Kafelek agenta w galerii zespolu: PORTRET na pierwszym planie, pod nim nazwa,
+ * a rola najmniejszym wygaszonym tekstem. Akcent koloru per agent.
  * Klik w karte otwiera PROFIL agenta (/agent/slug), a przycisk "Rozmawiaj"
- * prowadzi do czatu. Rozwiazane wzorcem rozciagnietego linku (link-nakladka),
+ * prowadzi wprost do czatu. Rozwiazane wzorcem rozciagnietego linku (link-nakladka),
  * zeby nie zagniezdzac <a> w <a>.
  */
 export default function AgentCard({ agent }: AgentCardProps) {
   const active = agent.hasPrompt
 
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 shadow-card transition-all duration-200 hover:-translate-y-1 hover:border-zinc-700 hover:bg-zinc-900 hover:shadow-card-hover focus-within:-translate-y-1 motion-reduce:transition-none motion-reduce:hover:translate-y-0">
+    <div className="group relative flex flex-col items-center overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 px-3 pb-5 pt-7 text-center shadow-card transition-all duration-200 hover:-translate-y-1 hover:border-zinc-700 hover:bg-zinc-900 hover:shadow-card-hover focus-within:-translate-y-1 motion-reduce:transition-none motion-reduce:hover:translate-y-0 sm:px-5 sm:pb-6">
       {/* Link-nakladka: cala karta prowadzi do profilu agenta */}
       <Link
         to={`/agent/${agent.slug}`}
         aria-label={`Profil agenta ${agent.name}`}
         className="absolute inset-0 z-10 rounded-2xl"
       />
-      {/* Stala aura odcienia agenta (radial od naroznika portretu), mocniejsza na hover */}
+      {/* Stala aura odcienia agenta (radial od gory za portretem), mocniejsza na hover */}
       <span
         className="pointer-events-none absolute inset-0 opacity-70 transition-opacity duration-300 group-hover:opacity-100"
         style={{
-          background: `radial-gradient(130% 90% at 18% 0%, ${agent.accent}14, transparent 55%)`,
+          background: `radial-gradient(120% 70% at 50% 0%, ${agent.accent}18, transparent 62%)`,
         }}
         aria-hidden
       />
@@ -40,73 +41,47 @@ export default function AgentCard({ agent }: AgentCardProps) {
         }}
         aria-hidden
       />
-      {/* Akcentowy pasek po lewej, podswietla sie na hover */}
-      <span
-        className="pointer-events-none absolute inset-y-4 left-0 w-[3px] rounded-r-full opacity-60 transition-all duration-200 group-hover:inset-y-0 group-hover:opacity-100"
-        style={{ backgroundColor: agent.accent }}
-        aria-hidden
-      />
-      {/* Subtelny poblysk akcentu w rogu na hover */}
-      <span
-        className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-25"
-        style={{ backgroundColor: agent.accent }}
-        aria-hidden
-      />
 
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <Avatar
-          agent={agent}
-          size="lg"
-          aura="soft"
-          hover
-          className="transition-transform duration-200 group-hover:-translate-y-px group-hover:scale-105 motion-reduce:transform-none"
-        />
-
+      {/* Dyskretny status w rogu */}
+      <span
+        className={[
+          'absolute right-2.5 top-2.5 z-20 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.62rem] font-medium',
+          active
+            ? 'bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/25'
+            : 'bg-zinc-800/80 text-zinc-400 ring-1 ring-zinc-700',
+        ].join(' ')}
+      >
         <span
           className={[
-            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[0.7rem] font-medium',
-            active
-              ? 'bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/25'
-              : 'bg-zinc-800 text-zinc-400 ring-1 ring-zinc-700',
+            'h-1.5 w-1.5 rounded-full',
+            active ? 'bg-emerald-400' : 'bg-zinc-500',
           ].join(' ')}
-        >
-          <span
-            className={[
-              'h-1.5 w-1.5 rounded-full',
-              active ? 'bg-emerald-400' : 'bg-zinc-500',
-            ].join(' ')}
-            aria-hidden
-          />
-          {active ? 'Aktywny' : 'Wkrotce'}
-        </span>
-      </div>
-
-      <div className="mb-1.5 inline-flex w-fit items-center gap-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-zinc-600">
-        <span
-          className="h-1 w-1 rounded-full"
-          style={{ backgroundColor: agent.accent }}
           aria-hidden
         />
-        Kafelek {agent.tileNo}
-      </div>
-      <h3 className="text-base font-semibold leading-snug text-zinc-50">
+        {active ? 'Aktywny' : 'Wkrotce'}
+      </span>
+
+      {/* PORTRET dominuje: duzy, wysrodkowany, aura koloru, hover wideo/lift */}
+      <Avatar
+        agent={agent}
+        size="2xl"
+        aura="soft"
+        hover
+        className="relative !h-28 !w-28 transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:scale-[1.03] motion-reduce:transform-none sm:!h-36 sm:!w-36 lg:!h-40 lg:!w-40"
+      />
+
+      {/* NAZWA agenta (wyrazna) */}
+      <h3 className="mt-4 text-base font-semibold leading-snug text-zinc-50">
         {agent.name}
       </h3>
-      <p
-        className="mt-1 text-sm font-medium"
-        style={{ color: agent.accent }}
-      >
-        {agent.role}
-      </p>
-      <p className="mt-3 flex-1 text-sm leading-relaxed text-zinc-400">
-        {agent.mission}
-      </p>
+      {/* ROLA najmniejszym, wygaszonym tekstem */}
+      <p className="mt-1 text-xs text-zinc-400">{agent.role}</p>
 
       {/* Przycisk "Rozmawiaj": nad linkiem-nakladka, prowadzi wprost do czatu */}
       <Link
         to={`/czat/${agent.slug}`}
         aria-label={`Rozmawiaj z agentem ${agent.name}`}
-        className="relative z-20 mt-5 inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-zinc-400 transition-colors hover:text-zinc-100 group-hover:text-zinc-100"
+        className="relative z-20 mt-4 inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-zinc-400 transition-colors hover:text-zinc-100 group-hover:text-zinc-100"
         style={{ ['--acc' as string]: agent.accent }}
       >
         <span className="transition-colors group-hover:[color:var(--acc)]">

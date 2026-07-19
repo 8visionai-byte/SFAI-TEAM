@@ -202,6 +202,38 @@ h3 {
   animation: graphBreath 2.2s ease-in-out infinite;
 }
 
+/* Graf: miekka, oddychajaca poswiata wezlow. Amplituda przez zmienne --glow-*,
+   rozne fazy przez animation-delay (ustawiane inline per wezel). */
+@keyframes graphGlowBreath {
+  0%,
+  100% {
+    opacity: var(--glow-min, 0.12);
+  }
+  50% {
+    opacity: var(--glow-max, 0.26);
+  }
+}
+.graph-glow {
+  animation: graphGlowBreath 4s ease-in-out infinite;
+}
+
+/* Graf: rozszerzajace sie halo wokol wezla przy hover (rozblysk neuronu) */
+@keyframes graphHoverHalo {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+.graph-hover-halo {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: graphHoverHalo 1.4s ease-out infinite;
+}
+
 /* --- Glos JARVIS: orb mikrofonu i jego stany --------------------------------
    Baza: kolo z radialnym gradientem akcentu do zinc-900, cienka obwodka i glow.
    Stany: czuwa (baza), slucham (puls + ring poziomu), mysle (obracany conic),

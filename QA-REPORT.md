@@ -1,42 +1,43 @@
 # QA-REPORT, webapp/ (SF AI TEAM)
 
 Data: 2026-07-19
-Wersja: v1.9 (przeglad po 4 etapach: spec, postacie v2, JARVIS glos, modele + Obsidian)
+Wersja: v2.0 (przeglad po 4 etapach: wideo+logo, karty foto-first, graf neurony, dane+integracje)
 Recenzent: QA
 Werdykt: GOTOWE (tak)
 
 ## Podsumowanie
 
 Build przechodzi bez bledow (tsc + vite, exit 0) za pierwszym razem. Zero em-dash
-w webapp/src (rowniez w src/content: 0 trafien globalnie), w AWATARY-HIGGSFIELD-PROMPTY.md
-i w podglad-awatary.html. Nowa warstwa glosowa JARVIS dziala w calosci w przegladarce
-(Web Speech API, zero nowych zaleznosci npm, zero kluczy): Command ma orb przy polu
-i pelnoekranowy overlay ze stanami czuwa/slucham/mysle/mowie, finalna odpowiedz
-orkiestracji trafia do speak() przy wlaczonym auto-czytaniu; Chat ma dyktowanie do
-pola tekstowego i przycisk "Przeczytaj na glos" pod odpowiedziami agenta
-(ChatMessage). Selektor modeli w Ustawieniach ma 5 pozycji, Brain ma most Obsidian
-(eksport calego mozgu do jednego .md + import notatek .md jako pliki wlasne), panel
-integracji spojnie pokazuje Glos i Obsidian jako aktywne. Funkcje z v1.8 bez
-regresji: orchestrator (plan przez callModel), persystencja sf_centrum, skille
-sf_skille w promptach, nadpisy mozgu, historia rozmow. Nie znaleziono usterek
-wymagajacych naprawy w tym przegladzie.
+w webapp/src (0 trafien globalnie, rowniez w src/content) i w webapp/public/BRANDING.md.
+Avatar ma pelny lancuszek warstw: inicjaly -> wektorowy portret -> PNG -> wideo MP4;
+warstwa wideo ma onError (brak pliku wylacza ja na stale, zero petli bledow) i twarda
+blokade prefers-reduced-motion w playVideo(). Logo probuje logo-mark.png -> logo.png ->
+wektorowy SVG (lancuszek onError, bez skoku layoutu). AgentCard jest zdjecie-first:
+duzy portret (28/36/40), pod nim nazwa, rola najmniejszym wygaszonym tekstem.
+BrainGraph ma warstwe zycia (falowanie wsteg + impulsy neuronow) z pauza przy
+document.hidden (visibilitychange) i przy grafie poza ekranem (IntersectionObserver)
+oraz wariant reduced-motion (statyczny uklad, amp=0, petla zycia nie startuje).
+COO w characters.ts to mezczyzna (ok. 40 lat: krotkie wlosy, zdecydowana szczeka,
+marynarka z pinem). Settings nie ma karty Make, ma karte "Baza wiedzy: Google Drive"
+(W przygotowaniu). Folder webapp/public/avatars/ nieruszony przez QA (zmiany PNG/MP4
+w git status pochodza z rownoleglego procesu generowania). Funkcje z v1.9 bez
+regresji: orchestrator, skille sf_skille, nadpisy mozgu, glos JARVIS, historia
+sf_centrum/sf_rozmowy. Nie znaleziono usterek wymagajacych naprawy.
 
 ## Status per pozycja
 
 | # | Pozycja | Status | Uwagi |
 |---|---------|--------|-------|
-| 1 | `npm run build` exit 0 | OK | Przeszedl za pierwszym razem (vite 5.4.21, 1865 modulow, 4.41s). Brak napraw. |
-| 2 | Em-dash (U+2014) | OK | Grep webapp/src (wszystkie pliki, poza src/content; faktycznie 0 trafien takze w src/content): 0. AWATARY-HIGGSFIELD-PROMPTY.md: 0. podglad-awatary.html: 0. Brak napraw. |
-| 3a | characters.ts: 10 kart z ROZNA geometria | OK | src/data/characters.ts: 10 kart 1:1 ze slugami agents.ts. Kazda rozni sie geometria, nie tylko kolorem: faceShape (owalna x3, kanciasta x3, okragla x2, pociagla x2), build (szerokie x2, waskie x3, pochylone x2, normalne x3), age (mlody x2, dojrzaly x5, starszy x3), 11 wariantow fryzur + bald/copperStreak, jaw, eyeSet, signature czytelny w 40px. Akcent nadal z agent.accent (bez duplikacji). |
-| 3b | voice.ts istnieje | OK | src/lib/voice.ts: STT (SpeechRecognition/webkit, pl-PL, interim, poziom glosu przez AnalyserNode), TTS (speechSynthesis, wybor glosu PL: Google polski > Paulina > Zosia, czyszczenie markdown przed czytaniem, dzielenie na fragmenty ~200 znakow przeciw bugowi ~15 s), preferencja sf_glos_auto. Typy Web Speech zadeklarowane lokalnie. Zero sekretow, zero zaleznosci. |
-| 3c | Command: orb + speak dla finalnej odpowiedzi | OK | Command.tsx: orb przy polu (otworzGlos), overlay 160 px ze stanami czuwa/slucham/mysle/mowie, transkrypt na zywo, poziom glosu w boxShadow, Escape zamyka. Zdarzenie orkiestracji `final` -> setGlosOdpowiedz + speak(z.text) gdy czytajAutoWlaczone(); blad orkiestracji nie zostawia orbu w "mysle". Przyciski: Powtorz glosem, Czytaj odpowiedzi na glos (aria-pressed). |
-| 3d | Chat: czytanie na glos + dyktowanie | OK | Chat.tsx: przycisk mikrofonu (Dyktuj glosem / Zatrzymaj dyktowanie, aria-pressed, klasa orb-listen), startListening dopisuje final do pola. ChatMessage.tsx: PrzyciskCzytaj (speak/cancel, Volume2/VolumeX) pod odpowiedziami agenta; chowa sie bez TTS lub bez polskiego glosu. |
-| 3e | Brak nowych zaleznosci npm | OK | package.json bez zmian: 6 dependencies (lucide-react, react, react-dom, react-markdown, react-router-dom, remark-gfm) + dotychczasowe devDependencies. Glos oparty wylacznie o API przegladarki. |
-| 3f | Selektor modeli: 5 pozycji | OK | Settings.tsx MODELE: claude-sonnet-4-6 (domyslny), claude-sonnet-5, claude-opus-4-8, claude-fable-5, claude-haiku-4-5-20251001. Wybor zapisywany w sf_anthropic_model (ai.ts getModel/setModel) i uzywany we WSZYSTKICH trybach: klucz, proxy (w body), env. |
-| 3g | Brain: Eksportuj mozg + Importuj .md | OK | Brain.tsx most Obsidian: "Eksportuj mozg (.md)" sklada caly mozg (z nadpisami i plikami wlasnymi) do mozg-sfai-<data>.md; "Importuj .md" (input accept .md/.markdown/.txt, multiple) dodaje notatki jako wlasne/<nazwa>.md z wyborem grupy i deduplikacja nazw (-2, -3...). Toast po obu operacjach. |
-| 3h | Panel integracji spojny | OK | Settings.tsx INTEGRACJE: "Glos JARVIS (rozmowa na zywo)" status aktywne, badge "Aktywny (glos przegladarki)"; "Obsidian / eksport-import mozgu" status aktywne, badge "Aktywny". Osobna sekcja Glos JARVIS z przelacznikiem auto-czytania (wylaczony i opisany, gdy brak polskiego glosu TTS). |
-| 3i | Stare funkcje nietkniete | OK | Orchestrator: plan przez callModel z dedykowanym system promptem (retry raz, fallback), specjalisci przez sendMessage, symulacja demo. sf_skille: buildSystemPrompt dokleja aktywneSkilleAgenta. Nadpisy mozgu: sf_mozg_nadpisy + sf_mozg_wlasne przez getFullBrain. Persystencja: sf_centrum (wczytajCentrum przy starcie Command), sf_rozmowy (historia czatu, wczytajDoCzatu). |
-| 4 | UI po polsku, zero zmyslonych liczb | OK | Nowe teksty (overlay glosu, etykiety stanow, panel integracji, most Obsidian, etykiety modeli) po polsku; komunikaty bledow glosu opisowe (Chrome/Edge, mikrofon). Zero nowych liczb-tresci; wartosci liczbowe w kodzie to geometria/limity techniczne. |
+| 1 | `npm run build` exit 0 | OK | Przeszedl za pierwszym razem (vite 5.4.21, 1865 modulow, 4.76s). Brak napraw. |
+| 2 | Em-dash (U+2014) | OK | Grep webapp/src: 0 trafien (rowniez w src/content). webapp/public/BRANDING.md: 0. Brak napraw. |
+| 3a | Avatar: warstwa wideo z onError + reduced-motion | OK | Avatar.tsx: `<video>` z src avatars/slug.mp4, onError -> setVideoFailed(true) wylacza warstwe na stale; playVideo() wychodzi przy prefers-reduced-motion; play().catch() lapie odmowe autoplay; hover myszka (matchMedia hover:hover), na dotyku tap tylko w hero profilu (prop profile). Pod spodem PNG z onLoad/onError i wektorowy CharacterAvatar, na dnie inicjaly. |
+| 3b | Logo: lancuszek logo-mark.png -> logo.png -> SVG | OK | Logo.tsx: sources = [logo-mark.png, logo.png] z BASE_URL, onError przechodzi idx+1, potem useSvg=true (wektorowy cyrkiel SF, aria-label). Staly rozmiar width/height, bez skoku layoutu. |
+| 3c | AgentCard zdjecie-first | OK | AgentCard.tsx: Avatar size 2xl (h-28 -> sm:h-36 -> lg:h-40) dominuje kafelek, pod nim nazwa (text-base font-semibold), rola text-xs text-zinc-400. Link-nakladka na profil + osobny przycisk "Rozmawiaj" do czatu (bez zagniezdzania a w a). Aura akcentu per agent, motion-reduce na transformach. |
+| 3d | BrainGraph: pauza document.hidden + reduced-motion | OK | BrainGraph.tsx: petla zycia (falowanie krawedzi + impulsy) pauzowana przez visibilitychange (document.hidden -> stopLife) i IntersectionObserver (graf poza viewport -> stopLife); life() dodatkowo sprawdza oba warunki per klatke; throttling ~30 fps (LIFE_FRAME_MS=33), pula impulsow max 5. Reduced-motion: startLife() nie startuje, amp falowania = 0, fizyka liczona jednorazowo (480 krokow) do statycznego ukladu; przeciaganie wezlow dalej dziala (paintEdges wolane wprost). |
+| 3e | characters.ts: coo = mezczyzna | OK | src/data/characters.ts karta `coo` (komentarz: "mezczyzna ok. 40 lat, spokojny lider"): faceShape owalna, jaw defined, hairStyle krotkie-siwe, facialHair brak, collar lapel, accessory pin. Zadnych cech kobiecych (kolczyki, dlugie wlosy, kok). |
+| 3f | Settings: bez karty Make, z karta Google Drive | OK | Settings.tsx INTEGRACJE (5 kart): Awatary person Higgsfield (aktywne), Glos JARVIS (aktywne), Obsidian (aktywne), "Baza wiedzy: Google Drive" (w-budowie, badge "W przygotowaniu"), Social media i GA4 (w-budowie). Zero wystapien "Make" w pliku. |
+| 3g | webapp/public/avatars/* nietkniete przez QA | OK | Przeglad niczego tam nie zapisywal ani nie usuwal. git status pokazuje M na 10 PNG i nowe 10 MP4: to rownolegly proces generowania awatarow (poza zakresem QA). |
+| 4 | UI po polsku, stare funkcje, zero zmyslonych liczb | OK | Nowe teksty (karty integracji, etykiety, aria-label grafu i awatarow) po polsku. Regresja: orchestrator.ts na miejscu, sf_skille / sf_mozg_nadpisy / sf_rozmowy / sf_centrum / glos (czytajAutoWlaczone) obecne w 7 plikach (19 wystapien), build typuje sie czysto. Zero nowych liczb-tresci; liczby w kodzie to geometria/limity techniczne. |
 
 ## Naprawione w tym przegladzie
 
@@ -44,26 +45,23 @@ Brak. Wszystkie punkty przeszly bez zmian kodu.
 
 ## Pozostale rekomendacje (niekrytyczne)
 
-1. Bundle JS: 746 kB (gzip 236 kB), poprzednio 722 kB. Dziala, ale lazy-load strony
-   Mozg (graf + markdown) daloby najwiekszy zysk na starcie (przeniesione z v1.8).
-2. Glos JARVIS zalezy od glosow systemowych: bez zainstalowanego polskiego glosu
-   TTS przyciski czytania sie chowaja, a przelacznik w Ustawieniach jest wylaczony
-   z opisem (zamierzona degradacja). STT dziala w Chrome i Edge; Firefox/Safari
-   dostaja czytelny komunikat.
-3. Folder webapp/public/avatars/ z PNG z Higgsfield nadal pusty; dziala wektorowy
-   portret (zamierzony fallback), wgranie PNG nie wymaga zmian w kodzie.
-4. Przebieg Centrum zapisuje sie po zakonczeniu pracy zespolu; odswiezenie W TRAKCIE
+1. Bundle JS: 749.78 kB (gzip 237.93 kB), poprzednio 746 kB. Lazy-load strony Mozg
+   (graf + markdown) daloby najwiekszy zysk na starcie (przeniesione z v1.9).
+2. Avatar laduje PNG (loading="lazy") i preload="metadata" wideo dla kazdego
+   wystapienia awatara na liscie; przy 10 agentach to akceptowalne, ale gdyby lista
+   urosla, warto wlaczac warstwe wideo dopiero przy pierwszym hoverze.
+3. Przebieg Centrum zapisuje sie po zakonczeniu pracy zespolu; odswiezenie W TRAKCIE
    pracy gubi biezacy przebieg (przeniesione z v1.7, wciaz aktualne).
-5. Edge Function ma `Access-Control-Allow-Origin: *`; przed publicznym wdrozeniem
+4. Edge Function ma `Access-Control-Allow-Origin: *`; przed publicznym wdrozeniem
    zawezic do domeny aplikacji (przeniesione z v1.6, wciaz aktualne).
-6. Realne testy modelu (w tym 4 nowych pozycji selektora) nadal wymagaja inputu
-   Pawla (klucz Anthropic lub deploy proxy Supabase); tryb demo dziala bez klucza.
+5. Realne testy modelu nadal wymagaja inputu Pawla (klucz Anthropic lub deploy proxy
+   Supabase); tryb demo dziala bez klucza.
 
 ## Ostatnie linie udanego build
 
 ```
 dist/index.html                 0.89 kB │ gzip:   0.48 kB
-dist/assets/index-C8Eol69k.css  40.13 kB │ gzip:   7.99 kB
-dist/assets/index-CpvusZsc.js   746.13 kB │ gzip: 236.15 kB
-✓ built in 4.41s
+dist/assets/index-Cum-m1Y1.css  41.29 kB │ gzip:   8.31 kB
+dist/assets/index-Bnfd8nJr.js   749.78 kB │ gzip: 237.93 kB
+✓ built in 4.76s
 ```

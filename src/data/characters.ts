@@ -62,6 +62,7 @@ export type Signature =
   | 'kucyk'
   | 'lysina-broda'
   | 'bob'
+  | 'pin'
 
 /** Pelna karta jednej postaci. Kazde pole = dokladna wartosc rysowana w SVG. */
 export interface CharacterCard {
@@ -192,14 +193,18 @@ export const COPPER_STREAK = '#B5643C'
 /* -------------------------------------------------------------------------- */
 
 export const characters: Record<string, CharacterCard> = {
-  // 0. COO: spokojna, pewna liderka, twarz zbalansowana
+  // 0. COO: mezczyzna ok. 40 lat, spokojny lider; marynarka w kobalcie.
+  // Owalna twarz + schludne krotkie ciemne wlosy ('krotkie-siwe' = geometria
+  // zaczesana na bok, tu w ciemnym brazie) odrozniaja go od pozostalych mezczyzn:
+  // analityk (jez), handlowiec (czupryna+broda), copywriter (kredy), wiedza
+  // (lysina), drugi-glos (zakola M). Znak roli: pin na klapie w akcencie.
   coo: {
     faceShape: 'owalna',
     build: 'normalne',
     age: 'dojrzaly',
-    jaw: 'soft',
+    jaw: 'defined',
     skin: 'porcelana',
-    hairStyle: 'bob-krotki',
+    hairStyle: 'krotkie-siwe',
     hairColor: 'ciemny-braz',
     brow: 'neutralne',
     eyes: 'wprost',
@@ -209,7 +214,7 @@ export const characters: Record<string, CharacterCard> = {
     facialHair: 'brak',
     accessory: 'pin',
     collar: 'lapel',
-    signature: 'bob',
+    signature: 'pin',
     rim: 0.55,
   },
   // 1. Wiedza: mistrz-bibliotekarz, lysina + srebrna broda (najbardziej odrebny)

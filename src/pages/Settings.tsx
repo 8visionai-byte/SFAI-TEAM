@@ -5,7 +5,6 @@ import {
   BarChart3,
   BookOpen,
   Check,
-  Database,
   ExternalLink,
   Eye,
   EyeOff,
@@ -15,7 +14,6 @@ import {
   Mic,
   ShieldCheck,
   Trash2,
-  Workflow,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -77,9 +75,8 @@ interface Integracja {
 const INTEGRACJE: Integracja[] = [
   {
     tytul: 'Awatary person (Higgsfield)',
-    opis: 'Kazda persona dostaje twarz zamiast inicjalow na kafelkach zespolu.',
-    meta: 'Prompty gotowe w pliku AWATARY-HIGGSFIELD-PROMPTY.md, wygenerowane obrazki wrzucasz do webapp/public/avatars.',
-    status: 'do-wygenerowania',
+    opis: 'Aktywne: portrety i animacje generowane z Twojego konta.',
+    status: 'aktywne',
     Ikona: ImageIcon,
   },
   {
@@ -92,15 +89,16 @@ const INTEGRACJE: Integracja[] = [
   {
     tytul: 'Obsidian / eksport-import mozgu',
     opis: 'W zakladce Mozg firmy eksportujesz caly mozg do jednego pliku .md i importujesz notatki z Obsidiana jako pliki wlasne.',
+    meta: 'Wtyczka Local REST API bedzie wkrotce opcja automatycznego polaczenia z Twoim Obsidianem.',
     status: 'aktywne',
     etykietaBadge: 'Aktywny',
     Ikona: BookOpen,
   },
   {
-    tytul: 'Google Drive (foldery wiedzy do mozgu)',
-    opis: 'Wrzucasz plik do folderu na Drive, a mozg zespolu poznaje go bez Twojej recznej roboty.',
-    kiedy: 'Wkrotce · Faza 7 roadmapy 2.0',
+    tytul: 'Baza wiedzy: Google Drive',
+    opis: 'Polaczysz folder z wiedza bez dodatkowych oplat serwerowych.',
     status: 'w-budowie',
+    etykietaBadge: 'W przygotowaniu',
     Ikona: FolderOpen,
   },
   {
@@ -109,20 +107,6 @@ const INTEGRACJE: Integracja[] = [
     kiedy: 'Wkrotce · Faza 7 roadmapy 2.0',
     status: 'w-budowie',
     Ikona: BarChart3,
-  },
-  {
-    tytul: 'Make.com (most danych z firmowych systemow)',
-    opis: 'Dane z firmowych systemow same splywaja do mozgu zespolu.',
-    kiedy: 'Wkrotce · Faza 7 roadmapy 2.0',
-    status: 'w-budowie',
-    Ikona: Workflow,
-  },
-  {
-    tytul: 'Mozg w bazie (RAG, upload plikow)',
-    opis: 'Nowa wiedza trafia do zespolu bez przebudowy aplikacji.',
-    kiedy: 'Wkrotce · Faza 3 roadmapy 2.0',
-    status: 'w-budowie',
-    Ikona: Database,
   },
 ]
 
@@ -397,8 +381,8 @@ export default function Settings() {
           Integracje i mozliwosci
         </h2>
         <p className="mb-4 text-xs leading-relaxed text-zinc-500">
-          Stan faktyczny na dzis: karty oznaczone "W budowie" nie maja jeszcze
-          zadnych dzialajacych funkcji, terminy wg roadmapy 2.0.
+          Stan faktyczny na dzis: karty oznaczone "W budowie" lub "W
+          przygotowaniu" nie maja jeszcze dzialajacych funkcji.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           {INTEGRACJE.map((item) => {

@@ -119,7 +119,7 @@ export default function AgentProfile() {
           style={{ background: agent.accent }}
           aria-hidden
         />
-        <Avatar agent={agent} size="xl" aura="strong" />
+        <Avatar agent={agent} size="2xl" aura="strong" profile />
         <h1 className="mt-4 text-2xl font-bold text-zinc-50 sm:text-3xl">
           {agent.name}
         </h1>
