@@ -46,6 +46,8 @@ interface AvatarProps {
    * ring z poswiata (hero profilu).
    */
   aura?: 'soft' | 'strong'
+  /** Animacja po najechaniu: uniesienie + poswiata w kolorze agenta. */
+  hover?: boolean
   /** Dodatkowe klasy (np. node-pulse w Centrum Dowodzenia). */
   className?: string
 }
@@ -64,6 +66,7 @@ export default function Avatar({
   working = false,
   glow = false,
   aura,
+  hover = false,
   className = '',
 }: AvatarProps) {
   const [loaded, setLoaded] = useState(false)
@@ -86,6 +89,7 @@ export default function Avatar({
         'relative flex flex-shrink-0 select-none items-center justify-center overflow-hidden font-bold ring-1 ring-white/10',
         SIZE_CLASSES[size],
         working ? 'avatar-breath' : '',
+        hover ? 'avatar-hover' : '',
         className,
       ]
         .filter(Boolean)
@@ -95,6 +99,7 @@ export default function Avatar({
         color: agent.accent,
         boxShadow,
         ['--glow' as string]: `${agent.accent}88`,
+        ['--accent-ring' as string]: `${agent.accent}59`,
       }}
       aria-hidden
     >

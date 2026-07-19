@@ -205,7 +205,10 @@ function Portret({
   const [failed, setFailed] = useState(false)
 
   return (
-    <div className={`relative ${sizeClass}`}>
+    <div
+      className={`avatar-hover relative ${sizeClass}`}
+      style={{ ['--accent-ring' as string]: glow }}
+    >
       {/* Puls aury jako osobna warstwa (nie koliduje ze statycznym ringiem) */}
       {pulsuj && (
         <span

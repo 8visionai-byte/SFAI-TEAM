@@ -58,6 +58,7 @@ export default function AgentCard({ agent }: AgentCardProps) {
           agent={agent}
           size="lg"
           aura="soft"
+          hover
           className="transition-transform duration-200 group-hover:-translate-y-px group-hover:scale-105 motion-reduce:transform-none"
         />
 
