@@ -261,8 +261,14 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
   const reduced = useReducedMotion()
 
   // Czasteczki powrotu (specjalista -> COO) pokazywane ~700ms po 'active'->'done'.
-  const [powroty, setPowroty] = useState<Record<string, boolean>>({})
+  // Licznik (nie flaga): kazde przejscie zwieksza wartosc, a zmiana klucza JSX
+  // wymusza remount <animateMotion>, wiec SMIL startuje od nowa za kazdym razem.
+  const [powroty, setPowroty] = useState<Record<string, number>>({})
   const prevStany = useRef<Record<string, StanWezla>>(stany)
+  // Timery ukrycia per agent, NIEZALEZNE od cyklu efektu (kasowane tylko przy
+  // odmontowaniu). Wczesniej cleanup efektu kasowal je przy kazdej zmianie
+  // stanow i kropki "wisialy" albo nie wracaly przy kolejnych delegacjach.
+  const powrotTimery = useRef<Record<string, number>>({})
 
   useEffect(() => {
     const el = stageRef.current
@@ -287,25 +293,36 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
       return
     }
     const prev = prevStany.current
-    const timeouty: number[] = []
     for (const a of teamAgents) {
       const p = prev[a.slug] ?? 'idle'
       const c = stany[a.slug] ?? 'idle'
       if (p === 'active' && c === 'done') {
-        setPowroty((r) => ({ ...r, [a.slug]: true }))
-        const id = window.setTimeout(() => {
+        // Nowe zdarzenie powrotu: skasuj poprzedni timer TEGO agenta (jesli
+        // wisi) i podbij licznik, zeby czasteczka zawsze wystartowala od zera.
+        if (powrotTimery.current[a.slug]) {
+          clearTimeout(powrotTimery.current[a.slug])
+        }
+        setPowroty((r) => ({ ...r, [a.slug]: (r[a.slug] ?? 0) + 1 }))
+        powrotTimery.current[a.slug] = window.setTimeout(() => {
+          delete powrotTimery.current[a.slug]
           setPowroty((r) => {
             const n = { ...r }
             delete n[a.slug]
             return n
           })
-        }, 700)
-        timeouty.push(id)
+        }, 750)
       }
     }
     prevStany.current = stany
-    return () => timeouty.forEach((id) => clearTimeout(id))
   }, [stany, reduced])
+
+  // Sprzatanie timerow powrotu wylacznie przy odmontowaniu mapy.
+  useEffect(() => {
+    const timery = powrotTimery.current
+    return () => {
+      Object.values(timery).forEach((id) => clearTimeout(id))
+    }
+  }, [])
 
   const cooAktywny = stanCoo !== 'idle'
   const { w, h } = wym
@@ -465,9 +482,16 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
                   </circle>
                 )}
 
-                {/* Czasteczka powrotu po zakonczeniu (specjalista -> COO) */}
+                {/* Czasteczka powrotu po zakonczeniu (specjalista -> COO).
+                    Klucz z licznikiem = swiezy element przy kazdym zdarzeniu,
+                    wiec animacja SMIL zawsze startuje od poczatku. */}
                 {powrot && !reduced && (
-                  <circle r={4.0} fill={KOLOR_DONE} filter="url(#nicGlow)">
+                  <circle
+                    key={`powrot-${n.slug}-${powrot}`}
+                    r={4.0}
+                    fill={KOLOR_DONE}
+                    filter="url(#nicGlow)"
+                  >
                     <animateMotion
                       dur="0.7s"
                       repeatCount="1"
