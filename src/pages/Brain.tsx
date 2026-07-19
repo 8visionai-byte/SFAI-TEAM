@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from 'react'
 import {
   FileText,
   Brain as BrainIcon,
@@ -8,6 +14,7 @@ import {
   Share2,
   Pencil,
   Save,
+  Upload,
   X,
   RotateCcw,
   Plus,
@@ -101,9 +108,46 @@ const GRUPY_WLASNE: { key: string; label: string }[] = [
   ...brainGroupOrder,
 ]
 
+/** Grupy do wyboru przy imporcie .md (domyslnie "notatki"). */
+const GRUPY_IMPORTU: { key: string; label: string }[] = [
+  { key: 'notatki', label: 'Notatki' },
+  ...GRUPY_WLASNE,
+]
+
 /** Etykieta grupy w liscie plikow (grupy spoza brainGroupOrder). */
 function etykietaGrupy(key: string): string {
-  return key === 'wlasne' ? 'Wlasne pliki' : key
+  if (key === 'wlasne') return 'Wlasne pliki'
+  if (key === 'notatki') return 'Notatki'
+  return key
+}
+
+/** Polska odmiana slowa "plik" dla licznikow. */
+function odmienPliki(n: number): string {
+  if (n === 1) return '1 plik'
+  const r = n % 10
+  const r100 = n % 100
+  if (r >= 2 && r <= 4 && (r100 < 12 || r100 > 14)) return `${n} pliki`
+  return `${n} plikow`
+}
+
+/** Sciezka wzgledna pliku mozgu (od src/content/mozg/) do naglowka eksportu. */
+function wzglednaSciezka(path: string): string {
+  const marker = '/content/mozg/'
+  const idx = path.indexOf(marker)
+  return idx >= 0 ? path.slice(idx + marker.length) : path
+}
+
+/** Pobiera tekst jako plik przez Blob (bez zaleznosci zewnetrznych). */
+function pobierzPlikTekstowy(nazwa: string, tresc: string): void {
+  const blob = new Blob([tresc], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = nazwa
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
 }
 
 const przyciskSm =
@@ -142,6 +186,10 @@ export default function Brain() {
   const [nowaNazwa, setNowaNazwa] = useState('')
   const [nowaGrupa, setNowaGrupa] = useState('wlasne')
   const [nowaTresc, setNowaTresc] = useState('')
+
+  // Most Obsidian: eksport calego mozgu do jednego .md i import notatek .md.
+  const [grupaImportu, setGrupaImportu] = useState('notatki')
+  const importInputRef = useRef<HTMLInputElement>(null)
 
   const { toast, pokazToast } = useToast()
 
@@ -294,6 +342,52 @@ export default function Brain() {
     pokazToast('Dodano plik wlasny. Agenci czytaja go razem z mozgiem.')
   }
 
+  // --- Most Obsidian: eksport / import mozgu -------------------------------
+
+  /**
+   * Eksport calego mozgu (z warstwa nadpisow i plikami wlasnymi) do JEDNEGO
+   * pliku markdown z separatorami "=== PLIK: sciezka ===".
+   */
+  function eksportujMozg() {
+    const md = pliki
+      .map((f) => `=== PLIK: ${wzglednaSciezka(f.path)} ===\n${f.content.trim()}`)
+      .join('\n\n')
+    const data = new Date().toISOString().slice(0, 10)
+    pobierzPlikTekstowy(`mozg-sfai-${data}.md`, `${md}\n`)
+    pokazToast(`Wyeksportowano mozg: ${odmienPliki(pliki.length)} w jednym .md.`)
+  }
+
+  /** Import wybranych plikow .md jako pliki wlasne mozgu (sf_mozg_wlasne). */
+  async function importujPliki(e: ChangeEvent<HTMLInputElement>) {
+    const wybrane = Array.from(e.target.files ?? [])
+    e.target.value = ''
+    if (wybrane.length === 0) return
+    const zajete = new Set(pliki.map((f) => f.path))
+    let dodane = 0
+    for (const plik of wybrane) {
+      const tresc = await plik.text()
+      const baza = slugNazwy(plik.name.replace(/\.(md|markdown|txt)$/i, ''))
+      let sciezka = `wlasne/${baza}.md`
+      let nr = 2
+      while (zajete.has(sciezka)) {
+        sciezka = `wlasne/${baza}-${nr}.md`
+        nr++
+      }
+      zajete.add(sciezka)
+      zapiszWlasnyPlikMozgu({
+        sciezka,
+        tresc,
+        grupa: grupaImportu,
+        updatedAt: new Date().toISOString(),
+      })
+      dodane++
+    }
+    setWersja((w) => w + 1)
+    pokazToast(
+      `Zaimportowano ${odmienPliki(dodane)} do mozgu (grupa: ${etykietaGrupy(grupaImportu)}).`,
+    )
+  }
+
   const zakladka = (aktywna: boolean) =>
     [
       'inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors',
@@ -383,6 +477,54 @@ export default function Brain() {
                 <Plus size={15} aria-hidden />
                 Dodaj plik
               </button>
+
+              {/* Most Obsidian: eksport calego mozgu i import notatek .md */}
+              <div className="space-y-2 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2.5">
+                <button
+                  type="button"
+                  onClick={eksportujMozg}
+                  className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
+                >
+                  <Download size={14} aria-hidden />
+                  Eksportuj mozg (.md)
+                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => importInputRef.current?.click()}
+                    className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
+                  >
+                    <Upload size={14} aria-hidden />
+                    Importuj .md
+                  </button>
+                  <select
+                    value={grupaImportu}
+                    onChange={(e) => setGrupaImportu(e.target.value)}
+                    aria-label="Grupa dla importowanych plikow"
+                    className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-2 text-xs text-zinc-300 outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/40"
+                  >
+                    {GRUPY_IMPORTU.map((g) => (
+                      <option key={g.key} value={g.key}>
+                        {g.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".md,.markdown,.txt"
+                  multiple
+                  onChange={importujPliki}
+                  className="hidden"
+                  aria-hidden
+                  tabIndex={-1}
+                />
+                <p className="text-[11px] leading-relaxed text-zinc-500">
+                  Dziala z Obsidianem: eksportuj do vaulta, importuj notatki z
+                  powrotem.
+                </p>
+              </div>
             </div>
 
             {grouped.length === 0 ? (

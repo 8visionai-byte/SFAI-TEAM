@@ -1,9 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Save, Send, Settings as SettingsIcon, Sparkles, Trash2 } from 'lucide-react'
+import {
+  Mic,
+  RotateCcw,
+  Save,
+  Send,
+  Settings as SettingsIcon,
+  Sparkles,
+  Square,
+  Trash2,
+  Volume2,
+  VolumeX,
+  X,
+} from 'lucide-react'
 import { coo, teamAgents, getAgent, type Agent } from '../data/agents'
 import { hasApiKey, getMode } from '../lib/ai'
 import { runOrchestration, type ZdarzenieOrk } from '../lib/orchestrator'
+import {
+  isSttSupported,
+  startListening,
+  stopListening,
+  speak,
+  cancel,
+  czyDostepnyGlosPL,
+  czytajAutoWlaczone,
+  czyAutoUstawione,
+  ustawCzytajAuto,
+} from '../lib/voice'
 import {
   nowyId,
   zapiszNotatke,
@@ -14,6 +37,7 @@ import {
 } from '../lib/storage'
 import ChatMessage from '../components/ChatMessage'
 import CharacterAvatar from '../components/CharacterAvatar'
+import MarkdownView from '../components/MarkdownView'
 import Toast, { useToast } from '../components/Toast'
 
 // --- Pomocnicze -------------------------------------------------------------
@@ -22,6 +46,26 @@ import Toast, { useToast } from '../components/Toast'
 type StanWezla = 'idle' | 'active' | 'done'
 /** Stan orkiestratora COO. */
 type StanCoo = 'idle' | 'thinking' | 'synth'
+
+/** Stan trybu glosowego (orb + overlay). */
+type GlosStan = 'czuwa' | 'slucham' | 'mysle' | 'mowie'
+
+/** Etykiety stanow orbu w overlayu (SPEC-V19 2.1). */
+const ETYKIETA_GLOSU: Record<GlosStan, string> = {
+  czuwa: 'Kliknij i mow',
+  slucham: 'Slucham...',
+  mysle: 'Mysle...',
+  mowie: 'Mowie...',
+}
+
+/** Klasa orbu zalezna od stanu (animacje z index.css). */
+function orbKlasa(stan: GlosStan): string {
+  const baza = 'orb relative flex items-center justify-center rounded-full'
+  if (stan === 'slucham') return `${baza} orb-listen`
+  if (stan === 'mysle') return `${baza} orb-think`
+  if (stan === 'mowie') return `${baza} orb-speak orb-wave`
+  return baza
+}
 
 /** Wpis w panelu czatu (wspoldzielony z warstwa trwalosci). */
 type Wpis = WpisCentrum
@@ -603,6 +647,18 @@ export default function Command() {
   const [potwierdzWyczysc, setPotwierdzWyczysc] = useState(false)
   const { toast, pokazToast } = useToast()
 
+  // --- Glos JARVIS: stan trybu glosowego ---
+  const sttOK = isSttSupported()
+  const [glosOtwarty, setGlosOtwarty] = useState(false)
+  const [glosStan, setGlosStan] = useState<GlosStan>('czuwa')
+  const [glosTranskrypt, setGlosTranskrypt] = useState('')
+  const [glosOdpowiedz, setGlosOdpowiedz] = useState('')
+  const [glosPoziom, setGlosPoziom] = useState(0)
+  const [glosBlad, setGlosBlad] = useState<string | null>(null)
+  const [czytajAuto, setCzytajAuto] = useState(() => czytajAutoWlaczone())
+  // Znacznik: biezacy przebieg zostal odpalony glosem (final ma isc do TTS/overlay).
+  const glosAktywnyRef = useRef(false)
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
 
@@ -661,6 +717,19 @@ export default function Command() {
       }
       case 'final': {
         dopisz({ rodzaj: 'final', tekst: z.text })
+        // Tryb glosowy: pokaz odpowiedz w overlayu i (gdy wlaczone) przeczytaj.
+        if (glosAktywnyRef.current) {
+          setGlosOdpowiedz(z.text)
+          if (czytajAutoWlaczone()) {
+            setGlosStan('mowie')
+            speak(z.text, {
+              onEnd: () => setGlosStan('czuwa'),
+              onError: () => setGlosStan('czuwa'),
+            })
+          } else {
+            setGlosStan('czuwa')
+          }
+        }
         break
       }
       case 'blad': {
@@ -695,11 +764,145 @@ export default function Command() {
         rodzaj: 'final',
         tekst: `Cos poszlo nie tak po mojej stronie: ${msg}. Sprobuj ponownie za chwile.`,
       })
+      // Tryb glosowy: nie zostawiaj orbu w "mysle" po nieoczekiwanym bledzie.
+      if (glosAktywnyRef.current) {
+        setGlosBlad('Cos poszlo nie tak. Sprobuj ponownie.')
+        setGlosStan('czuwa')
+      }
     } finally {
       setRunning(false)
       setStanCoo('idle')
     }
   }
+
+  // --- Glos JARVIS: sterowanie trybem glosowym ------------------------------
+
+  /** Rozpoczyna nasluch (stan slucham) i podpina transkrypcje na zywo. */
+  function startNasluchu() {
+    setGlosBlad(null)
+    setGlosTranskrypt('')
+    setGlosStan('slucham')
+    startListening({
+      lang: 'pl-PL',
+      onPartial: (t) => setGlosTranskrypt(t),
+      onFinal: (t) => {
+        setGlosTranskrypt(t)
+        onGlosFinal(t)
+      },
+      onLevel: (v) => setGlosPoziom(v),
+      onError: (kod, _wiad) => obsluzBladGlosu(kod),
+    })
+  }
+
+  /** Po zatwierdzonej transkrypcji: odpal ta sama orkiestracje co czat tekstowy. */
+  function onGlosFinal(tekst: string) {
+    const t = tekst.trim()
+    if (!t) {
+      setGlosStan('czuwa')
+      return
+    }
+    stopListening()
+    setGlosPoziom(0)
+    setGlosStan('mysle')
+    setGlosOdpowiedz('')
+    glosAktywnyRef.current = true
+    zapytaj(t)
+  }
+
+  /** Mapuje kody bledu STT na komunikat po polsku i wraca do czuwania. */
+  function obsluzBladGlosu(kod: string) {
+    if (kod === 'mic-level') return // sam metr poziomu, nie blokuje nasluchu
+    if (kod === 'no-speech' || kod === 'aborted') {
+      setGlosStan('czuwa')
+      return
+    }
+    if (kod === 'not-allowed' || kod === 'service-not-allowed') {
+      setGlosBlad(
+        'Nie mam dostepu do mikrofonu. Wlacz go w ustawieniach przegladarki.',
+      )
+    } else if (kod === 'not-supported') {
+      setGlosBlad('Tryb glosowy dziala w przegladarce Chrome i Edge.')
+    } else {
+      setGlosBlad('Cos przeszkodzilo w nasluchu. Sprobuj ponownie.')
+    }
+    setGlosStan('czuwa')
+  }
+
+  /** Otwiera overlay i od razu zaczyna nasluch (klik orbu obok pola). */
+  function otworzGlos() {
+    if (!sttOK || running) return
+    // Domyslnie wlaczamy auto-czytanie przy pierwszym uzyciu glosu.
+    if (!czyAutoUstawione()) {
+      ustawCzytajAuto(true)
+      setCzytajAuto(true)
+    }
+    setGlosOdpowiedz('')
+    setGlosOtwarty(true)
+    startNasluchu()
+  }
+
+  /** Klik w orb overlay: start/stop/przerwanie zaleznie od stanu. */
+  function klikOrb() {
+    if (glosStan === 'slucham') {
+      stopListening()
+      setGlosPoziom(0)
+      setGlosStan('czuwa')
+    } else if (glosStan === 'mowie') {
+      cancel()
+      setGlosStan('czuwa')
+    } else if (glosStan === 'czuwa') {
+      startNasluchu()
+    }
+    // 'mysle': zespol juz pracuje, orkiestracji nie przerywamy.
+  }
+
+  /** Zamyka overlay i sprzata nasluch oraz czytanie. */
+  function zamknijGlos() {
+    stopListening()
+    cancel()
+    glosAktywnyRef.current = false
+    setGlosOtwarty(false)
+    setGlosStan('czuwa')
+    setGlosTranskrypt('')
+    setGlosPoziom(0)
+    setGlosBlad(null)
+  }
+
+  /** Ponownie czyta ostatnia odpowiedz (przycisk "Powtorz glosem"). */
+  function powtorzGlosem() {
+    if (!glosOdpowiedz) return
+    setGlosStan('mowie')
+    speak(glosOdpowiedz, {
+      onEnd: () => setGlosStan('czuwa'),
+      onError: () => setGlosStan('czuwa'),
+    })
+  }
+
+  /** Przelacza auto-czytanie odpowiedzi (wspoldzielone z Ustawieniami). */
+  function przelaczCzytaj() {
+    const nowy = !czytajAuto
+    setCzytajAuto(nowy)
+    ustawCzytajAuto(nowy)
+    if (!nowy) cancel()
+  }
+
+  // Esc zamyka overlay; sprzataj nasluch/czytanie przy odmontowaniu.
+  useEffect(() => {
+    if (!glosOtwarty) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') zamknijGlos()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [glosOtwarty])
+
+  useEffect(() => {
+    return () => {
+      stopListening()
+      cancel()
+    }
+  }, [])
 
   /** Zapisuje przebieg pracy zespolu jako notatke (sf_notatki). */
   function zapiszDoPamieci() {
@@ -911,6 +1114,27 @@ export default function Command() {
         {/* Pole wpisywania */}
         <div className="border-t border-zinc-800/80 bg-zinc-950 px-5 py-4 sm:px-6">
           <div className="flex items-end gap-3">
+            <button
+              type="button"
+              onClick={otworzGlos}
+              disabled={!sttOK || running}
+              aria-label="Rozmawiaj glosem z COO"
+              title={
+                sttOK
+                  ? 'Rozmawiaj glosem z COO'
+                  : 'Glos dziala w Chrome i Edge'
+              }
+              className={[
+                orbKlasa('czuwa'),
+                'h-12 w-12 flex-shrink-0',
+                !sttOK ? 'opacity-40' : '',
+                'disabled:cursor-not-allowed disabled:opacity-40',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
+              <Mic size={18} aria-hidden />
+            </button>
             <textarea
               ref={taRef}
               value={input}
@@ -936,6 +1160,13 @@ export default function Command() {
               <span className="hidden sm:inline">Wyslij</span>
             </button>
           </div>
+
+          {!sttOK && (
+            <p className="mt-2 text-xs text-zinc-600">
+              Tryb glosowy dziala w przegladarce Chrome i Edge. W tej
+              przegladarce uzyj pola tekstowego.
+            </p>
+          )}
 
           {/* Potwierdzenie czyszczenia (inline, bez natywnego alertu) */}
           {potwierdzWyczysc && (
@@ -996,6 +1227,135 @@ export default function Command() {
           </div>
         </div>
       </section>
+
+      {/* Overlay rozmowy glosowej (pelnoekranowy) */}
+      {glosOtwarty && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 p-6 backdrop-blur-md animate-fade-up"
+          onClick={zamknijGlos}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Tryb glosowy"
+        >
+          <button
+            type="button"
+            onClick={zamknijGlos}
+            aria-label="Zamknij tryb glosowy"
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900/70 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+          >
+            <X size={18} aria-hidden />
+          </button>
+
+          <div
+            className="flex w-full max-w-xl flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Orb 160px ze stanami */}
+            <button
+              type="button"
+              onClick={klikOrb}
+              aria-label={
+                glosStan === 'slucham'
+                  ? 'Przerwij nasluch'
+                  : glosStan === 'mowie'
+                    ? 'Przerwij mowienie'
+                    : 'Zacznij mowic'
+              }
+              className={`${orbKlasa(glosStan)} h-40 w-40`}
+            >
+              {glosStan === 'slucham' && (
+                <span
+                  className="orb-level"
+                  style={{
+                    boxShadow: `0 0 0 ${(2 + glosPoziom * 8).toFixed(1)}px rgba(91,141,239,0.4)`,
+                  }}
+                  aria-hidden
+                />
+              )}
+              {glosStan === 'mowie' && (
+                <span className="orb-wave-3" aria-hidden />
+              )}
+              <Mic size={40} aria-hidden />
+            </button>
+
+            {/* Etykieta stanu */}
+            <div
+              className="mt-6 text-sm font-medium text-brand-soft"
+              aria-live="polite"
+            >
+              {ETYKIETA_GLOSU[glosStan]}
+            </div>
+
+            {/* Transkrypcja na zywo */}
+            {glosTranskrypt && (
+              <p
+                className={[
+                  'mt-4 max-w-xl text-center text-lg',
+                  glosStan === 'slucham' ? 'text-zinc-400' : 'text-zinc-100',
+                ].join(' ')}
+                aria-live="polite"
+              >
+                {glosTranskrypt}
+              </p>
+            )}
+
+            {/* Komunikat bledu glosu */}
+            {glosBlad && (
+              <p className="mt-4 max-w-md text-center text-sm text-amber-200">
+                {glosBlad}
+              </p>
+            )}
+
+            {/* Odpowiedz zespolu (czytana rownolegle przez TTS) */}
+            {glosOdpowiedz && (
+              <div className="mt-6 max-h-64 w-full max-w-xl overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 text-left text-[0.95rem] leading-relaxed text-zinc-100">
+                <MarkdownView>{glosOdpowiedz}</MarkdownView>
+              </div>
+            )}
+
+            {/* Pasek akcji */}
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={klikOrb}
+                disabled={glosStan === 'czuwa' || glosStan === 'mysle'}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Square size={14} aria-hidden />
+                Przerwij
+              </button>
+              <button
+                type="button"
+                onClick={powtorzGlosem}
+                disabled={!glosOdpowiedz || !czyDostepnyGlosPL()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <RotateCcw size={14} aria-hidden />
+                Powtorz glosem
+              </button>
+              <button
+                type="button"
+                onClick={przelaczCzytaj}
+                disabled={!czyDostepnyGlosPL()}
+                aria-pressed={czytajAuto}
+                className={[
+                  'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                  czytajAuto
+                    ? 'border-brand/40 bg-brand/10 text-brand-soft'
+                    : 'border-zinc-800 bg-zinc-900/70 text-zinc-300 hover:bg-zinc-800 hover:text-white',
+                ].join(' ')}
+              >
+                {czytajAuto ? (
+                  <Volume2 size={14} aria-hidden />
+                ) : (
+                  <VolumeX size={14} aria-hidden />
+                )}
+                Czytaj odpowiedzi na glos
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Toast text={toast} />
     </div>

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   ArrowLeft,
   BarChart3,
+  BookOpen,
   Check,
   Database,
   ExternalLink,
@@ -25,11 +26,20 @@ import {
   getModel,
   setModel,
 } from '../lib/ai'
+import {
+  isTtsSupported,
+  isSttSupported,
+  czyDostepnyGlosPL,
+  czytajAutoWlaczone,
+  ustawCzytajAuto,
+} from '../lib/voice'
 
 const MODELS: { value: string; label: string }[] = [
-  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (domyslny)' },
-  { value: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
-  { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+  { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6 (domyslny, szybki)' },
+  { value: 'claude-sonnet-5', label: 'Sonnet 5 (nowszy)' },
+  { value: 'claude-opus-4-8', label: 'Opus 4.8 (mocny)' },
+  { value: 'claude-fable-5', label: 'Fable 5 (najmocniejszy)' },
+  { value: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5 (najtanszy)' },
 ]
 
 type StatusIntegracji = 'aktywne' | 'w-budowie' | 'do-wygenerowania'
@@ -59,6 +69,8 @@ interface Integracja {
   /** Uczciwe "kiedy" wg roadmapy 2.0 (tylko karty w budowie). */
   kiedy?: string
   status: StatusIntegracji
+  /** Wlasna etykieta na plakietce (nadpisuje domyslna dla statusu). */
+  etykietaBadge?: string
   Ikona: LucideIcon
 }
 
@@ -72,10 +84,17 @@ const INTEGRACJE: Integracja[] = [
   },
   {
     tytul: 'Glos JARVIS (rozmowa na zywo)',
-    opis: 'Rozmowa glosowa z zespolem i delegacja zadan w tle.',
-    kiedy: 'Wkrotce · Faza 8 roadmapy 2.0',
-    status: 'w-budowie',
+    opis: 'Mow do COO i sluchaj odpowiedzi. Rozpoznawanie i czytanie dziala w przegladarce (Chrome, Edge).',
+    status: 'aktywne',
+    etykietaBadge: 'Aktywny (glos przegladarki)',
     Ikona: Mic,
+  },
+  {
+    tytul: 'Obsidian / eksport-import mozgu',
+    opis: 'W zakladce Mozg firmy eksportujesz caly mozg do jednego pliku .md i importujesz notatki z Obsidiana jako pliki wlasne.',
+    status: 'aktywne',
+    etykietaBadge: 'Aktywny',
+    Ikona: BookOpen,
   },
   {
     tytul: 'Google Drive (foldery wiedzy do mozgu)',
@@ -120,6 +139,18 @@ export default function Settings() {
   const [showKey, setShowKey] = useState(false)
   const [savedKey, setSavedKey] = useState<string | null>(getApiKey())
   const [confirmation, setConfirmation] = useState<string | null>(null)
+
+  // Glos JARVIS: przelacznik auto-czytania odpowiedzi w Centrum.
+  const glosTtsOK = isTtsSupported() && czyDostepnyGlosPL()
+  const glosSttOK = isSttSupported()
+  const [autoCzytaj, setAutoCzytaj] = useState(() => czytajAutoWlaczone())
+
+  function przelaczAutoCzytaj() {
+    if (!glosTtsOK) return
+    const nowy = !autoCzytaj
+    setAutoCzytaj(nowy)
+    ustawCzytajAuto(nowy)
+  }
 
   // Tryb realny = jakiekolwiek dzialajace polaczenie z modelem
   // (klucz uzytkownika, proxy serwera albo klucz z env), nie tylko klucz lokalny.
@@ -307,6 +338,59 @@ export default function Settings() {
         </div>
       </section>
 
+      {/* Sekcja: Glos JARVIS */}
+      <section aria-label="Glos JARVIS" className="mt-10">
+        <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-400">
+          <Mic size={14} className="text-brand-soft" aria-hidden />
+          Glos JARVIS
+        </h2>
+        <div className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-zinc-200">
+                Automatycznie czytaj odpowiedzi w Centrum
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+                Po zakonczeniu pracy zespolu COO przeczyta odpowiedz na glos.
+                {glosSttOK
+                  ? ' Rozmowa glosem dziala w tej przegladarce.'
+                  : ' Rozpoznawanie mowy dziala w Chrome i Edge.'}
+              </p>
+              {!glosTtsOK && (
+                <p className="mt-1 text-xs text-amber-200/90">
+                  Brak polskiego glosu w tej przegladarce, wiec czytanie jest
+                  niedostepne.
+                </p>
+              )}
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={autoCzytaj}
+              aria-label="Automatycznie czytaj odpowiedzi w Centrum"
+              onClick={przelaczAutoCzytaj}
+              disabled={!glosTtsOK}
+              className={[
+                'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                autoCzytaj ? 'bg-brand' : 'bg-zinc-700',
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'inline-block h-4 w-4 transform rounded-full bg-zinc-950 transition-transform',
+                  autoCzytaj ? 'translate-x-6' : 'translate-x-1',
+                ].join(' ')}
+                aria-hidden
+              />
+            </button>
+          </div>
+          <p className="border-t border-zinc-800 pt-3 text-xs leading-relaxed text-zinc-500">
+            Wersja pro (ElevenLabs / OpenAI realtime, naturalny glos i nizsze
+            opoznienia) jest w przygotowaniu.
+          </p>
+        </div>
+      </section>
+
       {/* Sekcja: integracje i mozliwosci */}
       <section aria-label="Integracje i mozliwosci" className="mt-10">
         <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-zinc-400">
@@ -342,7 +426,7 @@ export default function Settings() {
                       badge.klasa,
                     ].join(' ')}
                   >
-                    {badge.label}
+                    {item.etykietaBadge ?? badge.label}
                   </span>
                 </div>
                 <h3 className="text-sm font-semibold text-zinc-100">

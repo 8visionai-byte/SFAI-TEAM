@@ -270,7 +270,9 @@ export async function callModel(
     return await callDirect(getApiKey() as string, system, messages, getModel())
   }
 
-  const model = import.meta.env.VITE_ANTHROPIC_MODEL || 'claude-sonnet-4-6'
+  // Model z ustawien uzytkownika (getModel), z fallbackiem na env/domyslny.
+  // Dzieki temu wybor z Settings trafia takze do body proxy i trybu env.
+  const model = getModel()
 
   // (b) Proxy: bezpieczne, klucz po stronie serwera.
   if (mode === 'proxy') {

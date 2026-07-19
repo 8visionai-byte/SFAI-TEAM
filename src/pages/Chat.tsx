@@ -6,12 +6,14 @@ import {
   Info,
   Settings as SettingsIcon,
   History,
+  Mic,
   Plus,
   Save,
   Trash2,
 } from 'lucide-react'
 import { getAgent } from '../data/agents'
 import { sendMessage, hasApiKey, type ChatMessage as Msg } from '../lib/ai'
+import { isSttSupported, startListening, stopListening } from '../lib/voice'
 import {
   nowyId,
   rozmowyAgenta,
@@ -113,8 +115,15 @@ export default function Chat() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
 
+  // Dyktowanie do pola (STT przegladarki). Baza = tekst juz wpisany recznie.
+  const sttOK = isSttSupported()
+  const [dyktuje, setDyktuje] = useState(false)
+  const bazaInputRef = useRef('')
+
   // reset rozmowy przy zmianie agenta + wczytanie historii tego agenta
   useEffect(() => {
+    stopListening()
+    setDyktuje(false)
     setMessages([])
     setInput('')
     setLoading(false)
@@ -122,6 +131,11 @@ export default function Chat() {
     setHistoria(slug ? rozmowyAgenta(slug) : [])
     setPokazHistorie(false)
   }, [slug])
+
+  // Sprzataj nasluch przy odmontowaniu strony.
+  useEffect(() => {
+    return () => stopListening()
+  }, [])
 
   // automatyczny zapis biezacej rozmowy do localStorage (sf_rozmowy)
   useEffect(() => {
@@ -246,6 +260,29 @@ export default function Chat() {
     pokazToast(
       'Zapisano notatkę. W kolejnej wersji trafi automatycznie do mózgu firmy.',
     )
+  }
+
+  /** Wlacza/wylacza dyktowanie glosem do pola tekstowego. */
+  function przelaczDyktowanie() {
+    if (!sttOK || loading) return
+    if (dyktuje) {
+      stopListening()
+      setDyktuje(false)
+      return
+    }
+    bazaInputRef.current = input ? `${input} ` : ''
+    setDyktuje(true)
+    startListening({
+      lang: 'pl-PL',
+      onPartial: (t) => setInput(bazaInputRef.current + t),
+      onFinal: (t) => {
+        const scalony = (bazaInputRef.current + t).trim()
+        setInput(scalony)
+        bazaInputRef.current = `${scalony} `
+      },
+      onError: () => setDyktuje(false),
+      onEnd: () => setDyktuje(false),
+    })
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -454,6 +491,7 @@ export default function Chat() {
               role={m.role}
               content={m.content}
               agent={agent}
+              czytelny={m.role === 'assistant'}
             />
           ))}
 
@@ -507,6 +545,24 @@ export default function Chat() {
             placeholder={`Napisz do agenta ${agent.name}...`}
             className="max-h-40 min-h-[48px] flex-1 resize-none overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-[0.95rem] leading-relaxed text-zinc-100 shadow-card outline-none transition-colors placeholder:text-zinc-600 focus:border-brand/50 focus:ring-1 focus:ring-brand/40"
           />
+          {sttOK && (
+            <button
+              type="button"
+              onClick={przelaczDyktowanie}
+              disabled={loading}
+              aria-label={dyktuje ? 'Zatrzymaj dyktowanie' : 'Dyktuj glosem'}
+              aria-pressed={dyktuje}
+              title={dyktuje ? 'Zatrzymaj dyktowanie' : 'Dyktuj glosem'}
+              className={[
+                'orb flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-40',
+                dyktuje ? 'orb-listen' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
+              <Mic size={18} aria-hidden />
+            </button>
+          )}
           <button
             onClick={() => handleSend(input)}
             disabled={loading || !input.trim()}
