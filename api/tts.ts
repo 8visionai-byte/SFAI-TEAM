@@ -48,7 +48,8 @@ export default async function handler(req: any, res: any) {
     return
   }
 
-  const klucz = process.env.ELEVENLABS_API_KEY
+  // Wlasciciel moze dodac klucz pod rozna nazwa; obsluzmy warianty.
+  const klucz = process.env.ELEVENLABS_API_KEY || process.env.elevenlabsapi || process.env.ELEVEN_API_KEY
   if (!klucz) {
     res.status(503).json({ error: 'brak-klucza' })
     return

@@ -217,29 +217,31 @@ export default function RozmowaGlosowa({ agent, onClose }: Props) {
 
   // --- Start rozmowy: powitanie -> tor realtime lub podstawowy ---------------
 
+  /** Instrukcja powitania dla modelu realtime: wita sie glosem persony. */
+  function powitanieInstrukcja(): string {
+    return (
+      `Przywitaj sie krotko po polsku: "Czesc, jestem ${imie}, ` +
+      `${agent.role.toLowerCase()}." i zapytaj krotko, w czym mozesz pomoc. ` +
+      `Bez em-dash, bez zmyslonych liczb, nie dodawaj nic wiecej.`
+    )
+  }
+
   function rozpocznij() {
     setBlad(null)
     setBaner(false)
     setOdpowiedz('')
     setTranskryptAgent('')
     setTranskryptUser('')
-    setStan('mowie')
-    // Powitanie glosem persony, po nim podlaczamy wlasciwy tor rozmowy.
-    mowPowitanie(agent, {
-      onEnd: () => {
-        if (!aktywnyRef.current) return
-        polaczRealtime()
-      },
-      onError: () => {
-        if (!aktywnyRef.current) return
-        polaczRealtime()
-      },
-    })
+    setStan('laczenie')
+    // Najpierw probujemy OpenAI Realtime: powitanie idzie glosem persony (tym
+    // samym modelem). Dopiero gdy OpenAI niedostepny -> powitanie ElevenLabs/Web.
+    polaczRealtime()
   }
 
   async function polaczRealtime() {
     try {
       const uchwyt = await startRozmowa(agent, {
+        powitanie: powitanieInstrukcja(),
         onStan: (s) => {
           if (aktywnyRef.current) setStan(s)
         },
@@ -276,7 +278,19 @@ export default function RozmowaGlosowa({ agent, onClose }: Props) {
       if (!aktywnyRef.current) return
       setTor('podstawowy')
       setBaner(true)
-      startPodstawowy()
+      // OpenAI niedostepny: teraz powitanie glosem persony przez ElevenLabs
+      // (a gdy brak tez ElevenLabs -> Web Speech), po nim tor podstawowy.
+      setStan('mowie')
+      mowPowitanie(agent, {
+        onEnd: () => {
+          if (!aktywnyRef.current) return
+          startPodstawowy()
+        },
+        onError: () => {
+          if (!aktywnyRef.current) return
+          startPodstawowy()
+        },
+      })
     }
   }
 

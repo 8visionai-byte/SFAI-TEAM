@@ -87,8 +87,8 @@ const HAIRLINE = '#0E0E11'
 /** Mikrozloty akcent syntezy (uzywany oszczednie, tylko przy skladaniu). */
 const ZLOTO = '#E8C879'
 
-/** Odstep okregu od krawedzi sceny (miejsce na wezel 80px + podpis nazwa/rola). */
-const MARG = 108
+/** Odstep okregu od krawedzi sceny (miejsce na wezel 80px + podpis imie/rola + przycisk glosu). */
+const MARG = 124
 
 /**
  * Podwojny pierscien-aura specjalisty (box-shadow, od wewnatrz).
@@ -550,7 +550,7 @@ function MapaNeuronu({ stanCoo, stany, running = false, onGlos }: MapaProps) {
               />
               <div className="mt-2 w-40 leading-tight">
                 <div className="text-sm font-semibold text-zinc-50">
-                  {coo.name}
+                  {coo.personImie ?? coo.name}
                 </div>
                 <div className="text-xs font-medium text-brand-soft">
                   {stanCoo === 'thinking'
@@ -562,24 +562,25 @@ function MapaNeuronu({ stanCoo, stany, running = false, onGlos }: MapaProps) {
               </div>
             </div>
           )
+          const imieCoo = coo.personImie ?? coo.name
           const stylCoo = {
             left: cx,
             top: cy,
             transform: 'translate(-50%,-50%)',
           }
           return (
-            <>
+            <div
+              className="absolute z-10 flex flex-col items-center"
+              style={stylCoo}
+            >
               {running ? (
-                <div className="absolute z-10" style={stylCoo}>
-                  {zawartoscCoo}
-                </div>
+                <div>{zawartoscCoo}</div>
               ) : (
                 <Link
                   to={`/agent/${coo.slug}`}
-                  aria-label={`Profil agenta ${coo.name}`}
-                  title={coo.name}
-                  className="absolute z-10 rounded-3xl outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-                  style={stylCoo}
+                  aria-label={`Profil agenta ${imieCoo}`}
+                  title={imieCoo}
+                  className="rounded-3xl outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
                 >
                   {zawartoscCoo}
                 </Link>
@@ -588,19 +589,15 @@ function MapaNeuronu({ stanCoo, stany, running = false, onGlos }: MapaProps) {
                 <button
                   type="button"
                   onClick={() => onGlos(coo)}
-                  aria-label={`Porozmawiaj glosem z ${coo.name}`}
-                  title="Porozmawiaj glosem"
-                  className="absolute z-20 flex h-8 w-8 items-center justify-center rounded-full border border-brand/40 bg-zinc-950/80 text-brand-soft transition-colors hover:border-brand/70 hover:bg-brand/15"
-                  style={{
-                    left: cx,
-                    top: cy,
-                    transform: 'translate(28px, calc(-50% - 52px))',
-                  }}
+                  aria-label={`Porozmawiaj glosem z ${imieCoo}`}
+                  title={`Porozmawiaj glosem z ${imieCoo}`}
+                  className="voice-pill relative z-20 mt-2.5 inline-flex h-8 items-center justify-center rounded-full border border-brand/50 bg-zinc-950/85 px-3 text-brand-soft outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+                  style={{ ['--acc-ring' as string]: 'rgba(91,141,239,0.34)' }}
                 >
-                  <Mic size={15} aria-hidden />
+                  <Mic size={17} aria-hidden />
                 </button>
               )}
-            </>
+            </div>
           )
         })()}
 
@@ -623,53 +620,63 @@ function MapaNeuronu({ stanCoo, stany, running = false, onGlos }: MapaProps) {
               glow={`${a.accent}aa`}
               przygaszony={stan === 'idle'}
             />
-            <div
-              className="mt-2 w-[96px] text-[0.72rem] font-medium leading-tight"
-              style={{ color: rolaKolor }}
-            >
-              <span className={rolaKolor ? undefined : 'text-zinc-300'}>
-                {a.role}
-              </span>
+            <div className="mt-2 w-[104px] leading-tight">
+              <div className="text-[0.8rem] font-semibold text-zinc-50">
+                {a.personImie ?? a.name}
+              </div>
+              <div
+                className="mt-0.5 text-[0.66rem] font-medium"
+                style={{ color: rolaKolor }}
+              >
+                <span className={rolaKolor ? undefined : 'text-zinc-400'}>
+                  {a.role}
+                </span>
+              </div>
             </div>
           </div>
         )
+        const imie = a.personImie ?? a.name
         return (
           <div
             key={n.slug}
             className="absolute z-10 flex flex-col items-center"
             style={{ left: n.nx, top: n.ny, transform: 'translate(-50%,-50%)' }}
           >
-            {/* Akcja glosu przy wezle persony (osobna od kliku w profil) */}
-            {onGlos && (
-              <button
-                type="button"
-                onClick={() => onGlos(a)}
-                aria-label={`Porozmawiaj glosem z ${a.name}`}
-                title="Porozmawiaj glosem"
-                className="absolute left-1/2 top-0 z-20 flex h-7 w-7 items-center justify-center rounded-full border border-zinc-700 bg-zinc-950/85 text-zinc-300 transition-colors hover:border-brand/60 hover:text-brand-soft"
-                style={{ transform: 'translate(14px, calc(-50% - 30px))' }}
-              >
-                <Mic size={13} aria-hidden />
-              </button>
-            )}
             {/* Klik w wezel (gdy nie trwa praca) otwiera profil agenta */}
             {running ? (
               <div
                 className="flex flex-col items-center"
-                title={a.name}
-                aria-label={a.name}
+                title={imie}
+                aria-label={imie}
               >
                 {zawartoscWezla}
               </div>
             ) : (
               <Link
                 to={`/agent/${n.slug}`}
-                aria-label={`Profil agenta ${a.name}`}
-                title={a.name}
+                aria-label={`Profil agenta ${imie}`}
+                title={imie}
                 className="flex flex-col items-center rounded-3xl outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
               >
                 {zawartoscWezla}
               </Link>
+            )}
+
+            {/* Wyrazna akcja glosu pod podpisem (osobna od kliku w profil) */}
+            {onGlos && (
+              <button
+                type="button"
+                onClick={() => onGlos(a)}
+                aria-label={`Porozmawiaj glosem z ${imie}`}
+                title={`Porozmawiaj glosem z ${imie}`}
+                className="voice-pill relative z-20 mt-1.5 inline-flex h-8 items-center justify-center rounded-full border bg-zinc-950/85 px-2.5 text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+                style={{
+                  borderColor: `${a.accent}80`,
+                  ['--acc-ring' as string]: `${a.accent}59`,
+                }}
+              >
+                <Mic size={16} aria-hidden />
+              </button>
             )}
 
             {/* Chipy zespolu wykonawczego (pod podpisem, nie zaslaniaja sasiadow) */}

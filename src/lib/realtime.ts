@@ -38,6 +38,12 @@ export interface OpcjeRozmowy {
   onPoziom?: (poziom: number) => void
   /** Blad nieodwracalny (kod), UI moze pokazac komunikat / zejsc na fallback. */
   onBlad?: (kod: string) => void
+  /**
+   * Instrukcja powitania. Gdy podana, po zestawieniu sesji (session.created/updated)
+   * model wita sie SAM glosem persony (ten sam meski/zenski glos OpenAI), zamiast
+   * osobnego powitania z przegladarki. Wysylana raz przez kanal danych.
+   */
+  powitanie?: string
 }
 
 /** Uchwyt aktywnej rozmowy: pozwala ja zakonczyc i posprzatac zasoby. */
@@ -57,7 +63,7 @@ async function pobierzToken(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      voice: agent.realtimeVoice ?? 'cedar',
+      voice: agent.realtimeVoice ?? 'ash',
       instructions: buildSystemPrompt(agent.slug),
     }),
   })
@@ -74,7 +80,7 @@ async function pobierzToken(
   if (!token) {
     throw new Error('realtime-token-pusty')
   }
-  return { token, model: dane?.model ?? 'gpt-realtime-2.1' }
+  return { token, model: dane?.model ?? 'gpt-realtime-mini' }
 }
 
 /**
@@ -99,6 +105,8 @@ export async function startRozmowa(
   let rafId: number | null = null
   let zamkniete = false
   let transAgent = '' // narastajacy transkrypt biezacej wypowiedzi agenta
+  let dc: RTCDataChannel | null = null // kanal danych 'oai-events'
+  let powitalSie = false // strzezenie: powitanie wysylamy tylko raz
 
   /** Pelne sprzatanie: idempotentne, wolane z zakoncz() i przy bledzie. */
   function sprzataj() {
@@ -146,7 +154,7 @@ export async function startRozmowa(
     podepnijPoziomLokalny(mic)
 
     // Kanal danych: zdarzenia sesji (transkrypt, poczatek/koniec mowy).
-    const dc = pc.createDataChannel('oai-events')
+    dc = pc.createDataChannel('oai-events')
     dc.onmessage = (ev) => obsluzZdarzenie(ev.data)
 
     // Handshake SDP: oferta klienta -> odpowiedz OpenAI (ephemeral token).
@@ -188,6 +196,13 @@ export async function startRozmowa(
       return
     }
     const typ: string = zd?.type ?? ''
+
+    // Sesja gotowa: model wita sie SAM swoim glosem (persona), zanim uzytkownik
+    // cokolwiek powie. Wysylamy raz, po pierwszym session.created/updated.
+    if (typ === 'session.created' || typ === 'session.updated') {
+      wyslijPowitanie()
+      return
+    }
 
     // Uzytkownik zaczyna / konczy mowic (server VAD).
     if (typ === 'input_audio_buffer.speech_started') {
@@ -247,6 +262,31 @@ export async function startRozmowa(
       const kod =
         typeof zd?.error?.message === 'string' ? zd.error.message : 'realtime'
       opcje.onBlad?.(kod)
+    }
+  }
+
+  /**
+   * Kaze modelowi przywitac sie wlasnym glosem (persona). Wysyla response.create
+   * z instrukcja powitania przez kanal danych. Idempotentne: tylko raz na sesje.
+   * Bez opcje.powitanie nic nie robi (model po prostu czeka na uzytkownika).
+   */
+  function wyslijPowitanie() {
+    if (powitalSie || zamkniete) return
+    const tekst = opcje.powitanie
+    if (!tekst) return
+    if (!dc || dc.readyState !== 'open') return
+    powitalSie = true
+    try {
+      dc.send(
+        JSON.stringify({
+          type: 'response.create',
+          response: { instructions: tekst },
+        }),
+      )
+      opcje.onStan('mowie')
+    } catch {
+      // Kanal mogl paść; powitanie nie jest krytyczne dla dalszej rozmowy.
+      powitalSie = false
     }
   }
 

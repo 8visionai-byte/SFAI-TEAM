@@ -366,3 +366,33 @@ h3 {
     transition: none;
   }
 }
+
+/* Przycisk glosu przy wezle mapy neuronu i na karcie zespolu: wyrazny, dotykowy
+   cel z akcentem agenta. Hover: delikatne uniesienie + poswiata w kolorze
+   agenta (zmienna --acc-ring ustawiana inline per agent). Sygnalizuje, ze z
+   persona mozna porozmawiac glosem. */
+.voice-pill {
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease;
+}
+.voice-pill:hover {
+  transform: translateY(-1px);
+  background-color: rgba(24, 24, 27, 0.95);
+  box-shadow:
+    0 0 0 3px var(--acc-ring, rgba(91, 141, 239, 0.22)),
+    0 8px 18px -8px var(--acc-ring, rgba(91, 141, 239, 0.5));
+}
+.voice-pill:active {
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-pill,
+  .voice-pill:hover,
+  .voice-pill:active {
+    transform: none;
+    transition: none;
+  }
+}

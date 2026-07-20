@@ -10,7 +10,12 @@
 // Luzne typy (bez @vercel/node), zeby nie wchodzic w zaleznosci frontu.
 // Ten plik jest poza tsconfig include:["src"], wiec `npm run build` go nie kompiluje.
 
-const OPENAI_REALTIME_MODEL = 'gpt-realtime-2.1'
+// Szybki wariant realtime (nizsza latencja). Mozna nadpisac przez env.
+const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-mini'
+
+// Glosy dzialajace stabilnie na wariancie mini (bez cedar/marin - nowe, moga nie grac).
+const GLOSY_OK = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse']
+const GLOS_DOMYSLNY = 'ash' // meski, gdy body.voice nieprawidlowy
 
 function czytajBody(req: any): Promise<any> {
   // Vercel zwykle parsuje JSON do req.body. Gdy nie, czytamy strumien recznie.
@@ -48,16 +53,17 @@ export default async function handler(req: any, res: any) {
     return
   }
 
-  const klucz = process.env.OPENAI_API_KEY
+  // Wlasciciel dodal w Vercel zmienna 'openaiapi'; obsluzmy tez inne nazwy.
+  const klucz = process.env.OPENAI_API_KEY || process.env.openaiapi || process.env.OPENAI_KEY
   if (!klucz) {
     res.status(503).json({ error: 'brak-klucza' })
     return
   }
 
   const body = await czytajBody(req)
-  const voice = typeof body?.voice === 'string' && /^[a-z]+$/.test(body.voice)
+  const voice = typeof body?.voice === 'string' && GLOSY_OK.includes(body.voice)
     ? body.voice
-    : 'cedar'
+    : GLOS_DOMYSLNY
   // Instrukcje persony (mozg + persona + skille z buildSystemPrompt) bywaja
   // dlugie; dopuszczamy do 200000 znakow, inaczej sesja dostaje pusty prompt.
   const instructions = typeof body?.instructions === 'string' && body.instructions.length <= 200000

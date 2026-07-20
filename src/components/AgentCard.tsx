@@ -63,23 +63,6 @@ export default function AgentCard({ agent, onGlos }: AgentCardProps) {
         {active ? 'Aktywny' : 'Wkrotce'}
       </span>
 
-      {/* Akcja glosu: mikrofon w rogu (osobna od kliku w karte i "Rozmawiaj") */}
-      {onGlos && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            onGlos(agent)
-          }}
-          aria-label={`Porozmawiaj glosem z agentem ${agent.name}`}
-          title="Porozmawiaj glosem"
-          className="absolute left-2.5 top-2.5 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 bg-zinc-950/70 text-zinc-300 transition-colors hover:border-brand/50 hover:text-brand-soft"
-        >
-          <Mic size={15} aria-hidden />
-        </button>
-      )}
-
       {/* PORTRET dominuje: duzy, wysrodkowany, aura koloru, hover wideo/lift */}
       <Avatar
         agent={agent}
@@ -95,6 +78,28 @@ export default function AgentCard({ agent, onGlos }: AgentCardProps) {
       </h3>
       {/* ROLA najmniejszym, wygaszonym tekstem */}
       <p className="mt-1 text-xs text-zinc-400">{agent.role}</p>
+
+      {/* Akcja glosu: wyrazna pigulka przy nazwie (osobna od kliku w karte i "Rozmawiaj") */}
+      {onGlos && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onGlos(agent)
+          }}
+          aria-label={`Porozmawiaj glosem z ${agent.personImie ?? agent.name}`}
+          title={`Porozmawiaj glosem z ${agent.personImie ?? agent.name}`}
+          className="voice-pill relative z-20 mt-3 inline-flex h-9 items-center gap-1.5 rounded-full border bg-zinc-950/70 px-3.5 text-sm font-medium text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+          style={{
+            borderColor: `${agent.accent}80`,
+            ['--acc-ring' as string]: `${agent.accent}59`,
+          }}
+        >
+          <Mic size={16} aria-hidden />
+          <span>Mów głosem</span>
+        </button>
+      )}
 
       {/* Przycisk "Rozmawiaj": nad linkiem-nakladka, prowadzi wprost do czatu */}
       <Link

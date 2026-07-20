@@ -53,7 +53,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Leo',
     elevenVoiceId: 'pNInz6obpgDQGcFmaJgB',
-    realtimeVoice: 'cedar',
+    realtimeVoice: 'ash',
   },
   {
     slug: 'wiedza-produkt',
@@ -81,7 +81,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Sam',
     elevenVoiceId: 'ZQe5CZNOzWyzPSCn5a3c',
-    realtimeVoice: 'ash',
+    realtimeVoice: 'echo',
   },
   {
     slug: 'operacje',
@@ -136,7 +136,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Ray',
     elevenVoiceId: 'VR6AewLTigWG4xSOukaG',
-    realtimeVoice: 'echo',
+    realtimeVoice: 'verse',
   },
   {
     slug: 'pamiec-zespolu',
@@ -192,7 +192,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Milo',
     elevenVoiceId: 'ErXwobaYiN019PkySvjV',
-    realtimeVoice: 'verse',
+    realtimeVoice: 'ballad',
   },
   {
     slug: 'handlowiec',
@@ -219,7 +219,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Jack',
     elevenVoiceId: 'TxGEqnHWrfWFTfGW9XjX',
-    realtimeVoice: 'ballad',
+    realtimeVoice: 'ash',
   },
   {
     slug: 'opiekun-klienta',
@@ -267,7 +267,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Otto',
     elevenVoiceId: 't0jbNlBVZ17f02VDIeMI',
-    realtimeVoice: 'alloy',
+    realtimeVoice: 'echo',
   },
   {
     slug: 'analityk-social',
@@ -295,7 +295,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Zoe',
     elevenVoiceId: '21m00Tcm4TlvDq8ikWAM',
-    realtimeVoice: 'marin',
+    realtimeVoice: 'shimmer',
   },
 ]
 
