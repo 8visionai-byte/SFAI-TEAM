@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Mic, Plus, Trash2 } from 'lucide-react'
 import { getAgent } from '../data/agents'
 import {
   nowyId,
@@ -11,6 +11,7 @@ import {
   type Umiejetnosc,
 } from '../lib/storage'
 import Avatar from '../components/Avatar'
+import RozmowaGlosowa from '../components/RozmowaGlosowa'
 import Toast, { useToast } from '../components/Toast'
 
 /** Naglowek sekcji profilu (jednolity styl). */
@@ -35,6 +36,7 @@ export default function AgentProfile() {
   const [skille, setSkille] = useState<Umiejetnosc[]>([])
   const [nazwa, setNazwa] = useState('')
   const [instrukcja, setInstrukcja] = useState('')
+  const [glosOtwarty, setGlosOtwarty] = useState(false)
   const { toast, pokazToast } = useToast()
 
   // Wczytanie wlasnych umiejetnosci przy wejsciu i zmianie agenta.
@@ -159,7 +161,7 @@ export default function AgentProfile() {
         <p className="mt-4 max-w-2xl text-[0.975rem] leading-relaxed text-zinc-300">
           {agent.mission}
         </p>
-        <div className="mt-5">
+        <div className="mt-5 flex flex-wrap items-center gap-3">
           <Link
             to={`/czat/${agent.slug}`}
             className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-zinc-950 shadow-glow transition-all hover:bg-brand-soft active:scale-95 motion-reduce:active:scale-100"
@@ -167,6 +169,14 @@ export default function AgentProfile() {
             Rozmawiaj
             <ArrowRight size={17} />
           </Link>
+          <button
+            type="button"
+            onClick={() => setGlosOtwarty(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-brand/40 bg-zinc-950/40 px-5 py-3 text-sm font-semibold text-brand-soft transition-colors hover:border-brand/70 hover:bg-brand/10"
+          >
+            <Mic size={17} aria-hidden />
+            Porozmawiaj z glosem
+          </button>
         </div>
       </div>
 
@@ -336,6 +346,10 @@ export default function AgentProfile() {
           </div>
         </div>
       </section>
+
+      {glosOtwarty && (
+        <RozmowaGlosowa agent={agent} onClose={() => setGlosOtwarty(false)} />
+      )}
 
       <Toast text={toast} />
     </div>

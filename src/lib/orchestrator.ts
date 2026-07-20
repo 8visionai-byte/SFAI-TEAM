@@ -116,13 +116,13 @@ function parsujPlan(surowe: string): WynikPlanu | null {
     const rec = p as Record<string, unknown>
     const agent = typeof rec.agent === 'string' ? rec.agent.trim() : ''
     const zadanie = typeof rec.zadanie === 'string' ? rec.zadanie.trim() : ''
-    // tylko realne slugi, bez duplikatow, maks 4 agentow
+    // tylko realne slugi, bez duplikatow, maks 6 agentow
     if (!DOZWOLONE_SLUGI.includes(agent)) continue
     if (uzyte.has(agent)) continue
     if (!zadanie) continue
     uzyte.add(agent)
     plan.push({ agent, zadanie })
-    if (plan.length >= 4) break
+    if (plan.length >= 6) break
   }
 
   // Tryb deleguj bez realnego planu traktujemy jak "sam".
@@ -157,8 +157,16 @@ function systemPlanu(): string {
     '{"tryb":"sam"|"deleguj","plan":[{"agent":"<slug>","zadanie":"<konkretne zadanie po polsku>"}],"odpowiedz":"<tryb sam: pelna odpowiedz prostym polskim; tryb deleguj: pusty string>"}',
     '',
     `Dozwolone slugi agentow: ${DOZWOLONE_SLUGI.join(', ')}.`,
-    'Deleguj maksymalnie do 4 agentow i tylko gdy realnie potrzeba ich roznych kompetencji. Proste pytania rob sam (tryb "sam").',
-    'Zadania musza byc konkretne i wykonalne, po polsku.',
+    'ZASADA DOBORU: zaangazuj KAZDEGO agenta, ktorego kompetencja realnie dotyczy pytania, nie tylko jednego czy dwoch. Przy szerokich pytaniach strategicznych czesto potrzeba 4-6 osob rownolegle. Proste, waskie pytania rob sam (tryb "sam"), bez delegacji na sile.',
+    'Deleguj maksymalnie do 6 agentow. Nie dodawaj osob, ktorych kompetencja nie dotyka pytania.',
+    'Przyklady mapowania tematu na agentow:',
+    '- "jak zwiekszyc sprzedaz": analityk (rynek, konkurencja), handlowiec (oferta, domykanie), copywriter (komunikaty), wiedza-produkt (materialy sprzedazowe), czesto drugi-glos (ryzyka strategii) i analityk-social (kanaly social).',
+    '- "wejscie na nowy rynek / nowa nisza": analityk (sizing, ICP), drugi-glos (ryzyka, pre-mortem), handlowiec (jak sprzedac), copywriter (przekaz), wiedza-produkt (czego brakuje w materialach).',
+    '- "kampania w social / marketing": copywriter (tresci), analityk-social (co skalowac, budzet), analityk (segment, ICP), czasem drugi-glos (spojnosc z marka).',
+    '- "poprawic obsluge / retencje klienta": opiekun-klienta (onboarding, retencja), operacje (procesy, SOP), wiedza-produkt (materialy), czasem analityk (dane o odejsciach).',
+    '- "uporzadkowac prace zespolu / procesy": operacje (SOP, rytm), pamiec-zespolu (kontekst, wersje wiedzy).',
+    '- waskie pytanie o jeden temat (np. "napisz jeden post na LinkedIn"): jeden agent (copywriter) albo tryb "sam".',
+    'Zadania musza byc konkretne i wykonalne, po polsku, kazde dopasowane do kompetencji danego agenta.',
   ].join('\n')
 }
 

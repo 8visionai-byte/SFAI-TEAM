@@ -1,10 +1,14 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Sparkles } from 'lucide-react'
-import { coo, teamAgents } from '../data/agents'
+import { ArrowRight, Mic, Sparkles } from 'lucide-react'
+import { coo, teamAgents, type Agent } from '../data/agents'
 import AgentCard from '../components/AgentCard'
 import Avatar from '../components/Avatar'
+import RozmowaGlosowa from '../components/RozmowaGlosowa'
 
 export default function Team() {
+  const [glosAgent, setGlosAgent] = useState<Agent | null>(null)
+
   return (
     <div className="mx-auto max-w-6xl px-5 py-10 sm:px-8">
       <header className="mb-8 animate-fade-up">
@@ -51,7 +55,20 @@ export default function Team() {
             </p>
             <p className="mt-3 text-zinc-300">{coo.mission}</p>
           </div>
-          <div className="flex flex-shrink-0">
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setGlosAgent(coo)
+              }}
+              aria-label="Porozmawiaj glosem z COO"
+              title="Porozmawiaj glosem"
+              className="relative z-10 flex h-11 w-11 items-center justify-center rounded-xl border border-brand/40 bg-zinc-950/60 text-brand-soft transition-colors hover:border-brand/70 hover:bg-brand/10"
+            >
+              <Mic size={18} aria-hidden />
+            </button>
             <span className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-3 text-sm font-semibold text-zinc-950 shadow-glow transition-all group-hover:translate-x-1 group-hover:bg-brand-soft motion-reduce:group-hover:translate-x-0">
               Porozmawiaj z COO
               <ArrowRight size={17} />
@@ -75,10 +92,17 @@ export default function Team() {
             className="animate-fade-up"
             style={{ animationDelay: `${Math.min(i, 6) * 45}ms` }}
           >
-            <AgentCard agent={agent} />
+            <AgentCard agent={agent} onGlos={setGlosAgent} />
           </div>
         ))}
       </div>
+
+      {glosAgent && (
+        <RozmowaGlosowa
+          agent={glosAgent}
+          onClose={() => setGlosAgent(null)}
+        />
+      )}
     </div>
   )
 }

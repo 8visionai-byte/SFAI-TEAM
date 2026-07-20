@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Mic } from 'lucide-react'
 import Avatar from './Avatar'
 import type { Agent } from '../data/agents'
 
 interface AgentCardProps {
   agent: Agent
+  /** Akcja "porozmawiaj glosem" (ikona mikrofonu). Gdy brak, przycisku nie ma. */
+  onGlos?: (agent: Agent) => void
 }
 
 /**
@@ -14,7 +16,7 @@ interface AgentCardProps {
  * prowadzi wprost do czatu. Rozwiazane wzorcem rozciagnietego linku (link-nakladka),
  * zeby nie zagniezdzac <a> w <a>.
  */
-export default function AgentCard({ agent }: AgentCardProps) {
+export default function AgentCard({ agent, onGlos }: AgentCardProps) {
   const active = agent.hasPrompt
 
   return (
@@ -60,6 +62,23 @@ export default function AgentCard({ agent }: AgentCardProps) {
         />
         {active ? 'Aktywny' : 'Wkrotce'}
       </span>
+
+      {/* Akcja glosu: mikrofon w rogu (osobna od kliku w karte i "Rozmawiaj") */}
+      {onGlos && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onGlos(agent)
+          }}
+          aria-label={`Porozmawiaj glosem z agentem ${agent.name}`}
+          title="Porozmawiaj glosem"
+          className="absolute left-2.5 top-2.5 z-20 flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 bg-zinc-950/70 text-zinc-300 transition-colors hover:border-brand/50 hover:text-brand-soft"
+        >
+          <Mic size={15} aria-hidden />
+        </button>
+      )}
 
       {/* PORTRET dominuje: duzy, wysrodkowany, aura koloru, hover wideo/lift */}
       <Avatar

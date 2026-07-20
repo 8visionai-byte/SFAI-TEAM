@@ -19,6 +19,12 @@ export interface Agent {
   subagents: string[]
   /** Umiejetnosci wbudowane (frameworki i sekcje z AGENT.md agenta), po polsku */
   skills: string[]
+  /** Imie persony do glosu i powitania (np. "Leo"). */
+  personImie?: string
+  /** voiceId ElevenLabs dla glosu premium tej persony. */
+  elevenVoiceId?: string
+  /** Wbudowany glos OpenAI Realtime jako fallback ust (gdy brak ElevenLabs). */
+  realtimeVoice?: string
 }
 
 /**
@@ -45,6 +51,9 @@ export const agents: Agent[] = [
       'Mapa dzwigni sprzedazy',
       'Regula 70% przy eskalacji',
     ],
+    personImie: 'Leo',
+    elevenVoiceId: 'pNInz6obpgDQGcFmaJgB',
+    realtimeVoice: 'cedar',
   },
   {
     slug: 'wiedza-produkt',
@@ -70,6 +79,9 @@ export const agents: Agent[] = [
       'Audyt aktualnosci materialow',
       'Dopasowanie materialu do etapu sprzedazy',
     ],
+    personImie: 'Sam',
+    elevenVoiceId: 'ZQe5CZNOzWyzPSCn5a3c',
+    realtimeVoice: 'ash',
   },
   {
     slug: 'operacje',
@@ -94,6 +106,9 @@ export const agents: Agent[] = [
       'RACI i prawa decyzyjne',
       'Briefy i SOP jako produkt',
     ],
+    personImie: 'Mia',
+    elevenVoiceId: 'AZnzlk1XvdvUeBnXmlld',
+    realtimeVoice: 'coral',
   },
   {
     slug: 'analityk',
@@ -119,6 +134,9 @@ export const agents: Agent[] = [
       'Analiza win-loss',
       'Traffic Light: etyka zrodel',
     ],
+    personImie: 'Ray',
+    elevenVoiceId: 'VR6AewLTigWG4xSOukaG',
+    realtimeVoice: 'echo',
   },
   {
     slug: 'pamiec-zespolu',
@@ -144,6 +162,9 @@ export const agents: Agent[] = [
       'Weryfikacja danych u zrodla',
       'Regula "nie zmyslaj"',
     ],
+    personImie: 'Vera',
+    elevenVoiceId: 'pMsXgVXv3BLzUgSXRplE',
+    realtimeVoice: 'shimmer',
   },
   {
     slug: 'copywriter',
@@ -169,6 +190,9 @@ export const agents: Agent[] = [
       'Social B2B',
       'Straznik glosu marki',
     ],
+    personImie: 'Milo',
+    elevenVoiceId: 'ErXwobaYiN019PkySvjV',
+    realtimeVoice: 'verse',
   },
   {
     slug: 'handlowiec',
@@ -193,6 +217,9 @@ export const agents: Agent[] = [
       'Obsluga obiekcji bez rabatu',
       'Kwalifikacja i discovery luki',
     ],
+    personImie: 'Jack',
+    elevenVoiceId: 'TxGEqnHWrfWFTfGW9XjX',
+    realtimeVoice: 'ballad',
   },
   {
     slug: 'opiekun-klienta',
@@ -217,6 +244,9 @@ export const agents: Agent[] = [
       'Service Recovery Paradox',
       'Triada CSAT, NPS i CES',
     ],
+    personImie: 'Ella',
+    elevenVoiceId: 'EXAVITQu4vr4xnSDxMaL',
+    realtimeVoice: 'sage',
   },
   {
     slug: 'drugi-glos',
@@ -235,6 +265,9 @@ export const agents: Agent[] = [
       'Weto brandowe w RAPID',
       'Share of Voice marki',
     ],
+    personImie: 'Otto',
+    elevenVoiceId: 't0jbNlBVZ17f02VDIeMI',
+    realtimeVoice: 'alloy',
   },
   {
     slug: 'analityk-social',
@@ -260,6 +293,9 @@ export const agents: Agent[] = [
       'Decyzje: skaluj albo wygas',
       'Spinanie danych platform',
     ],
+    personImie: 'Zoe',
+    elevenVoiceId: '21m00Tcm4TlvDq8ikWAM',
+    realtimeVoice: 'marin',
   },
 ]
 

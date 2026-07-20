@@ -38,6 +38,7 @@ import {
 import ChatMessage from '../components/ChatMessage'
 import CharacterAvatar from '../components/CharacterAvatar'
 import MarkdownView from '../components/MarkdownView'
+import RozmowaGlosowa from '../components/RozmowaGlosowa'
 import Toast, { useToast } from '../components/Toast'
 
 // --- Pomocnicze -------------------------------------------------------------
@@ -142,6 +143,8 @@ interface MapaProps {
   stany: Record<string, StanWezla>
   /** Gdy zespol pracuje, wezly nie sa klikalne (klik prowadzi do profilu). */
   running?: boolean
+  /** Akcja "porozmawiaj glosem" z wezla persony (ikona mikrofonu). */
+  onGlos?: (agent: Agent) => void
 }
 
 /** Wyliczona geometria pojedynczego specjalisty na okregu. */
@@ -255,7 +258,7 @@ function Portret({
  * nici plynie czasteczka w kolorze agenta; po zakonczeniu wraca do COO i nic
  * zielenieje. Geometria liczona matematycznie i skalowana przez ResizeObserver.
  */
-function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
+function MapaNeuronu({ stanCoo, stany, running = false, onGlos }: MapaProps) {
   const stageRef = useRef<HTMLDivElement>(null)
   const [wym, setWym] = useState({ w: 0, h: 0 })
   const reduced = useReducedMotion()
@@ -564,20 +567,40 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
             top: cy,
             transform: 'translate(-50%,-50%)',
           }
-          return running ? (
-            <div className="absolute z-10" style={stylCoo}>
-              {zawartoscCoo}
-            </div>
-          ) : (
-            <Link
-              to={`/agent/${coo.slug}`}
-              aria-label={`Profil agenta ${coo.name}`}
-              title={coo.name}
-              className="absolute z-10 rounded-3xl outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-              style={stylCoo}
-            >
-              {zawartoscCoo}
-            </Link>
+          return (
+            <>
+              {running ? (
+                <div className="absolute z-10" style={stylCoo}>
+                  {zawartoscCoo}
+                </div>
+              ) : (
+                <Link
+                  to={`/agent/${coo.slug}`}
+                  aria-label={`Profil agenta ${coo.name}`}
+                  title={coo.name}
+                  className="absolute z-10 rounded-3xl outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+                  style={stylCoo}
+                >
+                  {zawartoscCoo}
+                </Link>
+              )}
+              {onGlos && (
+                <button
+                  type="button"
+                  onClick={() => onGlos(coo)}
+                  aria-label={`Porozmawiaj glosem z ${coo.name}`}
+                  title="Porozmawiaj glosem"
+                  className="absolute z-20 flex h-8 w-8 items-center justify-center rounded-full border border-brand/40 bg-zinc-950/80 text-brand-soft transition-colors hover:border-brand/70 hover:bg-brand/15"
+                  style={{
+                    left: cx,
+                    top: cy,
+                    transform: 'translate(28px, calc(-50% - 52px))',
+                  }}
+                >
+                  <Mic size={15} aria-hidden />
+                </button>
+              )}
+            </>
           )
         })()}
 
@@ -616,6 +639,19 @@ function MapaNeuronu({ stanCoo, stany, running = false }: MapaProps) {
             className="absolute z-10 flex flex-col items-center"
             style={{ left: n.nx, top: n.ny, transform: 'translate(-50%,-50%)' }}
           >
+            {/* Akcja glosu przy wezle persony (osobna od kliku w profil) */}
+            {onGlos && (
+              <button
+                type="button"
+                onClick={() => onGlos(a)}
+                aria-label={`Porozmawiaj glosem z ${a.name}`}
+                title="Porozmawiaj glosem"
+                className="absolute left-1/2 top-0 z-20 flex h-7 w-7 items-center justify-center rounded-full border border-zinc-700 bg-zinc-950/85 text-zinc-300 transition-colors hover:border-brand/60 hover:text-brand-soft"
+                style={{ transform: 'translate(14px, calc(-50% - 30px))' }}
+              >
+                <Mic size={13} aria-hidden />
+              </button>
+            )}
             {/* Klik w wezel (gdy nie trwa praca) otwiera profil agenta */}
             {running ? (
               <div
@@ -685,6 +721,8 @@ export default function Command() {
   const [czytajAuto, setCzytajAuto] = useState(() => czytajAutoWlaczone())
   // Znacznik: biezacy przebieg zostal odpalony glosem (final ma isc do TTS/overlay).
   const glosAktywnyRef = useRef(false)
+  // Rozmowa glosowa 1:1 z wybrana persona (klik mikrofonu przy wezle).
+  const [rozmowaAgent, setRozmowaAgent] = useState<Agent | null>(null)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
@@ -993,7 +1031,12 @@ export default function Command() {
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-8">
-          <MapaNeuronu stanCoo={stanCoo} stany={stany} running={running} />
+          <MapaNeuronu
+            stanCoo={stanCoo}
+            stany={stany}
+            running={running}
+            onGlos={setRozmowaAgent}
+          />
 
           <p className="mt-6 text-center text-xs text-zinc-600">
             COO w srodku, zespol na okregu. Aktywna nic swieci kolorem
@@ -1382,6 +1425,14 @@ export default function Command() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Rozmowa glosowa 1:1 z persona (klik mikrofonu przy wezle mapy) */}
+      {rozmowaAgent && (
+        <RozmowaGlosowa
+          agent={rozmowaAgent}
+          onClose={() => setRozmowaAgent(null)}
+        />
       )}
 
       <Toast text={toast} />

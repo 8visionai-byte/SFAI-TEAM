@@ -98,6 +98,19 @@ Rekomendacja: do publicznego wdrozenia uzywaj proxy (`VITE_AGENT_API_URL`). Kluc
 
 Funkcja Deno (`supabase/functions/`) nie wchodzi do builda Vite, wiec nie wplywa na `npm run build`.
 
+## Tryb glosowy (funkcje Vercel w `api/`)
+
+Tryb rozmowy glosowej to dodatek wlaczany obecnoscia kluczy, nie zamiennik niczego. Sekrety zyja tylko po stronie funkcji Vercel (`api/`), nigdy w przegladarce. Ustaw je w Vercel > Project (webapp) > Settings > Environment Variables:
+
+- `ELEVENLABS_API_KEY` (poziom 1, usta persony przez `api/tts.ts`). Brak klucza to odpowiedz 503 `{ "error": "brak-klucza" }` i fallback do glosu przegladarki (`voice.ts`).
+- `OPENAI_API_KEY` (poziom 2, uszy OpenAI Realtime przez `api/realtime-token.ts`). Brak klucza to odpowiedz 503 `{ "error": "brak-klucza" }` i fallback do Web Speech.
+
+Funkcje w `api/` sa poza `tsconfig` (`include: ["src"]`), wiec `tsc` ich nie kompiluje, a Vite ich nie bundluje. Nie wplywaja na `npm run build`.
+
+### Glos premium
+
+Zeby wlaczyc glos premium (naturalny glos persony ElevenLabs plus plynny realtime OpenAI), dodaj `OPENAI_API_KEY` i `ELEVENLABS_API_KEY` w Vercel (Settings > Environment Variables), a nastepnie zrob redeploy. Bez tych kluczy aplikacja dziala normalnie w trybie podstawowym (glos przegladarki `voice.ts`), nic sie nie psuje.
+
 ## Jak dziala mozg i persony
 
 Tresc jest **osadzona** w repo i wczytywana w czasie buildu (`import.meta.glob` z `?raw`):
