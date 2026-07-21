@@ -107,6 +107,11 @@ export async function startRozmowa(
   let transAgent = '' // narastajacy transkrypt biezacej wypowiedzi agenta
   let dc: RTCDataChannel | null = null // kanal danych 'oai-events'
   let powitalSie = false // strzezenie: powitanie wysylamy tylko raz
+  // Analizatory poziomu dzwieku (aura). MUSZA byc zadeklarowane TU, na gorze:
+  // podepnijPoziomLokalny() woła sie juz w bloku try (ponizej), a przypisanie do
+  // 'let' przed jego deklaracja rzucaloby "Cannot access before initialization".
+  let analyserLokalny: AnalyserNode | null = null
+  let analyserZdalny: AnalyserNode | null = null
 
   /** Pelne sprzatanie: idempotentne, wolane z zakoncz() i przy bledzie. */
   function sprzataj() {
@@ -299,9 +304,6 @@ export async function startRozmowa(
     audioCtx = new AC()
     return audioCtx
   }
-
-  let analyserLokalny: AnalyserNode | null = null
-  let analyserZdalny: AnalyserNode | null = null
 
   function podepnijAnalyser(stream: MediaStream): AnalyserNode | null {
     const ctx = zapewnijCtx()
