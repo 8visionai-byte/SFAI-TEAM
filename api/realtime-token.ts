@@ -12,6 +12,8 @@
 
 // Szybki wariant realtime (nizsza latencja). Mozna nadpisac przez env.
 const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-mini'
+// Model transkrypcji wejscia (wymagany przez sesje realtime). Szybki wariant.
+const OPENAI_TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe'
 
 // Glosy dzialajace stabilnie na wariancie mini (bez cedar/marin - nowe, moga nie grac).
 const GLOSY_OK = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse']
@@ -83,7 +85,11 @@ export default async function handler(req: any, res: any) {
           model: OPENAI_REALTIME_MODEL,
           instructions,
           audio: {
-            input: { transcription: { language: 'pl' } },
+            input: {
+              transcription: { model: OPENAI_TRANSCRIBE_MODEL, language: 'pl' },
+              // Serwerowe wykrywanie konca wypowiedzi = plynna rozmowa (jak ChatGPT).
+              turn_detection: { type: 'server_vad' },
+            },
             output: { voice },
           },
         },
