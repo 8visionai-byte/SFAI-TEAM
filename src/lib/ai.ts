@@ -1,5 +1,5 @@
 import { getAgent } from '../data/agents'
-import { getAgentPrompt, getFullBrain } from './content'
+import { getAgentPrompt, getFullBrain, getBrainCard } from './content'
 // Import bezpieczny: storage.ts bierze z ai.ts wylacznie typ (import type),
 // wiec nie powstaje cykl w czasie dzialania.
 import { aktywneSkilleAgenta } from './storage'
@@ -119,6 +119,48 @@ export function buildSystemPrompt(agentSlug: string): string {
     ...(sekcjaSkilli ? ['', sekcjaSkilli] : []),
     '',
     CHAT_RULES,
+  ].join('\n')
+}
+
+/**
+ * Wersja promptu dla ROZMOWY GLOSOWEJ (OpenAI Realtime). Realtime ma twardy
+ * limit 16384 tokenow na instrukcje, wiec zamiast calego mozgu (getFullBrain)
+ * dajemy rdzen (Karta Mozgu) + persone + skille + zasady. Zwiezle, ale spojne
+ * z marka i tozsamoscia. Pelen mozg zostaje w czacie tekstowym.
+ */
+export function buildVoicePrompt(agentSlug: string): string {
+  const agent = getAgent(agentSlug)
+  const card = getBrainCard()
+
+  let persona: string
+  if (agent?.hasPrompt) {
+    persona = getAgentPrompt(agentSlug) ?? ''
+  } else {
+    persona = agent
+      ? `# ROLA: ${agent.name} (${agent.role})\n\nMisja: ${agent.mission}\n\nTrzymaj sie tozsamosci i tonu marki z Karty Mozgu.`
+      : ''
+  }
+
+  const skille = aktywneSkilleAgenta(agentSlug)
+  const sekcjaSkilli =
+    skille.length > 0
+      ? [
+          '=== DODATKOWE UMIEJETNOSCI OD WLASCICIELA (stosuj) ===',
+          ...skille.map((s) => `- ${s.nazwa}: ${s.instrukcja}`),
+        ].join('\n')
+      : ''
+
+  return [
+    '=== RDZEN WIEDZY O FIRMIE (Karta Mozgu) ===',
+    card,
+    '',
+    '=== TWOJA PERSONA ===',
+    persona,
+    ...(sekcjaSkilli ? ['', sekcjaSkilli] : []),
+    '',
+    CHAT_RULES,
+    '',
+    'To rozmowa GLOSOWA: mow zwiezle i naturalnie, krotkie zdania, jak czlowiek przez telefon. Bez list punktowanych na glos.',
   ].join('\n')
 }
 

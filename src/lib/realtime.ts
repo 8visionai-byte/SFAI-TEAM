@@ -15,7 +15,7 @@
  * dokumentacji OpenAI Realtime (client_secrets + /v1/realtime/calls).
  */
 import type { Agent } from '../data/agents'
-import { buildSystemPrompt } from './ai'
+import { buildVoicePrompt } from './ai'
 
 /** Stan rozmowy glosowej (wspolny dla realtime i toru podstawowego). */
 export type StanRozmowy =
@@ -64,7 +64,7 @@ async function pobierzToken(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       voice: agent.realtimeVoice ?? 'ash',
-      instructions: buildSystemPrompt(agent.slug),
+      instructions: buildVoicePrompt(agent.slug),
     }),
   })
 

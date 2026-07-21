@@ -66,10 +66,14 @@ export default async function handler(req: any, res: any) {
   const voice = typeof body?.voice === 'string' && GLOSY_OK.includes(body.voice)
     ? body.voice
     : GLOS_DOMYSLNY
-  // Instrukcje persony (mozg + persona + skille z buildSystemPrompt) bywaja
-  // dlugie; dopuszczamy do 200000 znakow, inaczej sesja dostaje pusty prompt.
-  const instructions = typeof body?.instructions === 'string' && body.instructions.length <= 200000
-    ? body.instructions
+  // OpenAI Realtime ma twardy limit 16384 tokenow na instrukcje. Tniemy do
+  // bezpiecznej dlugosci znakowej (ok. 40000 znakow ~ 12-13k tokenow), zeby
+  // sesja nigdy nie padla na 400 za dlugie instrukcje. Klient i tak wysyla
+  // zwiezly prompt glosowy (buildVoicePrompt), to jest zabezpieczenie.
+  const MAX_INSTR = 40000
+  const raw = typeof body?.instructions === 'string' ? body.instructions : ''
+  const instructions = raw.length > 0
+    ? raw.slice(0, MAX_INSTR)
     : 'Prowadzisz rozmowe glosowa prostym polskim. Bez em-dash, bez zmyslonych liczb.'
 
   try {
