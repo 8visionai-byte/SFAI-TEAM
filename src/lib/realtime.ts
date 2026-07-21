@@ -15,8 +15,9 @@
  * dokumentacji OpenAI Realtime (client_secrets + /v1/realtime/calls).
  */
 import type { Agent } from '../data/agents'
-import { buildVoicePrompt } from './ai'
+import { buildVoicePrompt, getVoiceModel } from './ai'
 import { szukajWMozgu } from './content'
+import { dodajPlikMozgu, nowyId } from './storage'
 
 /** Stan rozmowy glosowej (wspolny dla realtime i toru podstawowego). */
 export type StanRozmowy =
@@ -54,12 +55,29 @@ export interface UchwytRozmowy {
 }
 
 /**
+ * Zamienia tytul na bezpieczna, unikalna czesc sciezki pliku mozgu:
+ * male litery, bez polskich znakow, spacje->'-', z sufiksem nowyId() (brak nadpisania).
+ */
+function sciezkaSlug(tytul: string): string {
+  const slug = (tytul || 'notatka')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/ł/g, 'l')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
+  return `${slug || 'notatka'}-${nowyId()}`
+}
+
+/**
  * Pobiera ephemeral token z serwera. 503 => brak klucza (sygnal fallbacku).
  * Zwraca token i model do handshake SDP.
  */
 async function pobierzToken(
   glos: string,
   instrukcje: string,
+  model: string,
 ): Promise<{ token: string; model: string }> {
   const res = await fetch('/api/realtime-token', {
     method: 'POST',
@@ -67,6 +85,9 @@ async function pobierzToken(
     body: JSON.stringify({
       voice: glos,
       instructions: instrukcje,
+      // Model wg wybranej jakosci glosu (getVoiceModel). Serwer i tak waliduje
+      // nazwe po whiteliscie i spada na domyslny (pelny), gdy poza lista.
+      model,
     }),
   })
 
@@ -82,7 +103,8 @@ async function pobierzToken(
   if (!token) {
     throw new Error('realtime-token-pusty')
   }
-  return { token, model: dane?.model ?? 'gpt-realtime-mini' }
+  // Fallback: gdy serwer nie odeslal modelu, uzywamy tego, o ktory prosilismy.
+  return { token, model: dane?.model ?? model }
 }
 
 /**
@@ -100,9 +122,12 @@ export async function startRozmowa(
   opcje.onStan('laczenie')
   // Glos + prompt persony liczymy RAZ i uzywamy ich i przy mintowaniu tokenu,
   // i przy session.update. Dzieki temu VAD/transkrypcja/glos sa spojne.
-  const glos = agent.realtimeVoice ?? 'ash'
+  const glos = agent.realtimeVoice ?? 'cedar'
   const instrukcje = buildVoicePrompt(agent.slug)
-  const { token, model } = await pobierzToken(glos, instrukcje)
+  // Model wg wybranej jakosci glosu ('wysoka'=pelny, 'szybka'=mini). Serwer moze
+  // zwrocic finalna nazwe (walidacja whitelist), wiec bierzemy ja do session.update.
+  const wybranyModel = getVoiceModel()
+  const { token, model } = await pobierzToken(glos, instrukcje, wybranyModel)
 
   /**
    * PELNA konfiguracja rozmowy glosowej (GA, wg RESEARCH-REALTIME-INPUT.md).
@@ -160,6 +185,30 @@ export async function startRozmowa(
               },
             },
             required: ['zapytanie'],
+          },
+        },
+        {
+          type: 'function',
+          name: 'zapisz_do_bazy',
+          description:
+            'Zapisuje wazne ustalenia z rozmowy do bazy wiedzy firmy jako notatke MD. ' +
+            'Uzyj gdy wlasciciel poda nowe dane, decyzje, ustalenia, albo poprosi o zapis. ' +
+            'Najpierw zaproponuj zapis i poczekaj na zgode, dopiero potem wywolaj to narzedzie. ' +
+            'Preamble sample phrases: Zapisze to do naszej bazy. / Dodaje to do mozgu firmy.',
+          parameters: {
+            type: 'object',
+            properties: {
+              tytul: {
+                type: 'string',
+                description: 'Krotki, rzeczowy tytul notatki po polsku.',
+              },
+              tresc: {
+                type: 'string',
+                description:
+                  'Tresc notatki w markdown: zwiezle, punktami, tylko potwierdzone fakty i liczby. Bez em-dash.',
+              },
+            },
+            required: ['tytul', 'tresc'],
           },
         },
       ],
@@ -404,7 +453,12 @@ export async function startRozmowa(
   function obsluzWywolanieNarzedzia(zd: any) {
     const nazwa: string = typeof zd?.name === 'string' ? zd.name : ''
     const callId: string = typeof zd?.call_id === 'string' ? zd.call_id : ''
-    if (nazwa !== 'przeszukaj_wiedze' || !callId) return
+    if (!callId) return
+    if (nazwa === 'zapisz_do_bazy') {
+      obsluzZapisDoBazy(zd, callId)
+      return
+    }
+    if (nazwa !== 'przeszukaj_wiedze') return
 
     let zapytanie = ''
     try {
@@ -432,6 +486,53 @@ export async function startRozmowa(
         }),
       )
       // 2) dopiero teraz kaz modelowi mowic dalej z tego, co znalazl.
+      dc.send(JSON.stringify({ type: 'response.create' }))
+    } catch {
+      // Kanal mogl paść; nastepne zdarzenia bledu zajma sie reszta.
+    }
+  }
+
+  /**
+   * Obsluga wywolania narzedzia zapisz_do_bazy (function calling, GA).
+   * Ta sama sciezka co przeszukaj_wiedze: parsuje tytul + tresc, zapisuje do
+   * mozgu firmy (sf_mozg_wlasne, grupa 'z-rozmow') jako plik MD, odsyla
+   * function_call_output {ok, sciezka} i response.create, zeby model potwierdzil glosem.
+   */
+  function obsluzZapisDoBazy(zd: any, callId: string) {
+    let tytul = ''
+    let tresc = ''
+    try {
+      const args = JSON.parse(zd?.arguments || '{}')
+      if (typeof args?.tytul === 'string') tytul = args.tytul
+      if (typeof args?.tresc === 'string') tresc = args.tresc
+    } catch {
+      // Zle/niekompletne argumenty: lecimy z pustymi -> zapis notatki-zaslepki.
+    }
+    const tytulOk = tytul.trim() || 'Notatka z rozmowy'
+    console.info('[realtime] tool zapisz_do_bazy', tytulOk)
+    opcje.onStan('mysle')
+
+    const sciezka = `z-rozmow/${sciezkaSlug(tytulOk)}.md`
+    const dataDnia = new Date().toISOString().slice(0, 10)
+    const naglowek = `# ${tytulOk}\n\n> Zrodlo: rozmowa glosowa, ${dataDnia}\n\n`
+    dodajPlikMozgu({
+      sciezka,
+      grupa: 'z-rozmow',
+      tresc: naglowek + tresc.trim() + '\n',
+    })
+
+    if (!dc || dc.readyState !== 'open') return
+    try {
+      dc.send(
+        JSON.stringify({
+          type: 'conversation.item.create',
+          item: {
+            type: 'function_call_output',
+            call_id: callId,
+            output: JSON.stringify({ ok: true, sciezka }),
+          },
+        }),
+      )
       dc.send(JSON.stringify({ type: 'response.create' }))
     } catch {
       // Kanal mogl paść; nastepne zdarzenia bledu zajma sie reszta.

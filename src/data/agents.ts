@@ -23,7 +23,13 @@ export interface Agent {
   personImie?: string
   /** voiceId ElevenLabs dla glosu premium tej persony. */
   elevenVoiceId?: string
-  /** Wbudowany glos OpenAI Realtime jako fallback ust (gdy brak ElevenLabs). */
+  /**
+   * Wbudowany glos OpenAI Realtime (usta persony w rozmowie glosowej).
+   * Wg RESEARCH-GLOS-JAKOSC.md najlepsza jakosciowo para OpenAI to:
+   *  - cedar (meski, cieplejszy, "natural and conversational"),
+   *  - marin (zenski, klarowny, "professional and clear").
+   * Dzialaja na pelnym i mini. Zapas meski: ash/echo. Zapas zenski: sage/shimmer.
+   */
   realtimeVoice?: string
 }
 
@@ -53,7 +59,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Leo',
     elevenVoiceId: 'pNInz6obpgDQGcFmaJgB',
-    realtimeVoice: 'ash',
+    realtimeVoice: 'cedar', // meski, najlepsza jakosc (RESEARCH-GLOS-JAKOSC.md)
   },
   {
     slug: 'wiedza-produkt',
@@ -81,7 +87,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Sam',
     elevenVoiceId: 'ZQe5CZNOzWyzPSCn5a3c',
-    realtimeVoice: 'echo',
+    realtimeVoice: 'cedar', // meski, najlepsza jakosc
   },
   {
     slug: 'operacje',
@@ -108,7 +114,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Mia',
     elevenVoiceId: 'AZnzlk1XvdvUeBnXmlld',
-    realtimeVoice: 'coral',
+    realtimeVoice: 'marin', // zenski, najlepsza jakosc
   },
   {
     slug: 'analityk',
@@ -136,7 +142,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Ray',
     elevenVoiceId: 'VR6AewLTigWG4xSOukaG',
-    realtimeVoice: 'verse',
+    realtimeVoice: 'cedar', // meski, najlepsza jakosc
   },
   {
     slug: 'pamiec-zespolu',
@@ -164,7 +170,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Vera',
     elevenVoiceId: 'pMsXgVXv3BLzUgSXRplE',
-    realtimeVoice: 'shimmer',
+    realtimeVoice: 'marin', // zenski, najlepsza jakosc
   },
   {
     slug: 'copywriter',
@@ -192,7 +198,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Milo',
     elevenVoiceId: 'ErXwobaYiN019PkySvjV',
-    realtimeVoice: 'ballad',
+    realtimeVoice: 'cedar', // meski, najlepsza jakosc
   },
   {
     slug: 'handlowiec',
@@ -219,7 +225,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Jack',
     elevenVoiceId: 'TxGEqnHWrfWFTfGW9XjX',
-    realtimeVoice: 'ash',
+    realtimeVoice: 'cedar', // meski, najlepsza jakosc
   },
   {
     slug: 'opiekun-klienta',
@@ -246,7 +252,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Ella',
     elevenVoiceId: 'EXAVITQu4vr4xnSDxMaL',
-    realtimeVoice: 'sage',
+    realtimeVoice: 'marin', // zenski, najlepsza jakosc
   },
   {
     slug: 'drugi-glos',
@@ -267,7 +273,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Otto',
     elevenVoiceId: 't0jbNlBVZ17f02VDIeMI',
-    realtimeVoice: 'echo',
+    realtimeVoice: 'cedar', // meski, najlepsza jakosc
   },
   {
     slug: 'analityk-social',
@@ -295,7 +301,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Zoe',
     elevenVoiceId: '21m00Tcm4TlvDq8ikWAM',
-    realtimeVoice: 'shimmer',
+    realtimeVoice: 'marin', // zenski, najlepsza jakosc
   },
 ]
 

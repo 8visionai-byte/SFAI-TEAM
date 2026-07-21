@@ -16,6 +16,11 @@ const KEY_STORAGE = 'sf_anthropic_key'
 const MODEL_STORAGE = 'sf_anthropic_model'
 const DEFAULT_MODEL = import.meta.env.VITE_ANTHROPIC_MODEL || 'claude-sonnet-4-6'
 
+// Jakosc glosu rozmowy realtime (OpenAI). 'wysoka' = model pelny (lepszy, drozszy),
+// 'szybka' = model mini (tanszy). Trzymamy WYLACZNIE w przegladarce uzytkownika.
+const VOICE_QUALITY_STORAGE = 'sf_glos_jakosc'
+export type JakoscGlosu = 'wysoka' | 'szybka'
+
 /** Bezpieczny dostep do localStorage (SSR/prywatny tryb moga rzucic wyjatek). */
 function safeStorage(): Storage | null {
   try {
@@ -65,6 +70,33 @@ export function setModel(value: string): void {
     return
   }
   safeStorage()?.setItem(MODEL_STORAGE, v)
+}
+
+// --- Jakosc glosu realtime (localStorage sf_glos_jakosc) -------------------
+
+/** Zwraca wybrana jakosc glosu (domyslnie 'wysoka' = pelny model). */
+export function getVoiceQuality(): JakoscGlosu {
+  const v = safeStorage()?.getItem(VOICE_QUALITY_STORAGE)?.trim()
+  return v === 'szybka' ? 'szybka' : 'wysoka'
+}
+
+/** Zapisuje wybrana jakosc glosu ('wysoka' | 'szybka'). */
+export function setVoiceQuality(value: JakoscGlosu): void {
+  safeStorage()?.setItem(
+    VOICE_QUALITY_STORAGE,
+    value === 'szybka' ? 'szybka' : 'wysoka',
+  )
+}
+
+/**
+ * Mapuje wybrana jakosc glosu na nazwe modelu OpenAI Realtime:
+ *  - 'wysoka' -> 'gpt-realtime'       (pelny, najwyzsza jakosc, drozszy)
+ *  - 'szybka' -> 'gpt-realtime-mini'  (tanszy, szybszy)
+ * Nazwy sa aliasami GA (podazaja za najnowsza wersja), zweryfikowane w whiteliscie
+ * po stronie /api/realtime-token (patrz RESEARCH-GLOS-JAKOSC.md).
+ */
+export function getVoiceModel(): string {
+  return getVoiceQuality() === 'szybka' ? 'gpt-realtime-mini' : 'gpt-realtime'
 }
 
 const CHAT_RULES = [
@@ -144,6 +176,7 @@ export function buildVoicePrompt(agentSlug: string): string {
     'Odpowiadasz KONKRETNIE, realnymi danymi firmy, nigdy ogolnikami.',
     'Gdy pytanie wymaga szczegolu (cennik, case study, ICP, proces, oferta, dane firmy), UZYJ narzedzia przeszukaj_wiedze i powiedz krotko "daj mi chwile, sprawdze", a potem odpowiedz na podstawie tego, co znalazles.',
     'Nie zmyslasz liczb ani faktow: jesli czegos nie ma w wiedzy, powiedz to wprost.',
+    'Masz tez narzedzie zapisz_do_bazy: mozesz utrwalac wazne ustalenia w bazie wiedzy firmy. Gdy w rozmowie padnie trwaly, warty zapamietania fakt (nowa cena, decyzja, ustalenie o kliencie idealnym, sprawdzony sposob na obiekcje, nowa informacja o ofercie), PROAKTYWNIE zaproponuj zapis: "Chcesz, zebym zapisal to do naszej bazy?". Po wyraznej zgodzie wywolaj zapisz_do_bazy z rzeczowym tytulem i zwiezla trescia. Nie zapisuj rzeczy ulotnych, dygresji ani niepotwierdzonych liczb i nie zapisuj bez zgody.',
   ].join(' ')
 
   let persona: string

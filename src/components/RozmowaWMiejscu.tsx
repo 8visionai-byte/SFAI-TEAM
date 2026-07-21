@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import { Mic, Square, X } from 'lucide-react'
+import { Mic, Save, Square, X } from 'lucide-react'
 import type { Agent } from '../data/agents'
 import {
   startRozmowa,
+  type KtoMowi,
   type StanRozmowy,
   type UchwytRozmowy,
 } from '../lib/realtime'
 import { mowPowitanie, mowTekstem, zatrzymajMowe } from '../lib/eleven'
-import { sendMessage, type ChatMessage } from '../lib/ai'
+import { callModel, getMode, sendMessage, type ChatMessage } from '../lib/ai'
+import { dodajPlikMozgu } from '../lib/storage'
 import { isSttSupported, startListening, stopListening } from '../lib/voice'
 import CharacterAvatar from './CharacterAvatar'
+import Toast, { useToast } from './Toast'
 
 /** Stan UI: 'gotowy' = przed startem, reszta z maszyny rozmowy. */
 export type StanRozmowyUI = 'gotowy' | StanRozmowy
@@ -49,9 +52,14 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
   const [poziom, setPoziom] = useState(0)
   const [blad, setBlad] = useState<string | null>(null)
   const [baner, setBaner] = useState(false)
+  const [zapisywanie, setZapisywanie] = useState(false)
+  const { toast, pokazToast } = useToast()
 
   const uchwytRef = useRef<UchwytRozmowy | null>(null)
   const historiaRef = useRef<ChatMessage[]>([])
+  // Pelny transkrypt rozmowy (oba tory): finalne wypowiedzi usera i persony.
+  // Zrodlo dla przycisku "Zapisz rozmowe do mozgu".
+  const transkryptRef = useRef<{ kto: KtoMowi; tekst: string }[]>([])
   const aktywnyRef = useRef(true)
   // Ostatni zaraportowany poziom (throttling, zeby nie odswiezac mapy co klatke).
   const ostatniPoziomRef = useRef(0)
@@ -143,6 +151,10 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
             setTranskryptAgent(tekst)
             if (finalne) setOdpowiedz(tekst)
           }
+          // Zbieramy tylko finalne, niepuste linie do zapisu rozmowy.
+          if (finalne && tekst.trim()) {
+            transkryptRef.current.push({ kto, tekst: tekst.trim() })
+          }
         },
         onPoziom: (p) => ustawPoziom(p),
         onBlad: () => {
@@ -219,10 +231,12 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
     setStan('mysle')
     setTranskryptAgent('')
     historiaRef.current.push({ role: 'user', content: t })
+    transkryptRef.current.push({ kto: 'user', tekst: t })
     try {
       const odp = await sendMessage(agent.slug, historiaRef.current)
       if (!aktywnyRef.current) return
       historiaRef.current.push({ role: 'assistant', content: odp })
+      transkryptRef.current.push({ kto: 'agent', tekst: odp })
       setOdpowiedz(odp)
       setTranskryptAgent(odp)
       setStan('mowie')
@@ -269,6 +283,66 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
     } else if (stan === 'czuwa') {
       nasluch()
     }
+  }
+
+  // --- Zapis rozmowy do mozgu firmy -----------------------------------------
+
+  /**
+   * Zapisuje biezaca rozmowe do bazy wiedzy (sf_mozg_wlasne, grupa 'z-rozmow').
+   * Gdy jest polaczenie z modelem (klucz/proxy/env), Claude wyciaga zwiezly plik MD
+   * (wazne dane/ustalenia/fakty o firmie). Bez klucza zapisujemy surowa transkrypcje.
+   */
+  async function zapiszDoMozgu() {
+    if (zapisywanie) return
+    const linie = transkryptRef.current
+    if (linie.length === 0) {
+      pokazToast('Brak rozmowy do zapisania.')
+      return
+    }
+    setZapisywanie(true)
+    const rozmowaTekst = linie
+      .map((l) => `${l.kto === 'user' ? 'Wlasciciel' : imie}: ${l.tekst}`)
+      .join('\n')
+    const dataDnia = new Date().toISOString().slice(0, 10)
+    let tytul = `Rozmowa z ${imie} ${dataDnia}`
+    let tresc = ''
+
+    try {
+      if (getMode() !== 'demo') {
+        const system = [
+          'Jestes redaktorem bazy wiedzy firmy SimpleFast.ai.',
+          'Z podanej rozmowy glosowej wyciagnij wazne dane, ustalenia i fakty o firmie i zapisz je jako zwiezly plik markdown po polsku.',
+          'Pierwsza linia to "# <krotki, rzeczowy tytul>", potem zwiezle punkty.',
+          'Zasady: prosty polski, bez em-dash, tylko potwierdzone fakty i liczby. Jesli liczba jest niepewna, napisz [DO UZUPELNIENIA]. Nie zmyslaj. Bez wstepow i komentarzy.',
+        ].join('\n')
+        const md = await callModel(system, [
+          { role: 'user', content: rozmowaTekst },
+        ])
+        tresc = md.trim()
+        const m = tresc.match(/^#\s+(.+)$/m)
+        if (m) tytul = m[1].trim()
+      } else {
+        tresc = `# ${tytul}\n\n\`\`\`\n${rozmowaTekst}\n\`\`\`\n`
+      }
+    } catch {
+      // Blad modelu: zapisujemy surowa transkrypcje, zeby nic nie przepadlo.
+      tresc = `# ${tytul}\n\n\`\`\`\n${rozmowaTekst}\n\`\`\`\n`
+    }
+
+    const slug =
+      (tytul
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .replace(/ł/g, 'l')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 48) || 'rozmowa') +
+      '-' +
+      Date.now().toString(36)
+    dodajPlikMozgu({ sciezka: `z-rozmow/${slug}.md`, tresc, grupa: 'z-rozmow' })
+    if (aktywnyRef.current) setZapisywanie(false)
+    pokazToast('Zapisano do bazy wiedzy')
   }
 
   // --- Etykieta stanu --------------------------------------------------------
@@ -375,6 +449,19 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
           )}
           <button
             type="button"
+            onClick={zapiszDoMozgu}
+            disabled={zapisywanie}
+            aria-label="Zapisz rozmowe do mozgu"
+            title="Zapisz rozmowe do mozgu firmy"
+            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/80 px-3 text-xs font-medium text-zinc-200 outline-none transition-colors hover:bg-zinc-800 hover:text-white focus-visible:ring-2 focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Save size={14} aria-hidden />
+            <span className="hidden sm:inline">
+              {zapisywanie ? 'Zapisuje...' : 'Zapisz do mozgu'}
+            </span>
+          </button>
+          <button
+            type="button"
             onClick={zakoncz}
             aria-label={`Zakoncz rozmowe z ${imie}`}
             title="Zakoncz rozmowe"
@@ -385,6 +472,7 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
           </button>
         </div>
       </div>
+      <Toast text={toast} />
     </div>
   )
 }

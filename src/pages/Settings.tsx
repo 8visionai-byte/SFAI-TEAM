@@ -23,6 +23,9 @@ import {
   getMode,
   getModel,
   setModel,
+  getVoiceQuality,
+  setVoiceQuality,
+  type JakoscGlosu,
 } from '../lib/ai'
 import {
   isTtsSupported,
@@ -129,11 +132,21 @@ export default function Settings() {
   const glosSttOK = isSttSupported()
   const [autoCzytaj, setAutoCzytaj] = useState(() => czytajAutoWlaczone())
 
+  // Jakosc glosu rozmowy realtime (OpenAI): 'wysoka' = pelny model, 'szybka' = mini.
+  const [jakoscGlosu, setJakoscGlosu] = useState<JakoscGlosu>(() =>
+    getVoiceQuality(),
+  )
+
   function przelaczAutoCzytaj() {
     if (!glosTtsOK) return
     const nowy = !autoCzytaj
     setAutoCzytaj(nowy)
     ustawCzytajAuto(nowy)
+  }
+
+  function wybierzJakoscGlosu(wybor: JakoscGlosu) {
+    setJakoscGlosu(wybor)
+    setVoiceQuality(wybor)
   }
 
   // Tryb realny = jakiekolwiek dzialajace polaczenie z modelem
@@ -367,6 +380,48 @@ export default function Settings() {
                 aria-hidden
               />
             </button>
+          </div>
+          {/* Jakosc glosu rozmowy realtime (OpenAI): Wysoka vs Szybka */}
+          <div className="border-t border-zinc-800 pt-4">
+            <p className="text-sm font-semibold text-zinc-200">Jakosc glosu</p>
+            <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+              Dotyczy rozmowy na zywo z persona (OpenAI). Wysoka brzmi lepiej i
+              stabilniej, Szybka jest tansza i nieco szybsza.
+            </p>
+            <div
+              className="mt-3 inline-flex rounded-xl border border-zinc-800 bg-zinc-950 p-1"
+              role="group"
+              aria-label="Jakosc glosu rozmowy na zywo"
+            >
+              {(
+                [
+                  { key: 'wysoka', label: 'Wysoka (lepsza, drozsza)' },
+                  { key: 'szybka', label: 'Szybka (tansza)' },
+                ] as { key: JakoscGlosu; label: string }[]
+              ).map((opcja) => {
+                const aktywna = jakoscGlosu === opcja.key
+                return (
+                  <button
+                    key={opcja.key}
+                    type="button"
+                    aria-pressed={aktywna}
+                    onClick={() => wybierzJakoscGlosu(opcja.key)}
+                    className={[
+                      'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                      aktywna
+                        ? 'bg-brand text-zinc-950'
+                        : 'text-zinc-400 hover:text-zinc-200',
+                    ].join(' ')}
+                  >
+                    {opcja.label}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="mt-3 text-xs leading-relaxed text-zinc-500">
+              Natywny polski lektor bedzie z ElevenLabs po dodaniu klucza. Do tego
+              czasu glosy OpenAI mowia po polsku z lekkim angielskim akcentem.
+            </p>
           </div>
           <p className="border-t border-zinc-800 pt-3 text-xs leading-relaxed text-zinc-500">
             Wersja pro (ElevenLabs / OpenAI realtime, naturalny glos i nizsze

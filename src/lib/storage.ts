@@ -234,6 +234,19 @@ export function zapiszWlasnyPlikMozgu(plik: PlikWlasnyMozgu): void {
   writeList(KEY_MOZG_WLASNE, list)
 }
 
+/**
+ * Wygodne dodanie wlasnego pliku mozgu bez recznego ustawiania updatedAt.
+ * Zapis trafia do sf_mozg_wlasne, wiec plik jest od razu czytany przez
+ * getBrainFiles() i szukajWMozgu() (narzedzia glosowe + Baza wiedzy).
+ */
+export function dodajPlikMozgu(plik: {
+  sciezka: string
+  tresc: string
+  grupa: string
+}): void {
+  zapiszWlasnyPlikMozgu({ ...plik, updatedAt: new Date().toISOString() })
+}
+
 /** Usuwa wlasny plik mozgu po sciezce. */
 export function usunWlasnyPlikMozgu(sciezka: string): void {
   writeList(

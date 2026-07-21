@@ -3,21 +3,33 @@
 // Ustaw sekret w Vercel: Project (webapp) > Settings > Environment Variables
 //   OPENAI_API_KEY = sk-...   (NIE trafia do klienta, zyje tylko tutaj)
 //
-// Kontrakt: POST /api/realtime-token  { voice?, instructions? }  (body opcjonalne)
+// Kontrakt: POST /api/realtime-token  { voice?, instructions?, model? }  (body opcjonalne)
 //   -> 200 { value: "ek_...", expiresAt, model }   (token do WebRTC)
 //   -> 503 { error: "brak-klucza" }                (sygnal fallbacku, nie blad krytyczny)
 //
 // Luzne typy (bez @vercel/node), zeby nie wchodzic w zaleznosci frontu.
 // Ten plik jest poza tsconfig include:["src"], wiec `npm run build` go nie kompiluje.
 
-// Szybki wariant realtime (nizsza latencja). Mozna nadpisac przez env.
-const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime-mini'
+// Domyslny model realtime: PELNY (najwyzsza jakosc glosu, wg RESEARCH-GLOS-JAKOSC.md).
+// Klient moze poprosic o wariant szybki (mini) przez body.model. Mozna nadpisac przez env.
+const OPENAI_REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || 'gpt-realtime'
 // Model transkrypcji wejscia (wymagany przez sesje realtime). Szybki wariant.
 const OPENAI_TRANSCRIBE_MODEL = process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe'
 
-// Glosy dzialajace stabilnie na wariancie mini (bez cedar/marin - nowe, moga nie grac).
-const GLOSY_OK = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse']
-const GLOS_DOMYSLNY = 'ash' // meski, gdy body.voice nieprawidlowy
+// Whitelist bezpiecznych nazw modeli (aliasy GA + aktualne snapshoty). Cokolwiek
+// spoza listy -> spadamy na OPENAI_REALTIME_MODEL. Aliasy same podazaja za najnowsza
+// wersja; nie pinujemy sie do wymyslonych numerow (patrz RESEARCH-GLOS-JAKOSC.md).
+const MODELE_OK = [
+  'gpt-realtime',
+  'gpt-realtime-mini',
+  'gpt-realtime-2025-08-28',
+  'gpt-realtime-mini-2025-12-15',
+]
+
+// Glosy Realtime. marin/cedar to nowe glosy "best quality" wg OpenAI (dzialaja na
+// calym Realtime API, wiec i na mini). cedar = meski/cieplejszy, marin = zenski/klarowny.
+const GLOSY_OK = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse', 'marin', 'cedar']
+const GLOS_DOMYSLNY = 'cedar' // meski, gdy body.voice nieprawidlowy
 
 function czytajBody(req: any): Promise<any> {
   // Vercel zwykle parsuje JSON do req.body. Gdy nie, czytamy strumien recznie.
@@ -66,6 +78,10 @@ export default async function handler(req: any, res: any) {
   const voice = typeof body?.voice === 'string' && GLOSY_OK.includes(body.voice)
     ? body.voice
     : GLOS_DOMYSLNY
+  // Model z body tylko jesli na whitelist; inaczej domyslny (pelny, wyzsza jakosc).
+  const model = typeof body?.model === 'string' && MODELE_OK.includes(body.model)
+    ? body.model
+    : OPENAI_REALTIME_MODEL
   // OpenAI Realtime ma twardy limit 16384 tokenow na instrukcje. Tniemy do
   // bezpiecznej dlugosci znakowej (ok. 40000 znakow ~ 12-13k tokenow), zeby
   // sesja nigdy nie padla na 400 za dlugie instrukcje. Klient i tak wysyla
@@ -86,7 +102,7 @@ export default async function handler(req: any, res: any) {
       body: JSON.stringify({
         session: {
           type: 'realtime',
-          model: OPENAI_REALTIME_MODEL,
+          model,
           instructions,
           audio: {
             input: {
@@ -113,7 +129,7 @@ export default async function handler(req: any, res: any) {
     res.status(200).json({
       value: dane?.value ?? dane?.client_secret?.value,
       expiresAt: dane?.expires_at ?? dane?.client_secret?.expires_at ?? null,
-      model: OPENAI_REALTIME_MODEL,
+      model,
     })
   } catch (e: any) {
     res.status(502).json({ error: 'polaczenie-openai', szczegoly: String(e?.message ?? e).slice(0, 300) })
