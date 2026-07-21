@@ -90,13 +90,13 @@ export default function AgentCard({ agent, onGlos }: AgentCardProps) {
           }}
           aria-label={`Porozmawiaj glosem z ${agent.personImie ?? agent.name}`}
           title={`Porozmawiaj glosem z ${agent.personImie ?? agent.name}`}
-          className="voice-pill relative z-20 mt-3 inline-flex h-9 items-center gap-1.5 rounded-full border bg-zinc-950/70 px-3.5 text-sm font-medium text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+          className="voice-pill relative z-20 mt-3 inline-flex h-10 items-center gap-2 rounded-full border bg-zinc-950/70 px-4 text-sm font-semibold text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
           style={{
             borderColor: `${agent.accent}80`,
             ['--acc-ring' as string]: `${agent.accent}59`,
           }}
         >
-          <Mic size={16} aria-hidden />
+          <Mic size={18} aria-hidden />
           <span>Mów głosem</span>
         </button>
       )}

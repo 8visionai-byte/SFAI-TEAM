@@ -19,6 +19,13 @@ const DOZWOLONE_SLUGI = agents
   .filter((a) => a.slug !== 'coo')
   .map((a) => a.slug)
 
+/**
+ * Twardy limit delegacji = liczba WSZYSTKICH dostepnych specjalistow (bez COO).
+ * Dzieki temu COO moze przy szerokiej naradzie zaangazowac CALY zespol, a
+ * walidacja planu nie utnie go ponizej realnej potrzeby.
+ */
+const LIMIT_DELEGACJI = DOZWOLONE_SLUGI.length
+
 /** Pojedynczy krok planu: ktory agent i jego konkretne zadanie. */
 export interface KrokPlanu {
   agent: string
@@ -116,13 +123,13 @@ function parsujPlan(surowe: string): WynikPlanu | null {
     const rec = p as Record<string, unknown>
     const agent = typeof rec.agent === 'string' ? rec.agent.trim() : ''
     const zadanie = typeof rec.zadanie === 'string' ? rec.zadanie.trim() : ''
-    // tylko realne slugi, bez duplikatow, maks 6 agentow
+    // tylko realne slugi, bez duplikatow, maks caly zespol (LIMIT_DELEGACJI)
     if (!DOZWOLONE_SLUGI.includes(agent)) continue
     if (uzyte.has(agent)) continue
     if (!zadanie) continue
     uzyte.add(agent)
     plan.push({ agent, zadanie })
-    if (plan.length >= 6) break
+    if (plan.length >= LIMIT_DELEGACJI) break
   }
 
   // Tryb deleguj bez realnego planu traktujemy jak "sam".
@@ -158,13 +165,16 @@ function systemPlanu(): string {
     '',
     `Dozwolone slugi agentow: ${DOZWOLONE_SLUGI.join(', ')}.`,
     'ZASADA DOBORU: zaangazuj KAZDEGO agenta, ktorego kompetencja realnie dotyczy pytania, nie tylko jednego czy dwoch. Przy szerokich pytaniach strategicznych czesto potrzeba 4-6 osob rownolegle. Proste, waskie pytania rob sam (tryb "sam"), bez delegacji na sile.',
-    'Deleguj maksymalnie do 6 agentow. Nie dodawaj osob, ktorych kompetencja nie dotyka pytania.',
+    'NARADA CALEGO ZESPOLU: gdy pytanie jest szerokie, strategiczne albo wprost prosi o narade, burze mozgow czy opinie calej firmy (sygnaly: "co myslicie", "narada", "cala firma", "caly zespol", "strategia na kwartal", "gdzie jestesmy", "jak rozwinac firme", "burza mozgow"), zaangazuj WSZYSTKICH agentow, ktorych kompetencja cokolwiek wnosi. Przy takich pytaniach to czesto 7-9 osob, a nie 2-3. Kazdy dostaje zadanie ze swojej perspektywy. Przy waskich, konkretnych pytaniach dobierasz tylko potrzebnych, a proste rzeczy robisz sam.',
+    `Deleguj maksymalnie do ${LIMIT_DELEGACJI} agentow (caly dostepny zespol). Nie dodawaj osob, ktorych kompetencja nie dotyka pytania.`,
     'Przyklady mapowania tematu na agentow:',
     '- "jak zwiekszyc sprzedaz": analityk (rynek, konkurencja), handlowiec (oferta, domykanie), copywriter (komunikaty), wiedza-produkt (materialy sprzedazowe), czesto drugi-glos (ryzyka strategii) i analityk-social (kanaly social).',
     '- "wejscie na nowy rynek / nowa nisza": analityk (sizing, ICP), drugi-glos (ryzyka, pre-mortem), handlowiec (jak sprzedac), copywriter (przekaz), wiedza-produkt (czego brakuje w materialach).',
     '- "kampania w social / marketing": copywriter (tresci), analityk-social (co skalowac, budzet), analityk (segment, ICP), czasem drugi-glos (spojnosc z marka).',
     '- "poprawic obsluge / retencje klienta": opiekun-klienta (onboarding, retencja), operacje (procesy, SOP), wiedza-produkt (materialy), czasem analityk (dane o odejsciach).',
     '- "uporzadkowac prace zespolu / procesy": operacje (SOP, rytm), pamiec-zespolu (kontekst, wersje wiedzy).',
+    '- "zrobmy narade jak rozwinac firme w tym kwartale": narada calego zespolu, deleguj do WSZYSTKICH agentow, ktorych kompetencja cokolwiek wnosi (analityk, handlowiec, copywriter, analityk-social, wiedza-produkt, opiekun-klienta, operacje, pamiec-zespolu, drugi-glos), kazdy ze swojej perspektywy.',
+    '- "popraw ten jeden naglowek": tryb "sam" albo jeden agent (copywriter), bez angazowania zespolu.',
     '- waskie pytanie o jeden temat (np. "napisz jeden post na LinkedIn"): jeden agent (copywriter) albo tryb "sam".',
     'Zadania musza byc konkretne i wykonalne, po polsku, kazde dopasowane do kompetencji danego agenta.',
   ].join('\n')

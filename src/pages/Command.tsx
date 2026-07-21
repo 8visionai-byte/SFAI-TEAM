@@ -35,10 +35,11 @@ import {
   wyczyscCentrum,
   type WpisCentrum,
 } from '../lib/storage'
+import type { StanRozmowy } from '../lib/realtime'
 import ChatMessage from '../components/ChatMessage'
 import CharacterAvatar from '../components/CharacterAvatar'
 import MarkdownView from '../components/MarkdownView'
-import RozmowaGlosowa from '../components/RozmowaGlosowa'
+import RozmowaWMiejscu from '../components/RozmowaWMiejscu'
 import Toast, { useToast } from '../components/Toast'
 
 // --- Pomocnicze -------------------------------------------------------------
@@ -120,6 +121,55 @@ function auraCoo(stanCoo: StanCoo): string {
   return `0 0 0 3px ${HAIRLINE}, 0 0 0 4px ${brand}33`
 }
 
+/** Stan rozmowy glosowej w miejscu (na mapie), do etykiet i aury wezla. */
+type RozmowaStanUI = 'gotowy' | StanRozmowy
+
+/**
+ * Aura wezla persony podczas rozmowy glosowej W MIEJSCU: reaguje na dzwiek
+ * (poziom 0..1 z AnalyserNode -> rozmiar/rozmycie ringu) i na stan rozmowy.
+ * Silniejsza i cieplejsza od zwyklej aury specjalisty (sygnal "rozmawiam").
+ */
+function auraRozmowy(
+  stan: RozmowaStanUI,
+  poziom: number,
+  accent: string,
+  reduced: boolean,
+): string {
+  const baza = `0 0 0 3px ${HAIRLINE}`
+  if (reduced) return `${baza}, 0 0 0 5px ${accent}aa`
+  if (stan === 'slucham') {
+    const r = (10 + poziom * 30).toFixed(1)
+    const s = (2 + poziom * 12).toFixed(1)
+    return `${baza}, 0 0 0 5px ${accent}, 0 0 ${r}px ${s}px ${accent}66`
+  }
+  if (stan === 'mowie') {
+    return `${baza}, 0 0 0 5px ${accent}, 0 0 30px 7px ${accent}77`
+  }
+  if (stan === 'mysle' || stan === 'laczenie' || stan === 'gotowy') {
+    return `${baza}, 0 0 0 5px ${accent}aa, 0 0 20px 3px ${accent}55`
+  }
+  return `${baza}, 0 0 0 5px ${accent}88`
+}
+
+/** Krotka etykieta stanu rozmowy w miejscu (pod podpisem wezla). */
+function etykietaRozmowy(stan: RozmowaStanUI, imie: string): string {
+  switch (stan) {
+    case 'gotowy':
+    case 'laczenie':
+      return 'Lacze glos...'
+    case 'mowie':
+      return `${imie} mowi...`
+    case 'slucham':
+      return 'Slucham...'
+    case 'mysle':
+      return 'Mysle...'
+    case 'czuwa':
+      return 'Twoja kolej'
+    default:
+      return 'Rozmowa trwa'
+  }
+}
+
 /** Wykrywa preferencje ograniczonej animacji i reaguje na jej zmiany. */
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(() => {
@@ -143,8 +193,14 @@ interface MapaProps {
   stany: Record<string, StanWezla>
   /** Gdy zespol pracuje, wezly nie sa klikalne (klik prowadzi do profilu). */
   running?: boolean
-  /** Akcja "porozmawiaj glosem" z wezla persony (ikona mikrofonu). */
+  /** Akcja "porozmawiaj glosem" z wezla persony (ikona mikrofonu). Toggluje. */
   onGlos?: (agent: Agent) => void
+  /** Slug persony, z ktora trwa rozmowa glosowa w miejscu (jej wezel swieci). */
+  rozmowaSlug?: string | null
+  /** Stan tej rozmowy (etykieta + intensywnosc aury wezla). */
+  rozmowaStan?: RozmowaStanUI
+  /** Poziom dzwieku 0..1 tej rozmowy (falowanie aury wezla). */
+  rozmowaPoziom?: number
 }
 
 /** Wyliczona geometria pojedynczego specjalisty na okregu. */
@@ -258,7 +314,15 @@ function Portret({
  * nici plynie czasteczka w kolorze agenta; po zakonczeniu wraca do COO i nic
  * zielenieje. Geometria liczona matematycznie i skalowana przez ResizeObserver.
  */
-function MapaNeuronu({ stanCoo, stany, running = false, onGlos }: MapaProps) {
+function MapaNeuronu({
+  stanCoo,
+  stany,
+  running = false,
+  onGlos,
+  rozmowaSlug = null,
+  rozmowaStan = 'gotowy',
+  rozmowaPoziom = 0,
+}: MapaProps) {
   const stageRef = useRef<HTMLDivElement>(null)
   const [wym, setWym] = useState({ w: 0, h: 0 })
   const reduced = useReducedMotion()
@@ -538,31 +602,40 @@ function MapaNeuronu({ stanCoo, stany, running = false, onGlos }: MapaProps) {
       {/* COO w geometrycznym srodku (klik, gdy nie trwa praca -> profil) */}
       {gotowe &&
         (() => {
+          const imieCoo = coo.personImie ?? coo.name
+          const wRozmowieCoo = rozmowaSlug === coo.slug
+          const ktosRozmawia = rozmowaSlug != null
+          const przyciemnionyCoo = ktosRozmawia && !wRozmowieCoo
           const zawartoscCoo = (
             <div className="flex flex-col items-center text-center">
               <Portret
                 agent={coo}
                 px={112}
                 sizeClass="h-24 w-24 sm:h-28 sm:w-28"
-                aura={auraCoo(stanCoo)}
-                pulsuj={cooAktywny}
+                aura={
+                  wRozmowieCoo
+                    ? auraRozmowy(rozmowaStan, rozmowaPoziom, '#5B8DEF', reduced)
+                    : auraCoo(stanCoo)
+                }
+                pulsuj={wRozmowieCoo || cooAktywny}
                 glow="#5B8DEFaa"
               />
               <div className="mt-2 w-40 leading-tight">
                 <div className="text-sm font-semibold text-zinc-50">
-                  {coo.personImie ?? coo.name}
+                  {imieCoo}
                 </div>
                 <div className="text-xs font-medium text-brand-soft">
-                  {stanCoo === 'thinking'
-                    ? 'Analizuje i planuje...'
-                    : stanCoo === 'synth'
-                      ? 'Sklada odpowiedz...'
-                      : coo.role}
+                  {wRozmowieCoo
+                    ? etykietaRozmowy(rozmowaStan, imieCoo)
+                    : stanCoo === 'thinking'
+                      ? 'Analizuje i planuje...'
+                      : stanCoo === 'synth'
+                        ? 'Sklada odpowiedz...'
+                        : coo.role}
                 </div>
               </div>
             </div>
           )
-          const imieCoo = coo.personImie ?? coo.name
           const stylCoo = {
             left: cx,
             top: cy,
@@ -570,7 +643,10 @@ function MapaNeuronu({ stanCoo, stany, running = false, onGlos }: MapaProps) {
           }
           return (
             <div
-              className="absolute z-10 flex flex-col items-center"
+              className={[
+                'absolute z-10 flex flex-col items-center transition-opacity duration-300',
+                przyciemnionyCoo ? 'opacity-40' : 'opacity-100',
+              ].join(' ')}
               style={stylCoo}
             >
               {running ? (
@@ -589,12 +665,34 @@ function MapaNeuronu({ stanCoo, stany, running = false, onGlos }: MapaProps) {
                 <button
                   type="button"
                   onClick={() => onGlos(coo)}
-                  aria-label={`Porozmawiaj glosem z ${imieCoo}`}
-                  title={`Porozmawiaj glosem z ${imieCoo}`}
-                  className="voice-pill relative z-20 mt-2.5 inline-flex h-8 items-center justify-center rounded-full border border-brand/50 bg-zinc-950/85 px-3 text-brand-soft outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-                  style={{ ['--acc-ring' as string]: 'rgba(91,141,239,0.34)' }}
+                  aria-label={
+                    wRozmowieCoo
+                      ? `Zakoncz rozmowe z ${imieCoo}`
+                      : `Porozmawiaj glosem z ${imieCoo}`
+                  }
+                  title={
+                    wRozmowieCoo
+                      ? `Zakoncz rozmowe z ${imieCoo}`
+                      : `Porozmawiaj glosem z ${imieCoo}`
+                  }
+                  aria-pressed={wRozmowieCoo}
+                  className={[
+                    'voice-pill relative z-20 mt-2.5 inline-flex h-9 w-9 items-center justify-center rounded-full border outline-none focus-visible:ring-2 focus-visible:ring-brand/60',
+                    wRozmowieCoo
+                      ? 'node-pulse border-brand text-zinc-950'
+                      : 'border-brand/50 bg-zinc-950/85 text-brand-soft',
+                  ].join(' ')}
+                  style={
+                    wRozmowieCoo
+                      ? {
+                          background: '#5B8DEF',
+                          ['--glow' as string]: 'rgba(91,141,239,0.55)',
+                          ['--acc-ring' as string]: 'rgba(91,141,239,0.34)',
+                        }
+                      : { ['--acc-ring' as string]: 'rgba(91,141,239,0.34)' }
+                  }
                 >
-                  <Mic size={17} aria-hidden />
+                  <Mic size={18} aria-hidden />
                 </button>
               )}
             </div>
@@ -606,40 +704,54 @@ function MapaNeuronu({ stanCoo, stany, running = false, onGlos }: MapaProps) {
         const a = getAgent(n.slug)!
         const stan = stany[n.slug] ?? 'idle'
         const pokazChipy = stan === 'active' || stan === 'done'
-        // Kolor roli w podpisie: akcent gdy pracuje, zielony gdy gotowe.
+        const imie = a.personImie ?? a.name
+        const wRozmowie = rozmowaSlug === n.slug
+        const ktosRozmawia = rozmowaSlug != null
+        const przyciemniony = ktosRozmawia && !wRozmowie
+        // Kolor roli w podpisie: akcent gdy rozmowa/praca, zielony gdy gotowe.
         const rolaKolor =
-          stan === 'active' ? a.accent : stan === 'done' ? KOLOR_DONE : undefined
+          wRozmowie || stan === 'active'
+            ? a.accent
+            : stan === 'done'
+              ? KOLOR_DONE
+              : undefined
         const zawartoscWezla = (
           <div className="flex flex-col items-center text-center">
             <Portret
               agent={a}
               px={80}
               sizeClass="h-16 w-16 sm:h-20 sm:w-20"
-              aura={auraSpecjalisty(stan, a.accent)}
-              pulsuj={stan === 'active'}
+              aura={
+                wRozmowie
+                  ? auraRozmowy(rozmowaStan, rozmowaPoziom, a.accent, reduced)
+                  : auraSpecjalisty(stan, a.accent)
+              }
+              pulsuj={wRozmowie || stan === 'active'}
               glow={`${a.accent}aa`}
-              przygaszony={stan === 'idle'}
+              przygaszony={stan === 'idle' && !wRozmowie}
             />
             <div className="mt-2 w-[104px] leading-tight">
               <div className="text-[0.8rem] font-semibold text-zinc-50">
-                {a.personImie ?? a.name}
+                {imie}
               </div>
               <div
                 className="mt-0.5 text-[0.66rem] font-medium"
                 style={{ color: rolaKolor }}
               >
                 <span className={rolaKolor ? undefined : 'text-zinc-400'}>
-                  {a.role}
+                  {wRozmowie ? etykietaRozmowy(rozmowaStan, imie) : a.role}
                 </span>
               </div>
             </div>
           </div>
         )
-        const imie = a.personImie ?? a.name
         return (
           <div
             key={n.slug}
-            className="absolute z-10 flex flex-col items-center"
+            className={[
+              'absolute z-10 flex flex-col items-center transition-opacity duration-300',
+              przyciemniony ? 'opacity-40' : 'opacity-100',
+            ].join(' ')}
             style={{ left: n.nx, top: n.ny, transform: 'translate(-50%,-50%)' }}
           >
             {/* Klik w wezel (gdy nie trwa praca) otwiera profil agenta */}
@@ -662,20 +774,42 @@ function MapaNeuronu({ stanCoo, stany, running = false, onGlos }: MapaProps) {
               </Link>
             )}
 
-            {/* Wyrazna akcja glosu pod podpisem (osobna od kliku w profil) */}
+            {/* Wyrazny mikrofon pod podpisem: start/koniec rozmowy w miejscu.
+                Aktywny (trwa rozmowa z ta persona) = wypelniony akcentem + puls. */}
             {onGlos && (
               <button
                 type="button"
                 onClick={() => onGlos(a)}
-                aria-label={`Porozmawiaj glosem z ${imie}`}
-                title={`Porozmawiaj glosem z ${imie}`}
-                className="voice-pill relative z-20 mt-1.5 inline-flex h-8 items-center justify-center rounded-full border bg-zinc-950/85 px-2.5 text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-                style={{
-                  borderColor: `${a.accent}80`,
-                  ['--acc-ring' as string]: `${a.accent}59`,
-                }}
+                aria-label={
+                  wRozmowie
+                    ? `Zakoncz rozmowe z ${imie}`
+                    : `Porozmawiaj glosem z ${imie}`
+                }
+                title={
+                  wRozmowie
+                    ? `Zakoncz rozmowe z ${imie}`
+                    : `Porozmawiaj glosem z ${imie}`
+                }
+                aria-pressed={wRozmowie}
+                className={[
+                  'voice-pill relative z-20 mt-1.5 inline-flex h-9 w-9 items-center justify-center rounded-full border outline-none focus-visible:ring-2 focus-visible:ring-brand/60',
+                  wRozmowie ? 'node-pulse text-zinc-950' : 'bg-zinc-950/85 text-zinc-100',
+                ].join(' ')}
+                style={
+                  wRozmowie
+                    ? {
+                        background: a.accent,
+                        borderColor: a.accent,
+                        ['--glow' as string]: `${a.accent}88`,
+                        ['--acc-ring' as string]: `${a.accent}59`,
+                      }
+                    : {
+                        borderColor: `${a.accent}80`,
+                        ['--acc-ring' as string]: `${a.accent}59`,
+                      }
+                }
               >
-                <Mic size={16} aria-hidden />
+                <Mic size={18} aria-hidden />
               </button>
             )}
 
@@ -728,8 +862,29 @@ export default function Command() {
   const [czytajAuto, setCzytajAuto] = useState(() => czytajAutoWlaczone())
   // Znacznik: biezacy przebieg zostal odpalony glosem (final ma isc do TTS/overlay).
   const glosAktywnyRef = useRef(false)
-  // Rozmowa glosowa 1:1 z wybrana persona (klik mikrofonu przy wezle).
+  // Rozmowa glosowa 1:1 z wybrana persona W MIEJSCU (klik mikrofonu przy wezle).
+  // Wezel tej persony swieci/pulsuje, sterowanie w kompaktowym dolnym pasku.
   const [rozmowaAgent, setRozmowaAgent] = useState<Agent | null>(null)
+  const [rozmowaStan, setRozmowaStan] = useState<RozmowaStanUI>('gotowy')
+  const [rozmowaPoziom, setRozmowaPoziom] = useState(0)
+
+  /**
+   * Klik w mikrofon persony: start rozmowy w miejscu. Ponowny klik w te sama
+   * persone konczy rozmowe; klik w inna konczy poprzednia i startuje nowa
+   * (remount komponentu przez key=slug sprzata mikrofon/WebRTC starej rozmowy).
+   */
+  function przelaczRozmowe(agent: Agent) {
+    setRozmowaAgent((prev) => (prev?.slug === agent.slug ? null : agent))
+    setRozmowaStan('laczenie')
+    setRozmowaPoziom(0)
+  }
+
+  /** Konczy rozmowe w miejscu i czysci stan swiecenia wezla. */
+  function zakonczRozmowe() {
+    setRozmowaAgent(null)
+    setRozmowaStan('gotowy')
+    setRozmowaPoziom(0)
+  }
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
@@ -1042,7 +1197,10 @@ export default function Command() {
             stanCoo={stanCoo}
             stany={stany}
             running={running}
-            onGlos={setRozmowaAgent}
+            onGlos={przelaczRozmowe}
+            rozmowaSlug={rozmowaAgent?.slug ?? null}
+            rozmowaStan={rozmowaStan}
+            rozmowaPoziom={rozmowaPoziom}
           />
 
           <p className="mt-6 text-center text-xs text-zinc-600">
@@ -1434,11 +1592,18 @@ export default function Command() {
         </div>
       )}
 
-      {/* Rozmowa glosowa 1:1 z persona (klik mikrofonu przy wezle mapy) */}
+      {/* Rozmowa glosowa 1:1 W MIEJSCU: kompaktowy dolny pasek. Wezel persony na
+          mapie swieci/pulsuje (przez rozmowaStan/rozmowaPoziom). key=slug wymusza
+          czyste sprzatanie mikrofonu/WebRTC przy przelaczeniu na inna persone. */}
       {rozmowaAgent && (
-        <RozmowaGlosowa
+        <RozmowaWMiejscu
+          key={rozmowaAgent.slug}
           agent={rozmowaAgent}
-          onClose={() => setRozmowaAgent(null)}
+          onZamknij={zakonczRozmowe}
+          onStan={(s, p) => {
+            setRozmowaStan(s)
+            setRozmowaPoziom(p)
+          }}
         />
       )}
 
