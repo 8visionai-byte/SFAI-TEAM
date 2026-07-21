@@ -16,6 +16,7 @@
  */
 import type { Agent } from '../data/agents'
 import { buildVoicePrompt } from './ai'
+import { szukajWMozgu } from './content'
 
 /** Stan rozmowy glosowej (wspolny dla realtime i toru podstawowego). */
 export type StanRozmowy =
@@ -139,6 +140,29 @@ export async function startRozmowa(
         },
       },
       instructions: instrukcje,
+      // Narzedzia (function calling): model sam siega do CALEGO mozgu firmy,
+      // gdy potrzebuje konkretow. tool_choice:'auto' = model decyduje sam.
+      tool_choice: 'auto',
+      tools: [
+        {
+          type: 'function',
+          name: 'przeszukaj_wiedze',
+          description:
+            'Przeszukuje baze wiedzy (mozg) firmy SimpleFast.ai i zwraca pasujace fragmenty. ' +
+            'Uzyj gdy potrzebujesz konkretow: cennik, case studies, ICP, oferta, proces, dane firmy. ' +
+            'Preamble sample phrases: Juz sprawdzam to w naszej bazie. / Chwilke, zaraz to znajde. / Sekunde, siegam po szczegoly.',
+          parameters: {
+            type: 'object',
+            properties: {
+              zapytanie: {
+                type: 'string',
+                description: 'czego szukasz',
+              },
+            },
+            required: ['zapytanie'],
+          },
+        },
+      ],
     },
   }
 
@@ -350,6 +374,12 @@ export async function startRozmowa(
       return
     }
 
+    // Model chce wywolac narzedzie: komplet danych jest w tym jednym evencie.
+    if (typ === 'response.function_call_arguments.done') {
+      obsluzWywolanieNarzedzia(zd)
+      return
+    }
+
     // Koniec odpowiedzi: wracamy do sluchania.
     if (typ === 'response.done') {
       transAgent = ''
@@ -362,6 +392,49 @@ export async function startRozmowa(
       const kod =
         typeof zd?.error?.message === 'string' ? zd.error.message : 'realtime'
       opcje.onBlad?.(kod)
+    }
+  }
+
+  /**
+   * Obsluga wywolania narzedzia przeszukaj_wiedze (function calling, GA).
+   * Parsuje call_id + arguments.zapytanie, siega do CALEGO mozgu przez
+   * szukajWMozgu(), odsyla wynik jako function_call_output, a potem response.create,
+   * zeby model kontynuowal glosem na bazie znalezionych danych.
+   */
+  function obsluzWywolanieNarzedzia(zd: any) {
+    const nazwa: string = typeof zd?.name === 'string' ? zd.name : ''
+    const callId: string = typeof zd?.call_id === 'string' ? zd.call_id : ''
+    if (nazwa !== 'przeszukaj_wiedze' || !callId) return
+
+    let zapytanie = ''
+    try {
+      const args = JSON.parse(zd?.arguments || '{}')
+      if (typeof args?.zapytanie === 'string') zapytanie = args.zapytanie
+    } catch {
+      // Zle/niekompletne argumenty: puste zapytanie -> szukajWMozgu zwroci
+      // informacje o braku danych, a model powie o tym uzytkownikowi.
+    }
+    console.info('[realtime] tool przeszukaj_wiedze', zapytanie)
+    opcje.onStan('mysle')
+
+    const wynik = szukajWMozgu(zapytanie)
+    if (!dc || dc.readyState !== 'open') return
+    try {
+      // 1) wrzuc wynik do konwersacji (output MUSI byc stringiem).
+      dc.send(
+        JSON.stringify({
+          type: 'conversation.item.create',
+          item: {
+            type: 'function_call_output',
+            call_id: callId,
+            output: wynik,
+          },
+        }),
+      )
+      // 2) dopiero teraz kaz modelowi mowic dalej z tego, co znalazl.
+      dc.send(JSON.stringify({ type: 'response.create' }))
+    } catch {
+      // Kanal mogl paść; nastepne zdarzenia bledu zajma sie reszta.
     }
   }
 

@@ -132,6 +132,20 @@ export function buildVoicePrompt(agentSlug: string): string {
   const agent = getAgent(agentSlug)
   const card = getBrainCard()
 
+  // (1) NAJPIERW mocny blok tozsamosci: model ma znac firme jak CEO, nie gadac
+  // ogolnikami, a po szczegoly siegac narzedziem przeszukaj_wiedze.
+  const imie = agent?.personImie ?? agent?.name ?? 'asystent zespolu'
+  const rola = agent?.role ?? 'czlonek zespolu SimpleFast.ai'
+  const misja =
+    agent?.mission ??
+    'pomagamy firmom wdrazac AI, ktore realnie sprzedaje i oszczedza czas.'
+  const tozsamosc = [
+    `Jestes ${imie}, ${rola} w SimpleFast.ai. Znasz firme na wylot: ${misja}`,
+    'Odpowiadasz KONKRETNIE, realnymi danymi firmy, nigdy ogolnikami.',
+    'Gdy pytanie wymaga szczegolu (cennik, case study, ICP, proces, oferta, dane firmy), UZYJ narzedzia przeszukaj_wiedze i powiedz krotko "daj mi chwile, sprawdze", a potem odpowiedz na podstawie tego, co znalazles.',
+    'Nie zmyslasz liczb ani faktow: jesli czegos nie ma w wiedzy, powiedz to wprost.',
+  ].join(' ')
+
   let persona: string
   if (agent?.hasPrompt) {
     persona = getAgentPrompt(agentSlug) ?? ''
@@ -139,6 +153,14 @@ export function buildVoicePrompt(agentSlug: string): string {
     persona = agent
       ? `# ROLA: ${agent.name} (${agent.role})\n\nMisja: ${agent.mission}\n\nTrzymaj sie tozsamosci i tonu marki z Karty Mozgu.`
       : ''
+  }
+  // Realtime ma twardy budzet ~16k tokenow na instrukcje. Gdy persona jest duza,
+  // TNIEMY persone (blok tozsamosci i Karta Mozgu zostaja w calosci).
+  const PERSONA_LIMIT = 18000
+  if (persona.length > PERSONA_LIMIT) {
+    persona =
+      persona.slice(0, PERSONA_LIMIT) +
+      '\n\n[...persona przycieta na potrzeby rozmowy glosowej; pelna wersja dziala w czacie tekstowym...]'
   }
 
   const skille = aktywneSkilleAgenta(agentSlug)
@@ -150,7 +172,15 @@ export function buildVoicePrompt(agentSlug: string): string {
         ].join('\n')
       : ''
 
-  return [
+  const preambula = [
+    '=== PREAMBULA PRZED NARZEDZIEM ===',
+    'Zanim wywolasz przeszukaj_wiedze, powiedz jedno krotkie, naturalne zdanie po polsku, ze wlasnie sprawdzasz (np. "Juz sprawdzam to w naszej bazie." / "Chwilke, zaraz to znajde."). Bez filerow typu "hmm". Po odebraniu wyniku odpowiedz konkretnie z tego, co znalazles.',
+  ].join('\n')
+
+  const out = [
+    '=== KIM JESTES (najwazniejsze, czytaj najpierw) ===',
+    tozsamosc,
+    '',
     '=== RDZEN WIEDZY O FIRMIE (Karta Mozgu) ===',
     card,
     '',
@@ -158,10 +188,16 @@ export function buildVoicePrompt(agentSlug: string): string {
     persona,
     ...(sekcjaSkilli ? ['', sekcjaSkilli] : []),
     '',
+    preambula,
+    '',
     CHAT_RULES,
     '',
-    'To rozmowa GLOSOWA: mow zwiezle i naturalnie, krotkie zdania, jak czlowiek przez telefon. Bez list punktowanych na glos.',
+    'To rozmowa GLOSOWA: mow zwiezle i naturalnie, krotkie zdania, jak czlowiek przez telefon. Bez list punktowanych na glos. Bez em-dash.',
   ].join('\n')
+
+  // Twardy sufit calosci, zeby zmiescic prompt + opisy narzedzi w budzecie instrukcji.
+  const LIMIT = 40000
+  return out.length > LIMIT ? out.slice(0, LIMIT) : out
 }
 
 /** Odpowiedz MOCK, gdy brak klucza API (tryb demo). */
