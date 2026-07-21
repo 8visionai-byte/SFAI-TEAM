@@ -120,7 +120,8 @@ export async function startRozmowa(
       output_modalities: ['audio'],
       audio: {
         input: {
-          format: { type: 'audio/pcm', rate: 24000 },
+          // Bez 'format': przy WebRTC audio idzie jako Opus negocjowany w SDP.
+          // Wymuszanie audio/pcm psulo dekodowanie wejscia -> brak speech_started.
           turn_detection: {
             type: 'server_vad',
             threshold: 0.5,
@@ -133,7 +134,6 @@ export async function startRozmowa(
           noise_reduction: { type: 'near_field' },
         },
         output: {
-          format: { type: 'audio/pcm', rate: 24000 },
           voice: glos,
           speed: 1.0,
         },
@@ -156,6 +156,7 @@ export async function startRozmowa(
   // 'let' przed jego deklaracja rzucaloby "Cannot access before initialization".
   let analyserLokalny: AnalyserNode | null = null
   let analyserZdalny: AnalyserNode | null = null
+  let statsId: number | null = null // diagnostyka toru w gore (bytesSent)
 
   /** Pelne sprzatanie: idempotentne, wolane z zakoncz() i przy bledzie. */
   function sprzataj() {
@@ -163,6 +164,8 @@ export async function startRozmowa(
     zamkniete = true
     if (rafId != null) cancelAnimationFrame(rafId)
     rafId = null
+    if (statsId != null) clearInterval(statsId)
+    statsId = null
     try {
       pc.getSenders().forEach((s) => s.track?.stop())
     } catch {
@@ -199,7 +202,15 @@ export async function startRozmowa(
 
     // Wejscie: mikrofon uzytkownika.
     mic = await navigator.mediaDevices.getUserMedia({ audio: true })
-    mic.getTracks().forEach((t) => pc.addTrack(t, mic as MediaStream))
+    const trakty = mic.getAudioTracks()
+    console.info(
+      '[realtime] mic tracks:',
+      trakty.length,
+      trakty[0]
+        ? { enabled: trakty[0].enabled, muted: trakty[0].muted, stan: trakty[0].readyState }
+        : 'brak',
+    )
+    trakty.forEach((t) => pc.addTrack(t, mic as MediaStream))
     podepnijPoziomLokalny(mic)
 
     // Kanal danych: zdarzenia sesji (transkrypt, poczatek/koniec mowy).
@@ -242,6 +253,22 @@ export async function startRozmowa(
 
     // Po zestawieniu: model sluzy jako uszy i usta, czekamy na wypowiedz.
     opcje.onStan('slucham')
+
+    // Diagnostyka: czy mikrofon REALNIE leci do OpenAI (bytesSent) i jaki
+    // kierunek wynegocjowano. Jesli bytesSent zostaje 0 -> tor w gore martwy.
+    console.info(
+      '[realtime] transceivery:',
+      pc.getTransceivers().map((tr) => `${tr.receiver?.track?.kind ?? '?'}:${tr.currentDirection}`).join(', '),
+    )
+    statsId = window.setInterval(() => {
+      pc.getStats().then((stats) => {
+        stats.forEach((r: any) => {
+          if (r.type === 'outbound-rtp' && r.kind === 'audio') {
+            console.info('[realtime] uplink audio bytesSent=', r.bytesSent, 'packetsSent=', r.packetsSent)
+          }
+        })
+      }).catch(() => {})
+    }, 2500)
   } catch (err) {
     sprzataj()
     throw err
@@ -331,6 +358,7 @@ export async function startRozmowa(
     }
 
     if (typ === 'error') {
+      console.error('[realtime] error zdarzenie:', JSON.stringify(zd))
       const kod =
         typeof zd?.error?.message === 'string' ? zd.error.message : 'realtime'
       opcje.onBlad?.(kod)
