@@ -57,14 +57,15 @@ export interface UchwytRozmowy {
  * Zwraca token i model do handshake SDP.
  */
 async function pobierzToken(
-  agent: Agent,
+  glos: string,
+  instrukcje: string,
 ): Promise<{ token: string; model: string }> {
   const res = await fetch('/api/realtime-token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      voice: agent.realtimeVoice ?? 'ash',
-      instructions: buildVoicePrompt(agent.slug),
+      voice: glos,
+      instructions: instrukcje,
     }),
   })
 
@@ -96,7 +97,50 @@ export async function startRozmowa(
   opcje: OpcjeRozmowy,
 ): Promise<UchwytRozmowy> {
   opcje.onStan('laczenie')
-  const { token, model } = await pobierzToken(agent)
+  // Glos + prompt persony liczymy RAZ i uzywamy ich i przy mintowaniu tokenu,
+  // i przy session.update. Dzieki temu VAD/transkrypcja/glos sa spojne.
+  const glos = agent.realtimeVoice ?? 'ash'
+  const instrukcje = buildVoicePrompt(agent.slug)
+  const { token, model } = await pobierzToken(glos, instrukcje)
+
+  /**
+   * PELNA konfiguracja rozmowy glosowej (GA, wg RESEARCH-REALTIME-INPUT.md).
+   * Wysylana przez kanal danych DOPIERO po dc.onopen. Gwarantuje, ze:
+   *  - VAD serwerowy jest AKTYWNY (audio.input.turn_detection.server_vad),
+   *  - model sam tworzy odpowiedz po koncu mowy usera (create_response:true),
+   *  - transkrypcja wejscia dziala (audio.input.transcription),
+   *  - wyjscie jest audio glosem persony (output_modalities + audio.output.voice).
+   * Niezaleznie od tego, co ustawil token przy mintowaniu.
+   */
+  const sessionUpdate = {
+    type: 'session.update',
+    session: {
+      type: 'realtime',
+      model,
+      output_modalities: ['audio'],
+      audio: {
+        input: {
+          format: { type: 'audio/pcm', rate: 24000 },
+          turn_detection: {
+            type: 'server_vad',
+            threshold: 0.5,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 500,
+            create_response: true, // KLUCZOWE: model sam odpowiada po mowie usera
+            interrupt_response: true, // user moze przerwac mowiacy model (barge-in)
+          },
+          transcription: { model: 'gpt-4o-mini-transcribe', language: 'pl' },
+          noise_reduction: { type: 'near_field' },
+        },
+        output: {
+          format: { type: 'audio/pcm', rate: 24000 },
+          voice: glos,
+          speed: 1.0,
+        },
+      },
+      instructions: instrukcje,
+    },
+  }
 
   const pc = new RTCPeerConnection()
   let audioEl: HTMLAudioElement | null = null
@@ -161,13 +205,26 @@ export async function startRozmowa(
     // Kanal danych: zdarzenia sesji (transkrypt, poczatek/koniec mowy).
     dc = pc.createDataChannel('oai-events')
     dc.onmessage = (ev) => obsluzZdarzenie(ev.data)
+    // Po otwarciu kanalu wysylamy PELNA konfiguracje sesji (VAD, transkrypcja,
+    // glos, instrukcje). To wlacza sluchanie usera niezaleznie od tokenu.
+    dc.onopen = () => {
+      console.info('[realtime] dc.onopen')
+      if (!dc || dc.readyState !== 'open') return
+      try {
+        dc.send(JSON.stringify(sessionUpdate))
+        console.info('[realtime] session.update wyslany')
+      } catch {
+        // Kanal mogl paść zaraz po otwarciu; blad zdarzen zajmie sie reszta.
+      }
+    }
 
-    // Handshake SDP: oferta klienta -> odpowiedz OpenAI (ephemeral token).
+    // Handshake SDP (GA): model jest przypiety do efemerycznego klucza przy
+    // mintowaniu (client_secrets), wiec NIE podajemy juz `?model=` (beta ksztalt).
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
 
     const sdpRes = await fetch(
-      `https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(model)}`,
+      'https://api.openai.com/v1/realtime/calls',
       {
         method: 'POST',
         body: offer.sdp,
@@ -201,21 +258,31 @@ export async function startRozmowa(
       return
     }
     const typ: string = zd?.type ?? ''
+    // Log diagnostyczny KAZDEGO przychodzacego zdarzenia z kanalu danych.
+    // Zostaje na stale: gdy cos nie gra, konsola pokaze realny strumien zdarzen.
+    console.info('[realtime]', typ)
 
-    // Sesja gotowa: model wita sie SAM swoim glosem (persona), zanim uzytkownik
-    // cokolwiek powie. Wysylamy raz, po pierwszym session.created/updated.
-    if (typ === 'session.created' || typ === 'session.updated') {
+    // session.created = sesja zestawiona (jeszcze nasza konfiguracja moze nie byc
+    // potwierdzona). Powitanie wysylamy DOPIERO po session.updated, czyli gdy
+    // serwer przyjal session.update z wlaczonym VAD (create_response:true) - dzieki
+    // temu powitanie nie blokuje pozniejszego sluchania usera.
+    if (typ === 'session.created') {
+      return
+    }
+    if (typ === 'session.updated') {
       wyslijPowitanie()
       return
     }
 
     // Uzytkownik zaczyna / konczy mowic (server VAD).
     if (typ === 'input_audio_buffer.speech_started') {
+      console.info('[realtime] speech_started (slysze usera)')
       transAgent = ''
       opcje.onStan('slucham')
       return
     }
     if (typ === 'input_audio_buffer.speech_stopped') {
+      console.info('[realtime] speech_stopped')
       opcje.onStan('mysle')
       return
     }
