@@ -119,6 +119,7 @@ function etykietaGrupy(key: string): string {
   if (key === 'wlasne') return 'Wlasne pliki'
   if (key === 'notatki') return 'Notatki'
   if (key === 'z-rozmow') return 'Z rozmow'
+  if (key === 'briefingi') return 'Briefingi z narad'
   return key
 }
 

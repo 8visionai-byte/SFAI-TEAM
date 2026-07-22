@@ -72,6 +72,7 @@ const GROUP_COLOR: Record<string, string> = {
   zespol: '#FB923C', // persony (kazda ma tez wlasny akcent)
   wlasne: '#2DD4BF', // wlasne pliki uzytkownika
   notatki: '#E4E4E7', // twoje notatki
+  briefingi: '#C084FC', // briefingi z narad zespolu
 }
 
 /** Czytelne etykiety grup w legendzie. */
@@ -85,6 +86,7 @@ const GROUP_LABEL: Record<string, string> = {
   zespol: 'Persony zespolu',
   wlasne: 'Wlasne pliki',
   notatki: 'Twoje notatki',
+  briefingi: 'Briefingi z narad',
 }
 
 /** Kolejnosc grup w legendzie. */

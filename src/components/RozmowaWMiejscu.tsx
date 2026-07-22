@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Mic, Save, Square, X } from 'lucide-react'
-import type { Agent } from '../data/agents'
+import { getAgent, type Agent } from '../data/agents'
 import {
   startRozmowa,
   type KtoMowi,
   type StanRozmowy,
   type UchwytRozmowy,
+  type ZdarzenieZespolu,
 } from '../lib/realtime'
 import { mowPowitanie, mowTekstem, zatrzymajMowe } from '../lib/eleven'
 import { callModel, getMode, sendMessage, type ChatMessage } from '../lib/ai'
@@ -19,6 +20,15 @@ export type StanRozmowyUI = 'gotowy' | StanRozmowy
 /** Ktory tor glosu realnie dziala. */
 type TorGlosu = 'realtime' | 'podstawowy' | null
 
+/**
+ * Wpis pelnego transkryptu rozmowy. Oprocz wypowiedzi usera/persony lapiemy tez
+ * raporty zespolu i wzmianki o delegacji, zeby briefing narady mial pelny obraz.
+ */
+type WpisTranskryptu =
+  | { kto: KtoMowi; tekst: string }
+  | { kto: 'raport'; agent: string; tekst: string }
+  | { kto: 'delegacja'; agent: string }
+
 interface Props {
   agent: Agent
   /** Zamkniecie paska (klik "Zakoncz rozmowe" albo ponowny klik mikrofonu). */
@@ -28,6 +38,12 @@ interface Props {
    * neuronu pulsowal i swiecil aura reagujaca na glos. Wolane z throttlingiem.
    */
   onStan?: (stan: StanRozmowyUI, poziom: number) => void
+  /**
+   * Zdarzenia orkiestracji zespolu z toru realtime (narzedzie uruchom_zespol,
+   * tylko gdy rozmawiamy z COO). Command uzywa ich do zapalenia wezlow specjalistow
+   * na mapie (start->active, koniec->done) i wpisow w panelu czatu Centrum.
+   */
+  onZespolZdarzenie?: (z: ZdarzenieZespolu) => void
 }
 
 /**
@@ -43,7 +59,12 @@ interface Props {
  * Pulsowanie/swiecenie odbywa sie NA MAPIE (wezel persony) przez onStan;
  * ten komponent jest tylko dyskretnym sterowaniem i transkryptem na zywo.
  */
-export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
+export default function RozmowaWMiejscu({
+  agent,
+  onZamknij,
+  onStan,
+  onZespolZdarzenie,
+}: Props) {
   const [stan, setStan] = useState<StanRozmowyUI>('gotowy')
   const [tor, setTor] = useState<TorGlosu>(null)
   const [transkryptUser, setTranskryptUser] = useState('')
@@ -53,16 +74,28 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
   const [blad, setBlad] = useState<string | null>(null)
   const [baner, setBaner] = useState(false)
   const [zapisywanie, setZapisywanie] = useState(false)
+  // Pytanie na koniec: "Zapisac briefing z tej rozmowy do mozgu?" (gdy byla
+  // delegacja albo rozmowa byla dluzsza). Do czasu wyboru pasek zostaje otwarty.
+  const [pytajBriefing, setPytajBriefing] = useState(false)
+  const [zapisBriefingu, setZapisBriefingu] = useState(false)
   const { toast, pokazToast } = useToast()
 
   const uchwytRef = useRef<UchwytRozmowy | null>(null)
   const historiaRef = useRef<ChatMessage[]>([])
-  // Pelny transkrypt rozmowy (oba tory): finalne wypowiedzi usera i persony.
-  // Zrodlo dla przycisku "Zapisz rozmowe do mozgu".
-  const transkryptRef = useRef<{ kto: KtoMowi; tekst: string }[]>([])
+  // Pelny transkrypt rozmowy (oba tory): finalne wypowiedzi usera i persony ORAZ
+  // raporty zespolu (typ 'raport' z onZespol, z oznaczeniem agenta) i wzmianki
+  // o delegacji (typ 'delegacja'). Zrodlo dla zapisu rozmowy i briefingu narady.
+  const transkryptRef = useRef<WpisTranskryptu[]>([])
+  // Czy w rozmowie byla realna delegacja (padl choc jeden raport zespolu).
+  // Decyduje razem z dlugoscia rozmowy o propozycji zapisu briefingu.
+  const bylRaportRef = useRef(false)
   const aktywnyRef = useRef(true)
   // Ostatni zaraportowany poziom (throttling, zeby nie odswiezac mapy co klatke).
   const ostatniPoziomRef = useRef(0)
+  // Zawsze aktualny callback zdarzen zespolu. startRozmowa odpala sie raz (mount),
+  // wiec trzymamy referencje w ref, zeby nie zlapac przestarzalej wersji propsa.
+  const onZespolRef = useRef(onZespolZdarzenie)
+  onZespolRef.current = onZespolZdarzenie
 
   const imie = agent.personImie ?? agent.name
 
@@ -82,10 +115,27 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
     zatrzymajMowe()
   }
 
-  function zakoncz() {
+  /**
+   * Klik "Zakoncz" (albo Esc): sprzatamy glos, a potem decydujemy, czy
+   * zaproponowac zapis briefingu. Proponujemy, gdy byla delegacja (choc jeden
+   * raport zespolu) LUB rozmowa byla dluzsza niz 6 wpisow. W innym wypadku
+   * zamykamy od razu. Gdy pasek briefingu juz wisi, drugi Esc zamyka calkiem.
+   */
+  function naKoniec() {
+    if (pytajBriefing) {
+      onZamknij()
+      return
+    }
     sprzataj()
-    onZamknij()
+    const proponuj =
+      bylRaportRef.current || transkryptRef.current.length > 6
+    if (proponuj) setPytajBriefing(true)
+    else onZamknij()
   }
+  // Zawsze aktualna referencja do naKoniec: handler Esc rejestruje sie raz, wiec
+  // przez ref nie zlapie przestarzalego stanu pytajBriefing.
+  const naKoniecRef = useRef(naKoniec)
+  naKoniecRef.current = naKoniec
 
   // Start rozmowy od razu po zamontowaniu (klik mikrofonu = gest startu).
   useEffect(() => {
@@ -98,7 +148,7 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
   // Esc konczy rozmowe.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') zakoncz()
+      if (e.key === 'Escape') naKoniecRef.current()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -159,6 +209,24 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
         onPoziom: (p) => ustawPoziom(p),
         onBlad: () => {
           if (aktywnyRef.current) setBlad('Cos przeszkodzilo w rozmowie.')
+        },
+        // Orkiestracja zespolu (tylko COO): oddajemy zdarzenia w gore do Command,
+        // ktory zapala wezly na mapie i dopisuje raporty do panelu czatu.
+        // Rownolegle dopisujemy raporty i delegacje do transkryptu rozmowy, zeby
+        // briefing narady widzial, kto pracowal i co ustalil.
+        onZespol: (z) => {
+          if (!aktywnyRef.current) return
+          if (z.typ === 'raport' && z.tresc && z.tresc.trim()) {
+            bylRaportRef.current = true
+            transkryptRef.current.push({
+              kto: 'raport',
+              agent: z.agent,
+              tekst: z.tresc.trim(),
+            })
+          } else if (z.typ === 'start') {
+            transkryptRef.current.push({ kto: 'delegacja', agent: z.agent })
+          }
+          onZespolRef.current?.(z)
         },
       })
       if (!aktywnyRef.current) {
@@ -287,6 +355,29 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
 
   // --- Zapis rozmowy do mozgu firmy -----------------------------------------
 
+  /** Czytelne imie persony po slugu (do oznaczania raportow i delegacji). */
+  function nazwaAgenta(slug: string): string {
+    const a = getAgent(slug)
+    return a?.personImie ?? a?.name ?? slug
+  }
+
+  /**
+   * Sklada pelny transkrypt rozmowy do jednego tekstu: wypowiedzi wlasciciela i
+   * persony, raporty zespolu (z imieniem agenta) oraz wzmianki o delegacji.
+   */
+  function budujTranskrypt(): string {
+    return transkryptRef.current
+      .map((l) => {
+        if (l.kto === 'user') return `Wlasciciel: ${l.tekst}`
+        if (l.kto === 'raport')
+          return `[Raport zespolu] ${nazwaAgenta(l.agent)}:\n${l.tekst}`
+        if (l.kto === 'delegacja')
+          return `(${imie} deleguje zadanie: ${nazwaAgenta(l.agent)})`
+        return `${imie}: ${l.tekst}`
+      })
+      .join('\n')
+  }
+
   /**
    * Zapisuje biezaca rozmowe do bazy wiedzy (sf_mozg_wlasne, grupa 'z-rozmow').
    * Gdy jest polaczenie z modelem (klucz/proxy/env), Claude wyciaga zwiezly plik MD
@@ -294,15 +385,12 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
    */
   async function zapiszDoMozgu() {
     if (zapisywanie) return
-    const linie = transkryptRef.current
-    if (linie.length === 0) {
+    if (transkryptRef.current.length === 0) {
       pokazToast('Brak rozmowy do zapisania.')
       return
     }
     setZapisywanie(true)
-    const rozmowaTekst = linie
-      .map((l) => `${l.kto === 'user' ? 'Wlasciciel' : imie}: ${l.tekst}`)
-      .join('\n')
+    const rozmowaTekst = budujTranskrypt()
     const dataDnia = new Date().toISOString().slice(0, 10)
     let tytul = `Rozmowa z ${imie} ${dataDnia}`
     let tresc = ''
@@ -329,20 +417,62 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
       tresc = `# ${tytul}\n\n\`\`\`\n${rozmowaTekst}\n\`\`\`\n`
     }
 
-    const slug =
-      (tytul
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[̀-ͯ]/g, '')
-        .replace(/ł/g, 'l')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .slice(0, 48) || 'rozmowa') +
-      '-' +
-      Date.now().toString(36)
+    const slug = (zrobSlug(tytul) || 'rozmowa') + '-' + Date.now().toString(36)
     dodajPlikMozgu({ sciezka: `z-rozmow/${slug}.md`, tresc, grupa: 'z-rozmow' })
     if (aktywnyRef.current) setZapisywanie(false)
     pokazToast('Zapisano do bazy wiedzy')
+  }
+
+  /**
+   * Zapisuje BRIEFING z narady do mozgu (sf_mozg_wlasne, grupa 'briefingi').
+   * Claude sklada z transkryptu i raportow zespolu zwiezly briefing (temat,
+   * ustalenia, decyzje, nastepne kroki, dane warte zapamietania). Bez klucza
+   * zapisujemy surowy transkrypt, zeby nic nie przepadlo. Sciezka:
+   * briefingi/<data>-<temat-slug>.md.
+   */
+  async function zapiszBriefing() {
+    if (zapisBriefingu) return
+    setZapisBriefingu(true)
+    const rozmowaTekst = budujTranskrypt()
+    const dataDnia = new Date().toISOString().slice(0, 10)
+    let tytul = `Briefing z narady ${dataDnia}`
+    let tresc = ''
+
+    try {
+      if (getMode() !== 'demo') {
+        const system = [
+          'Przygotuj BRIEFING z narady po polsku:',
+          '1) Temat i uczestnicy (imiona person),',
+          '2) Kluczowe ustalenia (punkty),',
+          '3) Decyzje,',
+          '4) Nastepne kroki (kto/co),',
+          '5) Dane warte zapamietania.',
+          'Zwiezle, w markdown, bez em-dash. Nie zmyslaj liczb ani ustalen. Pierwsza linia to "# <krotki tytul narady>".',
+        ].join('\n')
+        const md = await callModel(system, [
+          { role: 'user', content: rozmowaTekst },
+        ])
+        tresc = md.trim()
+        const m = tresc.match(/^#\s+(.+)$/m)
+        if (m) tytul = m[1].trim()
+      } else {
+        tresc = `# ${tytul}\n\n\`\`\`\n${rozmowaTekst}\n\`\`\`\n`
+      }
+    } catch {
+      // Blad modelu: zapisujemy surowy transkrypt narady.
+      tresc = `# ${tytul}\n\n\`\`\`\n${rozmowaTekst}\n\`\`\`\n`
+    }
+
+    const slug = zrobSlug(tytul) || 'narada'
+    dodajPlikMozgu({
+      sciezka: `briefingi/${dataDnia}-${slug}.md`,
+      tresc,
+      grupa: 'briefingi',
+    })
+    setZapisBriefingu(false)
+    pokazToast('Briefing zapisany do mozgu')
+    // Chwila na pokazanie toastu, potem zamykamy pasek rozmowy.
+    window.setTimeout(() => onZamknij(), 1200)
   }
 
   // --- Etykieta stanu --------------------------------------------------------
@@ -385,6 +515,37 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
       aria-label={`Rozmowa glosowa z ${imie}`}
     >
       <div className="pointer-events-auto flex w-full max-w-2xl items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/92 px-3 py-2.5 shadow-card backdrop-blur-md animate-fade-up sm:gap-4 sm:px-4">
+        {pytajBriefing ? (
+          <div className="flex w-full items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-zinc-50">
+                Zapisac briefing z tej rozmowy do mozgu?
+              </p>
+              <p className="mt-0.5 text-xs text-zinc-400">
+                Zbiore temat, ustalenia, decyzje i nastepne kroki z narady.
+              </p>
+            </div>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={zapiszBriefing}
+                disabled={zapisBriefingu}
+                className="inline-flex h-9 items-center gap-1.5 rounded-full bg-brand px-3.5 text-xs font-semibold text-zinc-950 outline-none transition-colors hover:bg-brand-soft focus-visible:ring-2 focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Save size={14} aria-hidden />
+                {zapisBriefingu ? 'Zapisuje...' : 'Zapisz briefing'}
+              </button>
+              <button
+                type="button"
+                onClick={onZamknij}
+                className="inline-flex h-9 items-center rounded-full border border-zinc-700 bg-zinc-900/80 px-3.5 text-xs font-medium text-zinc-300 outline-none transition-colors hover:bg-zinc-800 hover:text-white focus-visible:ring-2 focus-visible:ring-brand/60"
+              >
+                Pomin
+              </button>
+            </div>
+          </div>
+        ) : (
+        <>
         {/* Maly portret persony */}
         <div className="relative h-11 w-11 flex-shrink-0 sm:h-12 sm:w-12">
           <div
@@ -462,7 +623,7 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
           </button>
           <button
             type="button"
-            onClick={zakoncz}
+            onClick={naKoniec}
             aria-label={`Zakoncz rozmowe z ${imie}`}
             title="Zakoncz rozmowe"
             className="inline-flex h-9 items-center gap-1.5 rounded-full border border-rose-500/40 bg-rose-500/10 px-3 text-xs font-semibold text-rose-200 outline-none transition-colors hover:bg-rose-500/20 hover:text-rose-100 focus-visible:ring-2 focus-visible:ring-rose-400/60"
@@ -471,10 +632,24 @@ export default function RozmowaWMiejscu({ agent, onZamknij, onStan }: Props) {
             <span className="hidden sm:inline">Zakoncz</span>
           </button>
         </div>
+        </>
+        )}
       </div>
       <Toast text={toast} />
     </div>
   )
+}
+
+/** Slug tytulu do sciezki pliku (bez polskich znakow, spacji i interpunkcji). */
+function zrobSlug(tytul: string): string {
+  return tytul
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/ł/g, 'l')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
 }
 
 /** Nakladka PNG (premium) na maly portret w pasku; znika przy bledzie ladowania. */

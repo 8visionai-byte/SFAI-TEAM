@@ -1,68 +1,77 @@
 # QA-REPORT, webapp/ (SF AI TEAM)
 
-Data: 2026-07-21
-Wersja: v2.7 (przeglad pelny: wybor jakosci glosu `wysoka`/`szybka` z modelem realtime
-z body na whiteliscie w `api/realtime-token.ts`, `getVoiceQuality`/`setVoiceQuality` +
-przelacznik w `src/pages/Settings.tsx`, lepszy meski glos COO w `src/data/agents.ts`,
-DWA narzedzia glosowe `przeszukaj_wiedze` + `zapisz_do_bazy` w `src/lib/realtime.ts`,
-zapis rozmowy do mozgu z ekstrakcja Claude w `src/components/RozmowaWMiejscu.tsx`;
-kontrola, ze dzialajacy glos VAD/transkrypcja/format-bez-PCM/przeszukaj_wiedze oraz
-fallback bez kluczy sa NIETKNIETE)
+Data: 2026-07-22
+Wersja: v2.8 (przeglad: orkiestrator GLOSOWY zespolu przez narzedzie `uruchom_zespol`
+TYLKO dla COO w `src/lib/realtime.ts`, przeplyw zdarzen `onZespol` do `src/pages/Command.tsx`
+sterujacy stanami wezlow mapy i wpisami czatu, funkcja BRIEFINGU narady w
+`src/components/RozmowaWMiejscu.tsx` z zapisem do `sf_mozg_wlasne` grupa `briefingi` +
+etykieta w `src/pages/Brain.tsx`; kontrola, ze dzialajacy glos WebRTC i DWA poprzednie
+narzedzia sa NIETKNIETE, a fallback bez kluczy dziala)
 Recenzent: QA
 Werdykt: GOTOWE (tak)
 
 ## Podsumowanie
 
 Build przechodzi bez bledow (tsc + vite, exit 0): vite 5.4.21, 1869 modulow, zbudowany
-w 4.90s, jedyne ostrzezenie to rozmiar chunku (>500 kB, informacyjne, nie blad). Zero
-em-dash (U+2014) w `webapp/src` (poza `src/content`) oraz w `webapp/api`: skan ripgrep
-po znaku U+2014, 0 trafien w obu lokalizacjach. Wszystkie funkcje z zakresu przegladu sa
-obecne i poprawne: serwer tokenu przyjmuje `model` z body tylko po whiteliscie i spada na
-domyslny PELNY model; jest przelacznik jakosci glosu (Wysoka/Szybka) spiety z realtime;
-COO ma meski glos `cedar` (najwyzsza jakosc); sesja realtime ma DWA narzedzia
-(`przeszukaj_wiedze` + `zapisz_do_bazy`) z pelna obsluga obu; zapis rozmowy do mozgu robi
-ekstrakcje przez Claude, a bez klucza zapisuje surowa transkrypcje. Dzialajacy glos
-(server VAD `create_response`, transkrypcja pl, audio Opus bez wymuszania PCM,
-`przeszukaj_wiedze`) oraz fallback bez kluczy (voice.ts) NIE byly ruszane. Nie znaleziono
-usterek wymagajacych naprawy; jedyna zmiana w tym przegladzie to aktualizacja tego
-raportu. NIE commitowano.
+w 5.17s, jedyne ostrzezenie to rozmiar chunku (>500 kB, informacyjne, nie blad). Zero
+em-dash (U+2014) w `webapp/src` poza `src/content`: skan po znaku U+2014 (Node, indexOf),
+0 trafien. Wszystkie funkcje z zakresu przegladu sa obecne i poprawne: narzedzie
+`uruchom_zespol` dokladane WYLACZNIE dla COO; handler waliduje slugi (tylko realni
+specjalisci bez COO, bez pustych zadan, bez duplikatow, max 6); specjalisci odpalani
+ROWNOLEGLE przez `sendMessage` (Promise.all); raporty przycinane do 1200 znakow;
+odsylka `function_call_output` + `response.create` z ochrona przed
+`conversation_already_has_active_response` (flagi `aktywnaOdpowiedz` / `oczekujeResponseCreate`).
+`onZespol` przeplywa do Command i steruje stanami wezlow mapy (start->active, koniec->done)
+oraz wpisami czatu (linia delegacji, "skonczyl", pelny raport). Briefing: po "Zakoncz"
+przy delegacji pokazuje sie dialog, zapis do `sf_mozg_wlasne` grupa `briefingi`, etykieta
+"Briefingi z narad" w Brain. Dzialajacy glos WebRTC (server VAD `create_response`,
+transkrypcja pl, audio Opus bez PCM, glosy cedar/marin, model gpt-realtime/mini) oraz DWA
+poprzednie narzedzia (`przeszukaj_wiedze` + `zapisz_do_bazy`) sa NIETKNIETE. Fallback bez
+kluczy (voice.ts) dziala. `buildVoicePrompt` dla COO wspomina `uruchom_zespol`. Nie
+znaleziono usterek; jedyna zmiana to aktualizacja tego raportu. NIE commitowano.
 
 ## Status per pozycja
 
 | # | Pozycja | Status | Uwagi |
 |---|---------|--------|-------|
-| 1 | `npm run build` exit 0 | OK | Przeszedl za pierwszym razem (vite 5.4.21, 1869 modulow, 4.90s, exit 0). Jedyne ostrzezenie: rozmiar chunku index js 788 kB (>500 kB) — informacyjne, nie blad. Brak napraw. |
-| 2 | Em-dash (U+2014) w webapp/src (poza src/content) i webapp/api | OK | ripgrep po znaku U+2014: 0 trafien w `webapp/src` i 0 w `webapp/api`. Slowo "em-dash" w kodzie to zwykly dywiz w tekstach zakazu, nie znak U+2014. Brak napraw. |
-| 3a | `api/realtime-token` przyjmuje `model` z body (whitelist) + domyslny pelny model | OK | `MODELE_OK` = `['gpt-realtime','gpt-realtime-mini','gpt-realtime-2025-08-28','gpt-realtime-mini-2025-12-15']` (realtime-token.ts:22-27). `model = body.model in MODELE_OK ? body.model : OPENAI_REALTIME_MODEL` (:82-84). Domyslny = `gpt-realtime` (PELNY, :15), nadpisywalny env `OPENAI_REALTIME_MODEL`. Nazwa `model` zwracana klientowi (:132) i uzyta w `session` przy mincie (:104). |
-| 3b | `getVoiceQuality`/`setVoiceQuality` + przelacznik w Settings | OK | `getVoiceQuality()` (ai.ts:78-81, domyslnie `'wysoka'`), `setVoiceQuality()` (:84-89), klucz localStorage `sf_glos_jakosc`. `getVoiceModel()` mapuje `'szybka'->gpt-realtime-mini`, else `gpt-realtime` (:98-100). Settings.tsx importuje oba (:26-27), stan `jakoscGlosu` z `getVoiceQuality()` (:136), `wybierzJakoscGlosu` wola `setVoiceQuality` (:147-150), przelacznik Wysoka/Szybka renderowany (:384-423, `aria-label`). `startRozmowa` bierze `getVoiceModel()` i wysyla do serwera (realtime.ts:129-130). |
-| 3c | `agents.ts` COO ma lepszy meski glos | OK | COO: `personImie:'Leo'` (:60), `realtimeVoice:'cedar'` z komentarzem "meski, najlepsza jakosc (RESEARCH-GLOS-JAKOSC.md)" (:62). `cedar` to nowy glos "best quality" OpenAI, meski/cieplejszy. Whitelist glosow w serwerze zawiera `marin`/`cedar`, domyslny `cedar` (realtime-token.ts:31-32). |
-| 3d | `session.tools` ma DWA narzedzia + obsluga obu | OK | `sessionUpdate.session.tools` = `[przeszukaj_wiedze, zapisz_do_bazy]` (realtime.ts:171-214), `tool_choice:'auto'` (:170). `zapisz_do_bazy` ma parametry `tytul`+`tresc` (required). Dispatch: `obsluzWywolanieNarzedzia` (:453) rozdziela po `name` — `zapisz_do_bazy`->`obsluzZapisDoBazy` (:457-459), `przeszukaj_wiedze`->`szukajWMozgu` (:461-492). Oba odsylaja `function_call_output` (string) + `response.create`. |
-| 3e | `storage` zapisuje `sf_mozg_wlasne` czytane przez `szukajWMozgu` | OK | `dodajPlikMozgu` -> `zapiszWlasnyPlikMozgu` -> localStorage `sf_mozg_wlasne` (storage.ts:242-248, KEY :64). `obsluzZapisDoBazy` wola `dodajPlikMozgu({grupa:'z-rozmow',...})` (realtime.ts:518). `szukajWMozgu` skanuje `getBrainFiles()`, ktore dolacza `wczytajWlasnePlikiMozgu()` (content.ts:85-91, 228-231) — zapisane rozmowy sa od razu przeszukiwalne przez glos i Baze wiedzy. |
-| 3f | Przycisk 'Zapisz rozmowe do mozgu' w RozmowaWMiejscu z ekstrakcja Claude | OK | Przycisk `onClick={zapiszDoMozgu}` (:452-460, `aria-label`/`title`). `zapiszDoMozgu` (:295-346): gdy `getMode()!=='demo'` wola `callModel(system, [...])` z systemem redaktora bazy wiedzy (prosty polski, bez em-dash, `[DO UZUPELNIENIA]` przy niepewnych liczbach, zakaz zmyslania), tytul z pierwszego `# ` naglowka; w trybie demo lub przy bledzie zapisuje surowa transkrypcje w bloku kodu (:324-330). Zapis przez `dodajPlikMozgu(grupa:'z-rozmow')` (:343). |
-| 3g | Dzialajacy glos (VAD/transkrypcja/format-bez-PCM/przeszukaj_wiedze) NIETKNIETY | OK | `audio.input.turn_detection` = `server_vad` z `create_response:true` + `interrupt_response:true` (realtime.ts:151-158); `transcription: gpt-4o-mini-transcribe, language:'pl'` (:159); BRAK pola `format` w `audio.input` — komentarz (:149-150) tlumaczy, ze wymuszanie audio/pcm psulo dekodowanie. `przeszukaj_wiedze` dalej pierwszym narzedziem, obsluga bez zmian (:461-492). Zdarzenia `speech_started/stopped/transcription.completed/response.*` obslugiwane (:378-437). |
-| 3h | Fallback bez kluczy dziala | OK | Serwer bez klucza -> 503 `brak-klucza` (realtime-token.ts:71-75). `pobierzToken` rzuca `Error('brak-klucza')` na 503 (realtime.ts:94-96). `RozmowaGlosowa.tsx` lapie w `catch polaczRealtime` (:271-294), schodzi na `startPodstawowy()` (voice.ts STT + `sendMessage`). `sendMessage` w trybie demo -> `mockResponse` (ai.ts:426-428). `storage`/`callModel` chronione try/catch, tryb prywatny localStorage bezpieczny. |
-| 3i | Inne funkcje (mapa, orchestrator, skille, mozg edytowalny, historia, awatary) nietkniete | OK | Zakres zmian to warstwa glosu/mozgu; `orchestrator.ts`, `brainGraph.ts`, `avatarSvg.ts`, komponenty mapy/awatarow/skilli/historii bez zmian strukturalnych. Build 1869 modulow exit 0 potwierdza kompilacje calosci. |
+| 1 | `npm run build` exit 0 | OK | Przeszedl za pierwszym razem (vite 5.4.21, 1869 modulow, 5.17s, exit 0). Jedyne ostrzezenie: rozmiar chunku index js 796 kB (>500 kB) — informacyjne, nie blad. Brak napraw. |
+| 2 | Em-dash (U+2014) w webapp/src (poza src/content) | OK | Skan Node (indexOf po U+2014) po plikach `.ts/.tsx/.css` z pominieciem `src/content/`: 0 trafien. Slowo "em-dash" w kodzie to opis zakazu w promptach, nie znak. Brak napraw. |
+| 3a | `uruchom_zespol` TYLKO dla COO | OK | Bazowe narzedzia (`przeszukaj_wiedze`, `zapisz_do_bazy`) ma kazda persona; `uruchom_zespol` dokladane w bloku `if (agent.slug === 'coo')` (realtime.ts:209-240). Inni agenci go nie dostaja. |
+| 3b | Handler waliduje slugi | OK | `obsluzUruchomZespol` (realtime.ts:662): `dozwolone = agents (bez coo)`, filtr odrzuca nieznane slugi, puste zadania i duplikaty (Set `uzyte`), `.slice(0,6)` (:680-692). Pusta lista -> `odeslijRaportyZespolu(ok:false, "Nie wskazano...")` (:699-706). |
+| 3c | Rownolegly sendMessage | OK | `Promise.all(wybrane.map(async ... sendMessage(z.agent, [...])))` (realtime.ts:713-722). `sendMessage` sam lapie bledy, wiec `Promise.all` nie odrzuca. |
+| 3d | Raporty przyciete | OK | `LIMIT_RAPORTU = 1200`; kazdy raport dluzszy przyciety `slice(0,1200) + ' [...]'`, zlozony w blok `=== RAPORT <imie> (<rola>) ===` (realtime.ts:724-737). |
+| 3e | `function_call_output` + `response.create` z ochrona | OK | `odeslijRaportyZespolu` wysyla `conversation.item.create` z `function_call_output` (output = JSON string), potem `wyslijResponseCreate` (realtime.ts:746-764). Ochrona: gdy `aktywnaOdpowiedz`, ustawia `oczekujeResponseCreate` zamiast wysylac od razu; kolejka wypuszczana na `response.done` (:640-652, :510-520). Chroni przed `conversation_already_has_active_response`. |
+| 3f | `onZespol` -> Command steruje stanami wezlow | OK | `RozmowaWMiejscu` przekazuje `onZespol` -> `onZespolZdarzenie` -> Command `obsluzZespolGlos` (Command.tsx:1730, 972-1009). `start`->`setStany(active)`, `koniec`->`setStany(done)` (:977, :994). Te same stany co orkiestracja tekstowa (nici, czasteczki, powrot). |
+| 3g | Wpisy czatu (deleguje do / skonczyl) | OK | `start`: batch imion flush po takcie -> `"<Leo> (glos) deleguje do: ..."` (Command.tsx:978-989). `raport`: skrocona linia `"<imie> skonczyl: <skrot 140>..."` + pelny raport jako wpis `final` (:998-1008). |
+| 3h | Briefing: dialog po Zakoncz przy delegacji | OK | `naKoniec`: proponuje briefing gdy `bylRaportRef` (byla delegacja) LUB transkrypt > 6 wpisow -> `setPytajBriefing(true)` (RozmowaWMiejscu.tsx:124-134). Dialog "Zapisac briefing z tej rozmowy do mozgu?" z przyciskami Zapisz/Pomin (:518-546). |
+| 3i | Briefing: zapis do `sf_mozg_wlasne` grupa `briefingi` | OK | `zapiszBriefing` (RozmowaWMiejscu.tsx:433): `callModel` z systemem briefingu (temat, ustalenia, decyzje, nastepne kroki; bez em-dash, bez zmyslania), bez klucza surowy transkrypt; `dodajPlikMozgu({sciezka:'briefingi/<data>-<slug>.md', grupa:'briefingi'})` (:467-471). `dodajPlikMozgu` pisze do localStorage `sf_mozg_wlasne` (storage.ts:242-248). |
+| 3j | Etykieta briefingu w Brain | OK | `Brain.tsx:122`: `if (key === 'briefingi') return 'Briefingi z narad'`. |
+| 3k | Dzialajacy glos WebRTC NIETKNIETY | OK | `turn_detection: server_vad` + `create_response:true` + `interrupt_response:true` (realtime.ts:252-259); `transcription: gpt-4o-mini-transcribe, language:'pl'` (:260); BRAK pola `format` w `audio.input`; glos `agent.realtimeVoice ?? 'cedar'` (:145), cedar/marin w agents.ts; model z `getVoiceModel()` -> `gpt-realtime` / `gpt-realtime-mini` (ai.ts:98-100). |
+| 3l | DWA poprzednie narzedzia NIETKNIETE | OK | `przeszukaj_wiedze` + `zapisz_do_bazy` dalej w `narzedzia` dla kazdej persony (realtime.ts:164-207), dispatch po `name` bez zmian (:538-584). |
+| 3m | Fallback bez kluczy dziala | OK | Serwer bez klucza -> 503, `pobierzToken` rzuca `Error('brak-klucza')` (realtime.ts:114-116); `polaczRealtime` lapie i schodzi na `startPodstawowy` (voice.ts STT + `sendMessage`) (RozmowaWMiejscu.tsx:238-260). W trybie demo orkiestracja tekstowa symulowana, `sendMessage` -> mock (ai.ts). |
+| 3n | `buildVoicePrompt` COO wspomina `uruchom_zespol` | OK | ai.ts:186-187: "masz narzedzie uruchom_zespol: mozesz REALNIE odpalic specjalistow..." + instrukcja by przed wywolaniem powiedziec na glos kogo uruchamia. |
 
 ## Naprawione w tym przegladzie
 
 Brak zmian w kodzie. Wszystkie punkty przeszly bez poprawek: build exit 0 za pierwszym
-razem; zero em-dash (U+2014) w `webapp/src` poza `src/content` oraz w `webapp/api`;
-`api/realtime-token` przyjmuje `model` z body po whiteliscie i spada na domyslny pelny
-`gpt-realtime`; `getVoiceQuality`/`setVoiceQuality` + przelacznik Wysoka/Szybka w Settings
-spiety z realtime przez `getVoiceModel`; COO ma meski glos `cedar`; sesja realtime ma DWA
-narzedzia (`przeszukaj_wiedze` + `zapisz_do_bazy`) z pelna obsluga i odsylka
-`function_call_output` + `response.create`; `storage` zapisuje `sf_mozg_wlasne` czytane
-przez `szukajWMozgu` (getBrainFiles); przycisk "Zapisz do mozgu" w RozmowaWMiejscu robi
-ekstrakcje przez Claude (fallback: surowa transkrypcja); dzialajacy glos
-(VAD/transkrypcja/bez PCM/przeszukaj_wiedze) i fallback bez kluczy nietkniete.
-Zaktualizowano tylko ten raport (`webapp/QA-REPORT.md`, v2.7). NIE commitowano.
+razem; zero em-dash (U+2014) w `webapp/src` poza `src/content`; `uruchom_zespol` dokladane
+tylko dla COO; handler waliduje slugi (bez COO/pustych/duplikatow, max 6); rownolegly
+`sendMessage` przez `Promise.all`; raporty przyciete do 1200 znakow; `function_call_output`
++ `response.create` z ochrona przed podwojna aktywna odpowiedzia; `onZespol` steruje mapa
+i wpisami czatu w Command; briefing (dialog po Zakoncz przy delegacji, zapis do
+`sf_mozg_wlasne` grupa `briefingi`, etykieta "Briefingi z narad" w Brain); dzialajacy glos
+WebRTC (VAD/`create_response`/transkrypcja pl/bez PCM/cedar-marin/gpt-realtime) i DWA
+poprzednie narzedzia nietkniete; fallback bez kluczy dziala; `buildVoicePrompt` COO
+wspomina `uruchom_zespol`. Zaktualizowano tylko ten raport (`webapp/QA-REPORT.md`, v2.8).
+NIE commitowano.
 
 ## Env vars dla Pawla (Vercel > Project webapp > Settings > Environment Variables)
 
 Bez zmian. Wszystkie opcjonalne; bez nich aplikacja dziala (tryb podstawowy glosu /
 fallback), z nimi wchodzi tryb realtime premium z narzedziami `przeszukaj_wiedze` +
-`zapisz_do_bazy`. Po dodaniu kluczy zrob redeploy. Kod czyta klucz OpenAI pod kilkoma
-nazwami: `OPENAI_API_KEY`, `openaiapi`, `OPENAI_KEY` (wystarczy jedna, Ty masz `openaiapi`).
-Opcjonalnie `OPENAI_REALTIME_MODEL` i `OPENAI_TRANSCRIBE_MODEL` nadpisuja domyslne
-`gpt-realtime` / `gpt-4o-mini-transcribe`. Klucz Anthropic (ekstrakcja rozmowy do mozgu,
-czat) trzymany po stronie klienta w Ustawieniach albo przez proxy `VITE_AGENT_API_URL`.
+`zapisz_do_bazy` + `uruchom_zespol` (COO). Po dodaniu kluczy zrob redeploy. Kod czyta
+klucz OpenAI pod kilkoma nazwami: `OPENAI_API_KEY`, `openaiapi`, `OPENAI_KEY` (wystarczy
+jedna, Ty masz `openaiapi`). Opcjonalnie `OPENAI_REALTIME_MODEL` i `OPENAI_TRANSCRIBE_MODEL`
+nadpisuja domyslne `gpt-realtime` / `gpt-4o-mini-transcribe`. Klucz Anthropic (orkiestracja
+zespolu glosem, ekstrakcja rozmowy/briefingu do mozgu, czat) trzymany po stronie klienta w
+Ustawieniach albo przez proxy `VITE_AGENT_API_URL`.

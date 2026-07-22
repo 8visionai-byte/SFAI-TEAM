@@ -14,8 +14,8 @@
  * Bez klucza dziala tor podstawowy (voice.ts). Ksztalt handshake SDP wg
  * dokumentacji OpenAI Realtime (client_secrets + /v1/realtime/calls).
  */
-import type { Agent } from '../data/agents'
-import { buildVoicePrompt, getVoiceModel } from './ai'
+import { type Agent, agents, getAgent } from '../data/agents'
+import { buildVoicePrompt, getVoiceModel, sendMessage } from './ai'
 import { szukajWMozgu } from './content'
 import { dodajPlikMozgu, nowyId } from './storage'
 
@@ -30,6 +30,18 @@ export type StanRozmowy =
 
 /** Kto mowi w danym fragmencie transkryptu. */
 export type KtoMowi = 'user' | 'agent'
+
+/**
+ * Zdarzenie orkiestracji zespolu (narzedzie uruchom_zespol, tylko COO):
+ *  - 'start'  specjalista ruszyl do pracy (slug),
+ *  - 'koniec' specjalista skonczyl,
+ *  - 'raport' pelna tresc raportu specjalisty (pole tresc).
+ */
+export interface ZdarzenieZespolu {
+  typ: 'start' | 'koniec' | 'raport'
+  agent: string
+  tresc?: string
+}
 
 export interface OpcjeRozmowy {
   /** Zmiana stanu maszyny (steruje aura i etykietami w UI). */
@@ -46,6 +58,14 @@ export interface OpcjeRozmowy {
    * osobnego powitania z przegladarki. Wysylana raz przez kanal danych.
    */
   powitanie?: string
+  /**
+   * Zdarzenia orkiestracji zespolu (tylko COO, narzedzie uruchom_zespol).
+   * Steruje panelem "zespol pracuje" w UI:
+   *  - 'start'  specjalista ruszyl do pracy (przekazany jego slug),
+   *  - 'koniec' specjalista skonczyl,
+   *  - 'raport' pelna tresc raportu specjalisty (do podgladu w UI).
+   */
+  onZespol?: (zdarzenie: ZdarzenieZespolu) => void
 }
 
 /** Uchwyt aktywnej rozmowy: pozwala ja zakonczyc i posprzatac zasoby. */
@@ -138,6 +158,87 @@ export async function startRozmowa(
    *  - wyjscie jest audio glosem persony (output_modalities + audio.output.voice).
    * Niezaleznie od tego, co ustawil token przy mintowaniu.
    */
+  // Narzedzia (function calling): model sam siega do CALEGO mozgu firmy, gdy
+  // potrzebuje konkretow. Bazowe narzedzia ma KAZDA persona; uruchom_zespol
+  // dokladamy TYLKO dla COO (orkiestrator realnie odpala reszte zespolu).
+  const narzedzia: any[] = [
+    {
+      type: 'function',
+      name: 'przeszukaj_wiedze',
+      description:
+        'Przeszukuje baze wiedzy (mozg) firmy SimpleFast.ai i zwraca pasujace fragmenty. ' +
+        'Uzyj gdy potrzebujesz konkretow: cennik, case studies, ICP, oferta, proces, dane firmy. ' +
+        'Preamble sample phrases: Juz sprawdzam to w naszej bazie. / Chwilke, zaraz to znajde. / Sekunde, siegam po szczegoly.',
+      parameters: {
+        type: 'object',
+        properties: {
+          zapytanie: {
+            type: 'string',
+            description: 'czego szukasz',
+          },
+        },
+        required: ['zapytanie'],
+      },
+    },
+    {
+      type: 'function',
+      name: 'zapisz_do_bazy',
+      description:
+        'Zapisuje wazne ustalenia z rozmowy do bazy wiedzy firmy jako notatke MD. ' +
+        'Uzyj gdy wlasciciel poda nowe dane, decyzje, ustalenia, albo poprosi o zapis. ' +
+        'Najpierw zaproponuj zapis i poczekaj na zgode, dopiero potem wywolaj to narzedzie. ' +
+        'Preamble sample phrases: Zapisze to do naszej bazy. / Dodaje to do mozgu firmy.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tytul: {
+            type: 'string',
+            description: 'Krotki, rzeczowy tytul notatki po polsku.',
+          },
+          tresc: {
+            type: 'string',
+            description:
+              'Tresc notatki w markdown: zwiezle, punktami, tylko potwierdzone fakty i liczby. Bez em-dash.',
+          },
+        },
+        required: ['tytul', 'tresc'],
+      },
+    },
+  ]
+
+  if (agent.slug === 'coo') {
+    narzedzia.push({
+      type: 'function',
+      name: 'uruchom_zespol',
+      description:
+        'Uruchamia wybranych specjalistow zespolu do pracy nad zadaniami. Kazdy dostaje konkretne zadanie i odpowiada raportem. Uzyj gdy pytanie wymaga researchu, opinii lub pracy kilku rol. Preamble sample phrases: Dobra, uruchamiam zespol, daj mi chwile. / Poczekaj, odpalam Raya i Zoe.',
+      parameters: {
+        type: 'object',
+        properties: {
+          zadania: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                agent: {
+                  type: 'string',
+                  description:
+                    'slug agenta: wiedza-produkt|operacje|analityk|pamiec-zespolu|copywriter|handlowiec|opiekun-klienta|drugi-glos|analityk-social',
+                },
+                zadanie: {
+                  type: 'string',
+                  description: 'konkretne zadanie po polsku',
+                },
+              },
+              required: ['agent', 'zadanie'],
+            },
+          },
+        },
+        required: ['zadania'],
+      },
+    })
+  }
+
   const sessionUpdate = {
     type: 'session.update',
     session: {
@@ -165,53 +266,9 @@ export async function startRozmowa(
         },
       },
       instructions: instrukcje,
-      // Narzedzia (function calling): model sam siega do CALEGO mozgu firmy,
-      // gdy potrzebuje konkretow. tool_choice:'auto' = model decyduje sam.
+      // tool_choice:'auto' = model sam decyduje, kiedy siegnac po narzedzie.
       tool_choice: 'auto',
-      tools: [
-        {
-          type: 'function',
-          name: 'przeszukaj_wiedze',
-          description:
-            'Przeszukuje baze wiedzy (mozg) firmy SimpleFast.ai i zwraca pasujace fragmenty. ' +
-            'Uzyj gdy potrzebujesz konkretow: cennik, case studies, ICP, oferta, proces, dane firmy. ' +
-            'Preamble sample phrases: Juz sprawdzam to w naszej bazie. / Chwilke, zaraz to znajde. / Sekunde, siegam po szczegoly.',
-          parameters: {
-            type: 'object',
-            properties: {
-              zapytanie: {
-                type: 'string',
-                description: 'czego szukasz',
-              },
-            },
-            required: ['zapytanie'],
-          },
-        },
-        {
-          type: 'function',
-          name: 'zapisz_do_bazy',
-          description:
-            'Zapisuje wazne ustalenia z rozmowy do bazy wiedzy firmy jako notatke MD. ' +
-            'Uzyj gdy wlasciciel poda nowe dane, decyzje, ustalenia, albo poprosi o zapis. ' +
-            'Najpierw zaproponuj zapis i poczekaj na zgode, dopiero potem wywolaj to narzedzie. ' +
-            'Preamble sample phrases: Zapisze to do naszej bazy. / Dodaje to do mozgu firmy.',
-          parameters: {
-            type: 'object',
-            properties: {
-              tytul: {
-                type: 'string',
-                description: 'Krotki, rzeczowy tytul notatki po polsku.',
-              },
-              tresc: {
-                type: 'string',
-                description:
-                  'Tresc notatki w markdown: zwiezle, punktami, tylko potwierdzone fakty i liczby. Bez em-dash.',
-              },
-            },
-            required: ['tytul', 'tresc'],
-          },
-        },
-      ],
+      tools: narzedzia,
     },
   }
 
@@ -230,6 +287,14 @@ export async function startRozmowa(
   let analyserLokalny: AnalyserNode | null = null
   let analyserZdalny: AnalyserNode | null = null
   let statsId: number | null = null // diagnostyka toru w gore (bytesSent)
+  // --- Wspolbieznosc response.create ---
+  // aktywnaOdpowiedz: czy model MA teraz otwarta odpowiedz (miedzy
+  // response.created a response.done). Gdy chcemy wymusic response.create
+  // (po function_call_output), a odpowiedz trwa, kolejkujemy go w
+  // oczekujeResponseCreate i wysylamy dopiero na response.done. Tak omijamy
+  // blad OpenAI 'conversation_already_has_active_response'.
+  let aktywnaOdpowiedz = false
+  let oczekujeResponseCreate = false
 
   /** Pelne sprzatanie: idempotentne, wolane z zakoncz() i przy bledzie. */
   function sprzataj() {
@@ -396,8 +461,14 @@ export async function startRozmowa(
       return
     }
 
-    // Model zaczal odpowiadac glosem.
-    if (typ === 'response.created' || typ === 'response.output_audio.delta') {
+    // Model zaczal odpowiadac glosem. response.created = otwarta odpowiedz
+    // (podnosimy flage wspolbieznosci).
+    if (typ === 'response.created') {
+      aktywnaOdpowiedz = true
+      opcje.onStan('mowie')
+      return
+    }
+    if (typ === 'response.output_audio.delta') {
       opcje.onStan('mowie')
       return
     }
@@ -431,8 +502,22 @@ export async function startRozmowa(
 
     // Koniec odpowiedzi: wracamy do sluchania.
     if (typ === 'response.done') {
+      aktywnaOdpowiedz = false
       transAgent = ''
       opcje.onStan('slucham')
+      // Byl zakolejkowany response.create (raporty zespolu czekaly na wolna
+      // linie)? Teraz jest bezpiecznie go odpalic.
+      if (oczekujeResponseCreate) {
+        oczekujeResponseCreate = false
+        if (dc && dc.readyState === 'open') {
+          try {
+            dc.send(JSON.stringify({ type: 'response.create' }))
+            aktywnaOdpowiedz = true
+          } catch {
+            // Kanal mogl paść; kolejne zdarzenia bledu zajma sie reszta.
+          }
+        }
+      }
       return
     }
 
@@ -456,6 +541,12 @@ export async function startRozmowa(
     if (!callId) return
     if (nazwa === 'zapisz_do_bazy') {
       obsluzZapisDoBazy(zd, callId)
+      return
+    }
+    if (nazwa === 'uruchom_zespol') {
+      // Async i dlugotrwale (realne wywolania Anthropic): nie blokujemy petli
+      // zdarzen, wiec odpalamy bez await. Handler sam lapie wszystkie bledy.
+      void obsluzUruchomZespol(zd, callId)
       return
     }
     if (nazwa !== 'przeszukaj_wiedze') return
@@ -537,6 +628,139 @@ export async function startRozmowa(
     } catch {
       // Kanal mogl paść; nastepne zdarzenia bledu zajma sie reszta.
     }
+  }
+
+  /**
+   * Wysyla response.create bezpiecznie wzgledem wspolbieznosci. Gdy model MA
+   * teraz otwarta odpowiedz (aktywnaOdpowiedz), NIE wysyla od razu (dostalibysmy
+   * blad 'conversation_already_has_active_response'), tylko kolejkuje na
+   * response.done. Uzywane po odeslaniu raportow zespolu, bo user moze gadac
+   * dalej podczas pracy zespolu i miec wtedy wlasna aktywna odpowiedz.
+   */
+  function wyslijResponseCreate() {
+    if (!dc || dc.readyState !== 'open') return
+    if (aktywnaOdpowiedz) {
+      oczekujeResponseCreate = true
+      return
+    }
+    try {
+      dc.send(JSON.stringify({ type: 'response.create' }))
+      aktywnaOdpowiedz = true
+    } catch {
+      // Kanal mogl paść; nastepne zdarzenia bledu zajma sie reszta.
+    }
+  }
+
+  /**
+   * Obsluga narzedzia uruchom_zespol (TYLKO COO). Waliduje slugi (max 6, bez
+   * duplikatow), emituje onZespol start dla kazdego, ROWNOLEGLE odpala realnych
+   * specjalistow przez sendMessage (Anthropic), po kazdym emituje koniec + raport.
+   * Zbiera raporty, przycina do ~1200 znakow, sklada w jeden string i odsyla jako
+   * function_call_output, po czym (bezpiecznie) prosi model o response.create,
+   * zeby zreferowal wyniki glosem.
+   */
+  async function obsluzUruchomZespol(zd: any, callId: string) {
+    let surowe: Array<{ agent: string; zadanie: string }> = []
+    try {
+      const args = JSON.parse(zd?.arguments || '{}')
+      if (Array.isArray(args?.zadania)) {
+        surowe = args.zadania
+          .filter(
+            (z: any) =>
+              z && typeof z.agent === 'string' && typeof z.zadanie === 'string',
+          )
+          .map((z: any) => ({ agent: z.agent.trim(), zadanie: z.zadanie.trim() }))
+      }
+    } catch {
+      // Zle/niekompletne argumenty -> pusta lista, ponizej odesle info do modelu.
+    }
+
+    // Waliduj slugi: tylko realni specjalisci (bez COO), bez pustych zadan,
+    // bez duplikatow, maksymalnie 6 rownolegle.
+    const dozwolone = new Set(
+      agents.filter((a) => a.slug !== 'coo').map((a) => a.slug),
+    )
+    const uzyte = new Set<string>()
+    const wybrane = surowe
+      .filter((z) => {
+        if (!dozwolone.has(z.agent)) return false
+        if (!z.zadanie) return false
+        if (uzyte.has(z.agent)) return false
+        uzyte.add(z.agent)
+        return true
+      })
+      .slice(0, 6)
+
+    console.info(
+      '[realtime] tool uruchom_zespol',
+      wybrane.map((z) => z.agent).join(','),
+    )
+
+    if (wybrane.length === 0) {
+      odeslijRaportyZespolu(
+        callId,
+        false,
+        'Nie wskazano zadnego prawidlowego specjalisty. Podaj poprawne slugi agentow.',
+      )
+      return
+    }
+
+    // Zapal wszystkich naraz (UI: zespol rusza do pracy).
+    wybrane.forEach((z) => opcje.onZespol?.({ typ: 'start', agent: z.agent }))
+
+    // Realne, ROWNOLEGLE wywolania specjalistow (Anthropic). sendMessage sam
+    // lapie bledy i zwraca tekst, wiec Promise.all nigdy nie odrzuci.
+    const raporty = await Promise.all(
+      wybrane.map(async (z) => {
+        const raport = await sendMessage(z.agent, [
+          { role: 'user', content: z.zadanie },
+        ])
+        opcje.onZespol?.({ typ: 'koniec', agent: z.agent })
+        opcje.onZespol?.({ typ: 'raport', agent: z.agent, tresc: raport })
+        return { agent: z.agent, raport }
+      }),
+    )
+
+    // Zloz raporty w jeden string, przycinajac kazdy do ~1200 znakow.
+    const LIMIT_RAPORTU = 1200
+    const tresc = raporty
+      .map((r) => {
+        const a = getAgent(r.agent)
+        const imie = a?.personImie ?? a?.name ?? r.agent
+        const rola = a?.role ?? 'specjalista'
+        const body =
+          r.raport.length > LIMIT_RAPORTU
+            ? r.raport.slice(0, LIMIT_RAPORTU) + ' [...]'
+            : r.raport
+        return `=== RAPORT ${imie} (${rola}) ===\n${body}`
+      })
+      .join('\n\n')
+
+    odeslijRaportyZespolu(callId, true, tresc)
+  }
+
+  /**
+   * Odsyla wynik uruchom_zespol jako function_call_output i (bezpiecznie wzgledem
+   * wspolbieznosci) prosi model o dokonczenie glosem. output MUSI byc stringiem.
+   */
+  function odeslijRaportyZespolu(callId: string, ok: boolean, raporty: string) {
+    if (!dc || dc.readyState !== 'open') return
+    try {
+      dc.send(
+        JSON.stringify({
+          type: 'conversation.item.create',
+          item: {
+            type: 'function_call_output',
+            call_id: callId,
+            output: JSON.stringify({ ok, raporty }),
+          },
+        }),
+      )
+    } catch {
+      // Kanal mogl paść; nastepne zdarzenia bledu zajma sie reszta.
+      return
+    }
+    wyslijResponseCreate()
   }
 
   /**

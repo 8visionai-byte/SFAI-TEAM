@@ -35,7 +35,7 @@ import {
   wyczyscCentrum,
   type WpisCentrum,
 } from '../lib/storage'
-import type { StanRozmowy } from '../lib/realtime'
+import type { StanRozmowy, ZdarzenieZespolu } from '../lib/realtime'
 import ChatMessage from '../components/ChatMessage'
 import CharacterAvatar from '../components/CharacterAvatar'
 import MarkdownView from '../components/MarkdownView'
@@ -727,7 +727,10 @@ function MapaNeuronu({
         const imie = a.personImie ?? a.name
         const wRozmowie = rozmowaSlug === n.slug
         const ktosRozmawia = rozmowaSlug != null
-        const przyciemniony = ktosRozmawia && !wRozmowie
+        // Podczas rozmowy glosowej przyciemniamy TYLKO wezly bezczynne. Specjalisci
+        // delegowani przez COO (active/done) swieca swoim stanem, tak jak przy
+        // orkiestracji tekstowej; aktywny rozmowca (wRozmowie) pulsuje jak dotad.
+        const przyciemniony = ktosRozmawia && !wRozmowie && stan === 'idle'
         // Kolor roli w podpisie: akcent gdy rozmowa/praca, zielony gdy gotowe.
         const rolaKolor =
           wRozmowie || stan === 'active'
@@ -931,6 +934,11 @@ export default function Command() {
   const [rozmowaAgent, setRozmowaAgent] = useState<Agent | null>(null)
   const [rozmowaStan, setRozmowaStan] = useState<RozmowaStanUI>('gotowy')
   const [rozmowaPoziom, setRozmowaPoziom] = useState(0)
+  // Batch delegacji z toru glosowego: wszystkie zdarzenia 'start' danej delegacji
+  // przychodza w jednym takcie (forEach w realtime). Zbieramy imiona i po takcie
+  // (setTimeout 0) dopisujemy JEDNA linie "Leo (glos) deleguje do: ...".
+  const delegImionaRef = useRef<string[]>([])
+  const delegTimerRef = useRef<number | null>(null)
 
   /**
    * Klik w mikrofon persony: start rozmowy w miejscu. Ponowny klik w te sama
@@ -943,11 +951,61 @@ export default function Command() {
     setRozmowaPoziom(0)
   }
 
-  /** Konczy rozmowe w miejscu i czysci stan swiecenia wezla. */
+  /**
+   * Konczy rozmowe w miejscu i czysci stan swiecenia wezla. Stany wezlow
+   * specjalistow (active/done) ZOSTAJA, tak jak po orkiestracji tekstowej, az do
+   * nastepnego zapytania (zapytaj resetuje je przez STANY_POCZATKOWE).
+   */
   function zakonczRozmowe() {
     setRozmowaAgent(null)
     setRozmowaStan('gotowy')
     setRozmowaPoziom(0)
+  }
+
+  /**
+   * Zdarzenia orkiestracji zespolu z toru GLOSOWEGO (COO wywoluje uruchom_zespol).
+   * Zapala wezly na mapie tak samo jak orkiestracja tekstowa (start->active,
+   * koniec->done: swiecenie, nici, czasteczki, czasteczka powrotu) i dopisuje do
+   * panelu czatu Centrum: linie delegacji, skrot raportu i pelny raport (do
+   * transkryptu i historii Centrum).
+   */
+  function obsluzZespolGlos(z: ZdarzenieZespolu) {
+    const a = getAgent(z.agent)
+    const imie = a?.personImie ?? a?.name ?? z.agent
+
+    if (z.typ === 'start') {
+      setStany((prev) => ({ ...prev, [z.agent]: 'active' }))
+      // Zbierz imie do jednej linii delegacji (flush po biezacym takcie zdarzen).
+      delegImionaRef.current.push(imie)
+      if (delegTimerRef.current == null) {
+        delegTimerRef.current = window.setTimeout(() => {
+          const imiona = delegImionaRef.current.join(', ')
+          delegImionaRef.current = []
+          delegTimerRef.current = null
+          if (!imiona) return
+          const leo = rozmowaAgent?.personImie ?? rozmowaAgent?.name ?? 'COO'
+          dopisz({ rodzaj: 'system', tekst: `${leo} (glos) deleguje do: ${imiona}` })
+        }, 0)
+      }
+      return
+    }
+
+    if (z.typ === 'koniec') {
+      setStany((prev) => ({ ...prev, [z.agent]: 'done' }))
+      return
+    }
+
+    // 'raport': skrocona linia procesu + pelny raport jako wpis rozmowy.
+    const tresc = (z.tresc ?? '').trim()
+    const pierwsza =
+      tresc
+        .split('\n')
+        .map((s) => s.trim())
+        .find(Boolean) ?? ''
+    const skrot =
+      pierwsza.length > 140 ? `${pierwsza.slice(0, 140)}...` : `${pierwsza}...`
+    dopisz({ rodzaj: 'system', tekst: `${imie} skonczyl: ${skrot}` })
+    if (tresc) dopisz({ rodzaj: 'final', tekst: `${imie}:\n\n${tresc}` })
   }
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -1192,6 +1250,7 @@ export default function Command() {
     return () => {
       stopListening()
       cancel()
+      if (delegTimerRef.current != null) clearTimeout(delegTimerRef.current)
     }
   }, [])
 
@@ -1668,6 +1727,7 @@ export default function Command() {
             setRozmowaStan(s)
             setRozmowaPoziom(p)
           }}
+          onZespolZdarzenie={obsluzZespolGlos}
         />
       )}
 
