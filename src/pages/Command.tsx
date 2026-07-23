@@ -204,14 +204,22 @@ interface MapaProps {
 /** Wyliczona geometria pojedynczego specjalisty na okregu. */
 interface Wezel {
   slug: string
+  /** Srodek wezla (portret siedzi tutaj, translate -50%). */
   nx: number
   ny: number
+  /** Sciezka nici: od KRAWEDZI COO do KRAWEDZI wezla (nie od srodka do srodka). */
   d: string
   ctrlx: number
   ctrly: number
   /** Wektor jednostkowy NA ZEWNATRZ (od srodka do wezla) do offsetu etykiety. */
   ox: number
   oy: number
+  /** Punkt startu nici na krawedzi COO (do gradientu i statycznej kropki). */
+  sx: number
+  sy: number
+  /** Punkt konca nici na krawedzi wezla specjalisty. */
+  ex: number
+  ey: number
 }
 
 /** Punkt na kwadratowej krzywej Beziera dla parametru t (0..1). */
@@ -403,14 +411,21 @@ function MapaNeuronu({
   // Desktop: duzy owal wypelniajacy CALY panel + etykiety/mikrofony na zewnatrz.
   const compact = w < 640
   // Zapas przy krawedzi na etykiete (imie+rola) i mikrofon ustawione RADIALNIE
-  // NA ZEWNATRZ okregu. Poziomo wiecej (szerokosc etykiety ~112px), pionowo mniej.
-  const margX = compact ? 104 : 158
-  const margY = compact ? 96 : 142
+  // NA ZEWNATRZ okregu. Powiekszone wraz z portretami (desktop specjalista ~104px),
+  // zeby etykiety/mikrofony nie wychodzily poza plotno. Poziomo wiecej niz pionowo.
+  const margX = compact ? 104 : 162
+  const margY = compact ? 96 : 144
   // Promienie liczone OSOBNO z szerokosci i wysokosci -> owal rozsuwa agentow
   // na boki i wypelnia cala dostepna przestrzen panelu (nie maly kwadrat).
   // Podloga niska, zeby na krotkim/waskim panelu etykiety nie uciekly poza plotno.
   const Rx = Math.max(compact ? 58 : 130, w / 2 - margX)
   const Ry = Math.max(compact ? 88 : 96, h / 2 - margY)
+
+  // Promien "krawedzi" wezla = polowa portretu + grubosc pierscienia-aury.
+  // Nici zaczynaja/koncza sie na tych krawedziach, a nie w srodkach, zeby
+  // czasteczki wychodzily zza portretu COO i wchodzily w portret specjalisty.
+  const specEdge = compact ? 37 : 61 // portret 56/104 px -> r 28/52 + ~9 aura
+  const cooEdge = compact ? 58 : 74 // portret 96/128 px -> r 48/64 + ~10 aura
 
   const wezly: Wezel[] = gotowe
     ? teamAgents.map((a, i) => {
@@ -419,26 +434,44 @@ function MapaNeuronu({
         const ny = cy + Ry * Math.sin(theta)
         const dx = nx - cx
         const dy = ny - cy
-        const mx = (cx + nx) / 2
-        const my = (cy + ny) / 2
         const len = Math.hypot(dx, dy) || 1
-        const nrmx = -dy / len
-        const nrmy = dx / len
-        const bow = 0.16 * len
-        const ctrlx = mx + nrmx * bow
-        const ctrly = my + nrmy * bow
-        const d = `M ${cx} ${cy} Q ${ctrlx} ${ctrly} ${nx} ${ny}`
         // Kierunek NA ZEWNATRZ (od srodka do wezla): offset etykiety i mikrofonu.
         const ox = dx / len
         const oy = dy / len
-        return { slug: a.slug, nx, ny, d, ctrlx, ctrly, ox, oy }
+        // Nic: od krawedzi COO (sx,sy) do krawedzi wezla (ex,ey), nie srodek->srodek.
+        // Gdy wezel jest blisko srodka (waski mobile, Rx na podlodze) i suma krawedzi
+        // przekracza odleglosc, skaluj OBIE krawedzie proporcjonalnie, zeby nic nigdy
+        // sie nie odwrocila i zostal min. widoczny odcinek (bez tego animacja by wariowala).
+        let sEdge = cooEdge
+        let eEdge = specEdge
+        const minSeg = 10
+        if (sEdge + eEdge > len - minSeg) {
+          const scale = Math.max(0, len - minSeg) / (sEdge + eEdge)
+          sEdge *= scale
+          eEdge *= scale
+        }
+        const sx = cx + ox * sEdge
+        const sy = cy + oy * sEdge
+        const ex = nx - ox * eEdge
+        const ey = ny - oy * eEdge
+        const mx = (sx + ex) / 2
+        const my = (sy + ey) / 2
+        const seg = Math.hypot(ex - sx, ey - sy) || 1
+        // Normalna prostopadla do kierunku radialnego (luk wygina nic jak dotad).
+        const nrmx = -oy
+        const nrmy = ox
+        const bow = 0.16 * seg
+        const ctrlx = mx + nrmx * bow
+        const ctrly = my + nrmy * bow
+        const d = `M ${sx} ${sy} Q ${ctrlx} ${ctrly} ${ex} ${ey}`
+        return { slug: a.slug, nx, ny, d, ctrlx, ctrly, ox, oy, sx, sy, ex, ey }
       })
     : []
 
   return (
     <div
       ref={stageRef}
-      className="relative w-full flex-1 min-h-[380px] sm:min-h-[480px]"
+      className="relative w-full flex-1 min-h-[380px] sm:min-h-[680px]"
     >
       {/* Warstwa 0: glebokie tlo sceny (radial + winieta + siatka) */}
       <div
@@ -473,10 +506,10 @@ function MapaNeuronu({
                   key={n.slug}
                   id={`grad-${n.slug}`}
                   gradientUnits="userSpaceOnUse"
-                  x1={cx}
-                  y1={cy}
-                  x2={n.nx}
-                  y2={n.ny}
+                  x1={n.sx}
+                  y1={n.sy}
+                  x2={n.ex}
+                  y2={n.ey}
                 >
                   <stop offset="0%" stopColor={kolor} stopOpacity={0.15} />
                   <stop offset="100%" stopColor={kolor} stopOpacity={1} />
@@ -507,7 +540,7 @@ function MapaNeuronu({
             // Statyczna kropka na 60% nici, gdy ruch ograniczony.
             const p60 =
               stan === 'active' && reduced
-                ? punktBezier(cx, cy, n.ctrlx, n.ctrly, n.nx, n.ny, 0.6)
+                ? punktBezier(n.sx, n.sy, n.ctrlx, n.ctrly, n.ex, n.ey, 0.6)
                 : null
             return (
               <g key={n.slug}>
@@ -627,8 +660,8 @@ function MapaNeuronu({
             <div className="flex flex-col items-center text-center">
               <Portret
                 agent={coo}
-                px={112}
-                sizeClass="h-24 w-24 sm:h-28 sm:w-28"
+                px={128}
+                sizeClass="h-24 w-24 sm:h-32 sm:w-32"
                 aura={
                   wRozmowieCoo
                     ? auraRozmowy(rozmowaStan, rozmowaPoziom, '#5B8DEF', reduced)
@@ -637,7 +670,7 @@ function MapaNeuronu({
                 pulsuj={wRozmowieCoo || cooAktywny}
                 glow="#5B8DEFaa"
               />
-              <div className="mt-2 w-40 rounded-xl bg-zinc-950/70 px-3 py-1.5 leading-tight backdrop-blur-sm">
+              <div className="mt-2 w-40 rounded-xl bg-zinc-950/70 px-3 py-1 leading-tight backdrop-blur-sm">
                 <div className="text-sm font-semibold text-zinc-50">
                   {imieCoo}
                 </div>
@@ -741,19 +774,25 @@ function MapaNeuronu({
         const opacityCls = przyciemniony ? 'opacity-40' : 'opacity-100'
 
         // Punkt bloku podpis+mikrofon: NA ZEWNATRZ wzdluz wektora (ox, oy).
+        // Wieksze na desktopie, bo portret specjalisty urosl do ~104px.
         const off = compact ? 60 : 98
         const etyX = n.nx + n.ox * off
         const etyY = n.ny + n.oy * off
         // Chipy zespolu: do WEWNATRZ (przeciwnie do etykiety), bez kolizji z nia.
-        const chOff = compact ? 46 : 58
+        // Wiekszy chOff na desktopie, zeby chipy nie chowaly sie pod wiekszym portretem.
+        const chOff = compact ? 46 : 72
         const chX = n.nx - n.ox * chOff
         const chY = n.ny - n.oy * chOff
 
         const portret = (
           <Portret
             agent={a}
-            px={compact ? 64 : 80}
-            sizeClass={compact ? 'h-14 w-14' : 'h-16 w-16 sm:h-20 sm:w-20'}
+            px={compact ? 64 : 104}
+            sizeClass={
+              compact
+                ? 'h-14 w-14'
+                : 'h-[5.5rem] w-[5.5rem] sm:h-[6.5rem] sm:w-[6.5rem]'
+            }
             aura={
               wRozmowie
                 ? auraRozmowy(rozmowaStan, rozmowaPoziom, a.accent, reduced)

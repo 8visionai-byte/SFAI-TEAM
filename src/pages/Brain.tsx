@@ -39,6 +39,7 @@ import BrainGraph from '../components/BrainGraph'
 import GrafPanel from '../components/GrafPanel'
 import Toast, { useToast } from '../components/Toast'
 import { buildBrainGraph, type GraphNode } from '../lib/brainGraph'
+import { getAgent } from '../data/agents'
 
 /** Ladniejsza nazwa pliku do listy. */
 function prettyName(name: string): string {
@@ -120,6 +121,11 @@ function etykietaGrupy(key: string): string {
   if (key === 'notatki') return 'Notatki'
   if (key === 'z-rozmow') return 'Z rozmow'
   if (key === 'briefingi') return 'Briefingi z narad'
+  if (key.startsWith('pamiec-')) {
+    const slug = key.slice('pamiec-'.length)
+    const a = getAgent(slug)
+    return `Pamiec: ${a?.personImie ?? a?.name ?? slug}`
+  }
   return key
 }
 

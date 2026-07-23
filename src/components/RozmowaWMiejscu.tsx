@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Mic, Save, Square, X } from 'lucide-react'
-import { getAgent, type Agent } from '../data/agents'
+import { agents, getAgent, type Agent } from '../data/agents'
 import {
   startRozmowa,
   type KtoMowi,
@@ -9,8 +9,18 @@ import {
   type ZdarzenieZespolu,
 } from '../lib/realtime'
 import { mowPowitanie, mowTekstem, zatrzymajMowe } from '../lib/eleven'
-import { callModel, getMode, sendMessage, type ChatMessage } from '../lib/ai'
-import { dodajPlikMozgu } from '../lib/storage'
+import {
+  buildPamiecPrompt,
+  callModel,
+  getMode,
+  sendMessage,
+  type ChatMessage,
+} from '../lib/ai'
+import {
+  dodajPlikMozgu,
+  pamiecAutoWlaczona,
+  zapiszPamiecAgenta,
+} from '../lib/storage'
 import { isSttSupported, startListening, stopListening } from '../lib/voice'
 import CharacterAvatar from './CharacterAvatar'
 import Toast, { useToast } from './Toast'
@@ -89,6 +99,9 @@ export default function RozmowaWMiejscu({
   // Czy w rozmowie byla realna delegacja (padl choc jeden raport zespolu).
   // Decyduje razem z dlugoscia rozmowy o propozycji zapisu briefingu.
   const bylRaportRef = useRef(false)
+  // Czy zapisano juz pamiec z tej rozmowy (auto-zapis na koniec / odmontowanie).
+  // Chroni przed dublowaniem, gdy koniec i sprzatanie wystrzela blisko siebie.
+  const pamiecZapisanaRef = useRef(false)
   const aktywnyRef = useRef(true)
   // Ostatni zaraportowany poziom (throttling, zeby nie odswiezac mapy co klatke).
   const ostatniPoziomRef = useRef(0)
@@ -127,6 +140,8 @@ export default function RozmowaWMiejscu({
       return
     }
     sprzataj()
+    // Auto-zapis pamieci agenta (idempotentny, chroniony flaga).
+    void autoZapiszPamiec()
     const proponuj =
       bylRaportRef.current || transkryptRef.current.length > 6
     if (proponuj) setPytajBriefing(true)
@@ -141,7 +156,11 @@ export default function RozmowaWMiejscu({
   useEffect(() => {
     aktywnyRef.current = true
     rozpocznij()
-    return () => sprzataj()
+    return () => {
+      // Odmontowanie (np. przelaczenie persony): auto-zapis pamieci przed sprzataniem.
+      void autoZapiszPamiec()
+      sprzataj()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -379,6 +398,40 @@ export default function RozmowaWMiejscu({
   }
 
   /**
+   * AUTO-ZAPIS PAMIECI agenta na koniec rozmowy glosowej (bez pytania).
+   * Gdy jest klucz, model robi krotkie streszczenie (3-6 punktow); bez klucza
+   * zapisujemy skrocony transkrypt, zeby nic nie przepadlo. Sterowane przelacznikiem
+   * "Automatyczna pamiec rozmow" (sf_pamiec_auto, domyslnie wlaczony). Idempotentne.
+   */
+  async function autoZapiszPamiec() {
+    if (pamiecZapisanaRef.current) return
+    if (!pamiecAutoWlaczona()) return
+    // Wymagamy realnej rozmowy: choc jedna wypowiedz wlasciciela.
+    const bylUser = transkryptRef.current.some((l) => l.kto === 'user')
+    if (!bylUser) return
+    pamiecZapisanaRef.current = true
+    const rozmowaTekst = budujTranskrypt()
+    const dataDnia = new Date().toISOString().slice(0, 10)
+    const tytul = `Rozmowa z ${imie} ${dataDnia}`
+    let streszczenie = ''
+    try {
+      if (getMode() !== 'demo') {
+        streszczenie = (
+          await callModel(buildPamiecPrompt(imie), [
+            { role: 'user', content: rozmowaTekst },
+          ])
+        ).trim()
+      } else {
+        streszczenie = skrocTranskrypt(rozmowaTekst)
+      }
+    } catch {
+      streszczenie = skrocTranskrypt(rozmowaTekst)
+    }
+    if (!streszczenie) streszczenie = skrocTranskrypt(rozmowaTekst)
+    zapiszPamiecAgenta(agent.slug, tytul, streszczenie)
+  }
+
+  /**
    * Zapisuje biezaca rozmowe do bazy wiedzy (sf_mozg_wlasne, grupa 'z-rozmow').
    * Gdy jest polaczenie z modelem (klucz/proxy/env), Claude wyciaga zwiezly plik MD
    * (wazne dane/ustalenia/fakty o firmie). Bez klucza zapisujemy surowa transkrypcje.
@@ -400,8 +453,10 @@ export default function RozmowaWMiejscu({
         const system = [
           'Jestes redaktorem bazy wiedzy firmy SimpleFast.ai.',
           'Z podanej rozmowy glosowej wyciagnij wazne dane, ustalenia i fakty o firmie i zapisz je jako zwiezly plik markdown po polsku.',
-          'Pierwsza linia to "# <krotki, rzeczowy tytul>", potem zwiezle punkty.',
-          'Zasady: prosty polski, bez em-dash, tylko potwierdzone fakty i liczby. Jesli liczba jest niepewna, napisz [DO UZUPELNIENIA]. Nie zmyslaj. Bez wstepow i komentarzy.',
+          `Jesli wspominasz osoby z zespolu, uzywaj TYLKO tych imion (nie wymyslaj innych): ${listaPerson()}.`,
+          'Pierwsza linia to "# <krotki, rzeczowy tytul po polsku>". Potem naglowki ## dla sekcji i listy z "-".',
+          'Poprawna numeracja markdown: nie powtarzaj wielokrotnie "1.", uzywaj "-" albo kolejnych 1. 2. 3.',
+          'Zasady: prosty jezyk, bez zargonu, bez em-dash, tylko potwierdzone fakty i liczby. Niepewna liczba => [DO UZUPELNIENIA]. Nie zmyslaj. Bez wstepow i komentarzy. Calosc max okolo 2500 znakow.',
         ].join('\n')
         const md = await callModel(system, [
           { role: 'user', content: rozmowaTekst },
@@ -441,13 +496,17 @@ export default function RozmowaWMiejscu({
     try {
       if (getMode() !== 'demo') {
         const system = [
-          'Przygotuj BRIEFING z narady po polsku:',
-          '1) Temat i uczestnicy (imiona person),',
-          '2) Kluczowe ustalenia (punkty),',
-          '3) Decyzje,',
-          '4) Nastepne kroki (kto/co),',
-          '5) Dane warte zapamietania.',
-          'Zwiezle, w markdown, bez em-dash. Nie zmyslaj liczb ani ustalen. Pierwsza linia to "# <krotki tytul narady>".',
+          'Przygotuj zwiezly BRIEFING z narady zespolu SimpleFast.ai po polsku.',
+          `Zespol to WYLACZNIE te osoby, uzywaj TYLKO tych imion (nigdy innych, nie wymyslaj): ${listaPerson()}.`,
+          'Pisz prostym jezykiem, bez zargonu i bez em-dash. Nie zmyslaj liczb ani ustalen: jesli czegos nie bylo, pomin.',
+          'Uzyj DOKLADNIE tej struktury (naglowek ## dla kazdej sekcji):',
+          '## Temat',
+          '## Najwazniejsze ustalenia (3-6 punktow listy, kazdy od "- ")',
+          '## Decyzje',
+          '## Nastepne kroki (lista "kto -> co", np. "- Rae -> zbada ceny konkurencji")',
+          '## Do zapamietania',
+          'Poprawna numeracja markdown: uzywaj naglowkow ## i list z "-" albo kolejnych 1. 2. 3. NIGDY nie powtarzaj wielokrotnie "1.".',
+          'Pierwsza linia pliku to krotki tytul po polsku w formacie "# <tytul narady>". Calosc zwiezla, max okolo 2500 znakow.',
         ].join('\n')
         const md = await callModel(system, [
           { role: 'user', content: rozmowaTekst },
@@ -638,6 +697,19 @@ export default function RozmowaWMiejscu({
       <Toast text={toast} />
     </div>
   )
+}
+
+/**
+ * Aktualna lista imion person (imie + rola) do promptow ekstrakcji.
+ * Zrodlo prawdy = agents.ts, wiec briefing nigdy nie wymysli starych imion.
+ */
+function listaPerson(): string {
+  return agents.map((a) => `${a.personImie ?? a.name} (${a.role})`).join(', ')
+}
+
+/** Przycina transkrypt do zapisu awaryjnego (brak klucza albo blad modelu). */
+function skrocTranskrypt(t: string, max = 1500): string {
+  return t.length > max ? `${t.slice(0, max)}\n...(skrocono)` : t
 }
 
 /** Slug tytulu do sciezki pliku (bez polskich znakow, spacji i interpunkcji). */

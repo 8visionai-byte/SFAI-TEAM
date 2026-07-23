@@ -223,15 +223,30 @@ export function szukajWMozgu(zapytanie: string, limitZnakow = 6000): string {
     return 'Brak danych: puste lub zbyt ogolne zapytanie do bazy wiedzy.'
   }
 
-  type Jednostka = { etykieta: string; tresc: string }
+  // Mapa sciezka -> updatedAt dla plikow wlasnych: potrzebna do premii swiezosci
+  // plikow PAMIECI (grupa 'pamiec-...') przy remisie wyniku wyszukiwania.
+  const wlasneMap = new Map(
+    wczytajWlasnePlikiMozgu().map((p) => [p.sciezka, p.updatedAt]),
+  )
+
+  type Jednostka = { etykieta: string; tresc: string; swiezosc: number }
   const jednostki: Jednostka[] = [
-    ...getBrainFiles().map((f) => ({
-      etykieta: relativeBrainPath(f.path),
-      tresc: f.content,
-    })),
+    ...getBrainFiles().map((f) => {
+      // Tylko pliki pamieci (grupa 'pamiec-...') dostaja niezerowa swiezosc.
+      const pamiec = f.group.startsWith('pamiec-')
+      const updatedAt = wlasneMap.get(f.path)
+      const swiezosc =
+        pamiec && updatedAt ? Date.parse(updatedAt) || 0 : 0
+      return {
+        etykieta: relativeBrainPath(f.path),
+        tresc: f.content,
+        swiezosc,
+      }
+    }),
     ...wczytajNotatki().map((n) => ({
       etykieta: `notatka: ${n.tytul || n.zrodlo || 'bez tytulu'}`,
       tresc: n.tresc,
+      swiezosc: 0,
     })),
   ]
 
@@ -255,7 +270,8 @@ export function szukajWMozgu(zapytanie: string, limitZnakow = 6000): string {
       return { ...j, wynik, trafione }
     })
     .filter((o) => o.trafione > 0)
-    .sort((a, b) => b.wynik - a.wynik)
+    // Przy remisie wyniku premiujemy swiezsze pliki pamieci (wyzszy timestamp).
+    .sort((a, b) => b.wynik - a.wynik || b.swiezosc - a.swiezosc)
     .slice(0, 3)
 
   if (oceny.length === 0) {

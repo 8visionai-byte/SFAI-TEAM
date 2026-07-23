@@ -5,7 +5,7 @@
  */
 
 import { getBrainFiles, getAgentPrompt, type BrainFile } from './content'
-import { agents } from '../data/agents'
+import { agents, getAgent } from '../data/agents'
 import type { Notatka } from './storage'
 
 export type NodeKind = 'file' | 'hub' | 'persona' | 'note'
@@ -123,11 +123,24 @@ export const GROUP_OPIS: Record<string, string> = {
     'Rozmowy i ustalenia zapisane recznie przyciskiem Zapisz do pamieci. Twoja warstwa wiedzy dopieta do grafu.',
 }
 
+/** Slug agenta z klucza grupy pamieci 'pamiec-<slug>' (albo null). */
+function slugZPamieci(key: string): string | null {
+  return key.startsWith('pamiec-') ? key.slice('pamiec-'.length) : null
+}
+
 export function groupColor(key: string): string {
+  // Grupy pamieci dziedzicza kolor akcentu swojego agenta (wspolny fallback fiolet).
+  const slug = slugZPamieci(key)
+  if (slug) return getAgent(slug)?.accent ?? '#8B5CF6'
   return GROUP_COLOR[key] ?? '#71717A'
 }
 
 export function groupLabel(key: string): string {
+  const slug = slugZPamieci(key)
+  if (slug) {
+    const a = getAgent(slug)
+    return `Pamiec: ${a?.personImie ?? a?.name ?? slug}`
+  }
   return GROUP_LABEL[key] ?? key
 }
 
@@ -310,6 +323,13 @@ export function buildBrainGraph(
   const groups: GroupMeta[] = GROUP_RANK.filter((g) => present.has(g)).map(
     (g) => ({ key: g, label: groupLabel(g), color: groupColor(g) }),
   )
+  // Dynamiczne grupy pamieci ('pamiec-<slug>') nie sa w GROUP_RANK: dopinamy je
+  // do legendy z etykieta i kolorem agenta, gdy realnie wystepuja w grafie.
+  for (const g of present) {
+    if (g.startsWith('pamiec-') && !groups.some((x) => x.key === g)) {
+      groups.push({ key: g, label: groupLabel(g), color: groupColor(g) })
+    }
+  }
 
   const hubs = nodes.filter((n) => n.kind === 'hub').length
 

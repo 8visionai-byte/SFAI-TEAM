@@ -1,4 +1,5 @@
 import type { ChatMessage } from './ai'
+import { getAgent } from '../data/agents'
 
 /** Zapisana rozmowa z agentem (localStorage, klucz sf_rozmowy). */
 export interface Rozmowa {
@@ -7,6 +8,11 @@ export interface Rozmowa {
   tytul: string
   messages: ChatMessage[]
   updatedAt: string
+  /**
+   * Czy z tej rozmowy zapisano juz streszczenie do pamieci agenta.
+   * Flaga chroni przed dublowaniem (odejscie + "Nowa rozmowa" moga wystrzelic razem).
+   */
+  pamiecZapisana?: boolean
 }
 
 /** Notatka zapisana do pamieci (localStorage, klucz sf_notatki). */
@@ -62,6 +68,7 @@ const KEY_CENTRUM = 'sf_centrum'
 const KEY_SKILLE = 'sf_skille'
 const KEY_MOZG_NADPISY = 'sf_mozg_nadpisy'
 const KEY_MOZG_WLASNE = 'sf_mozg_wlasne'
+const KEY_PAMIEC_AUTO = 'sf_pamiec_auto'
 
 /** Bezpieczny dostep do localStorage (tryb prywatny moze rzucic wyjatek). */
 function safeStorage(): Storage | null {
@@ -253,6 +260,72 @@ export function usunWlasnyPlikMozgu(sciezka: string): void {
     KEY_MOZG_WLASNE,
     wczytajWlasnePlikiMozgu().filter((p) => p.sciezka !== sciezka),
   )
+}
+
+// --- Pamiec agentow (grupa 'pamiec-<slug>' w sf_mozg_wlasne) ----------------
+
+/**
+ * Zapisuje wpis PAMIECI danego agenta do mozgu firmy (sf_mozg_wlasne).
+ * Kazdy agent ma wlasna pamiec wczesniejszych rozmow: grupa 'pamiec-<slug>',
+ * sciezka 'pamiec/<slug>/<data>-<id>.md'. Plik dostaje naglowek z tytulem,
+ * data i uczestnikiem (imie persony), a pod nim tresc streszczenia.
+ *
+ * Poniewaz zapis idzie do sf_mozg_wlasne, plik jest od razu czytany przez
+ * getBrainFiles(), getFullBrain() (kontekst czatu) i szukajWMozgu() (glos).
+ */
+export function zapiszPamiecAgenta(
+  slug: string,
+  tytul: string,
+  tresc: string,
+): void {
+  const data = new Date().toISOString().slice(0, 10)
+  const id = nowyId()
+  const agent = getAgent(slug)
+  const imie = agent?.personImie ?? agent?.name ?? slug
+  const tytulCzysty = (tytul || `Rozmowa z ${imie} ${data}`).trim()
+  const naglowek = [
+    `# ${tytulCzysty}`,
+    '',
+    `- Data: ${data}`,
+    `- Uczestnik: ${imie}`,
+    '',
+    tresc.trim(),
+    '',
+  ].join('\n')
+  zapiszWlasnyPlikMozgu({
+    sciezka: `pamiec/${slug}/${data}-${id}.md`,
+    tresc: naglowek,
+    grupa: `pamiec-${slug}`,
+    updatedAt: new Date().toISOString(),
+  })
+}
+
+/** Pliki pamieci danego agenta, najnowsze pierwsze. */
+export function pamiecAgenta(slug: string): PlikWlasnyMozgu[] {
+  return wczytajWlasnePlikiMozgu()
+    .filter((p) => p.grupa === `pamiec-${slug}`)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+}
+
+// --- Ustawienie: automatyczna pamiec rozmow (sf_pamiec_auto) -----------------
+
+/** Czy auto-zapis pamieci rozmow jest wlaczony (domyslnie TAK, gdy brak wpisu). */
+export function pamiecAutoWlaczona(): boolean {
+  try {
+    const v = safeStorage()?.getItem(KEY_PAMIEC_AUTO)
+    return v == null ? true : v === '1'
+  } catch {
+    return true
+  }
+}
+
+/** Wlacza/wylacza auto-zapis pamieci rozmow. */
+export function ustawPamiecAuto(wl: boolean): void {
+  try {
+    safeStorage()?.setItem(KEY_PAMIEC_AUTO, wl ? '1' : '0')
+  } catch {
+    // Brak dostepu do storage nie moze zablokowac UI.
+  }
 }
 
 // --- Centrum Dowodzenia: trwalosc biezacej rozmowy -------------------------

@@ -142,6 +142,16 @@ export function buildSystemPrompt(agentSlug: string): string {
         ].join('\n')
       : ''
 
+  // Pamiec wczesniejszych rozmow: pliki z grupy "pamiec-..." sa juz w mozgu
+  // powyzej (getFullBrain zawiera pliki wlasne), wiec wchodza automatycznie.
+  const pamiecInfo =
+    'Masz pamiec wczesniejszych rozmow: w mozgu powyzej pliki z grupy "pamiec-..." to zapisane streszczenia Twoich rozmow z wlascicielem. Gdy pyta o wczesniejsze ustalenia ("o czym rozmawialismy", "co ustalilismy"), znajdz je w tych plikach i odpowiedz na ich podstawie.'
+
+  // Internet (web search) tylko dla analitykow (Rae, Zoe): tools doklejane w ai.ts.
+  const webInfo = maWebSearch(agentSlug)
+    ? 'Masz dostep do internetu (web search). Gdy pytanie dotyczy aktualnych danych rynkowych, konkurencji, trendow, cen zewnetrznych: NAJPIERW poszukaj w internecie i cytuj zrodla z data.'
+    : ''
+
   return [
     '=== MOZG FIRMY (pelna tresc, czytaj przed odpowiedzia) ===',
     brain,
@@ -150,7 +160,29 @@ export function buildSystemPrompt(agentSlug: string): string {
     persona,
     ...(sekcjaSkilli ? ['', sekcjaSkilli] : []),
     '',
+    pamiecInfo,
+    ...(webInfo ? [webInfo] : []),
+    '',
     CHAT_RULES,
+  ].join('\n')
+}
+
+/** Czy agent ma dostep do internetu (web search): analityk rynku i analityk social. */
+function maWebSearch(agentSlug: string | undefined): boolean {
+  return agentSlug === 'analityk' || agentSlug === 'analityk-social'
+}
+
+/**
+ * System prompt do KROTKIEGO streszczenia pamieciowego rozmowy (3-6 punktow).
+ * Uzywany przez auto-zapis pamieci agenta (rozmowa glosowa i czat tekstowy).
+ * Bez tytulu, bo plik pamieci dostaje wlasny naglowek w zapiszPamiecAgenta.
+ */
+export function buildPamiecPrompt(imiePersony: string): string {
+  return [
+    `Jestes ${imiePersony}. Zapisujesz do WLASNEJ pamieci krotkie streszczenie tej rozmowy z wlascicielem firmy.`,
+    'Wypisz 3-6 punktow listy (kazdy zaczyna sie od "- "): co ustalono, jakie decyzje zapadly, wazne fakty i liczby.',
+    'Zasady: prosty polski, bez em-dash, tylko potwierdzone fakty. Nie zmyslaj liczb ani ustalen.',
+    'Bez tytulu, bez wstepu i bez zakonczenia. Sama lista. Maksymalnie okolo 800 znakow.',
   ].join('\n')
 }
 
@@ -177,6 +209,7 @@ export function buildVoicePrompt(agentSlug: string): string {
     'Gdy pytanie wymaga szczegolu (cennik, case study, ICP, proces, oferta, dane firmy), UZYJ narzedzia przeszukaj_wiedze i powiedz krotko "daj mi chwile, sprawdze", a potem odpowiedz na podstawie tego, co znalazles.',
     'Nie zmyslasz liczb ani faktow: jesli czegos nie ma w wiedzy, powiedz to wprost.',
     'Masz tez narzedzie zapisz_do_bazy: mozesz utrwalac wazne ustalenia w bazie wiedzy firmy. Gdy w rozmowie padnie trwaly, warty zapamietania fakt (nowa cena, decyzja, ustalenie o kliencie idealnym, sprawdzony sposob na obiekcje, nowa informacja o ofercie), PROAKTYWNIE zaproponuj zapis: "Chcesz, zebym zapisal to do naszej bazy?". Po wyraznej zgodzie wywolaj zapisz_do_bazy z rzeczowym tytulem i zwiezla trescia. Nie zapisuj rzeczy ulotnych, dygresji ani niepotwierdzonych liczb i nie zapisuj bez zgody.',
+    'Masz pamiec wczesniejszych rozmow: gdy wlasciciel pyta o wczesniejsze ustalenia ("o czym rozmawialismy", "co ustalilismy"), uzyj przeszukaj_wiedze z odpowiednim zapytaniem.',
   ]
   // COO (Leo) realnie uruchamia zespol glosem: narzedzie uruchom_zespol odpala
   // wybranych specjalistow, a gdy wroca raporty, Leo referuje je glosem. To sama
@@ -189,6 +222,12 @@ export function buildVoicePrompt(agentSlug: string): string {
       'Gdy uzytkownik prosi o CALY zespol lub narade, w uruchom_zespol podaj zadania dla WSZYSTKICH 9 specjalistow (kazdy ze swojej perspektywy), nie 2-3.',
       'Dobieraj jak w naradzie tekstowej: waskie pytanie = jedna osoba albo odpowiadasz sam; szeroki, strategiczny temat (narada, burza mozgow, strategia, "co myslicie") = wiecej osob rownolegle, kazdy ze swojej perspektywy. Nie angazuj osob, ktorych kompetencja nie dotyka pytania.',
       'Gdy raporty wroca (dostaniesz je jako wynik narzedzia), ZREFERUJ je zwiezle glosem: powiedz kto co ustalil, po imieniu, i podaj swoja rekomendacje. Nie czytaj raportow po kolei slowo w slowo, zloz z nich jeden wniosek i konkretne kroki.',
+    )
+  }
+  // Internet (web search) dla analitykow (Rae, Zoe): tools doklejane w callDirect/callProxy.
+  if (maWebSearch(agent?.slug)) {
+    tozsamoscBaza.push(
+      'Masz dostep do internetu (web search). Gdy pytanie dotyczy aktualnych danych rynkowych, konkurencji, trendow, cen zewnetrznych: NAJPIERW poszukaj w internecie i cytuj zrodla z data.',
     )
   }
   const tozsamosc = tozsamoscBaza.join(' ')
@@ -304,11 +343,18 @@ async function callProxy(
   system: string,
   messages: AnthropicMessage[],
   model: string,
+  agentSlug?: string,
 ): Promise<string> {
+  const body: Record<string, unknown> = { system, messages, model, max_tokens: 4000 }
+  // Internet dla analitykow (Rae, Zoe): dokladamy serwerowe narzedzie web_search.
+  // Odpowiedz z proxy nadal wraca w polu data.text; proxy sklada bloki tekstu.
+  if (maWebSearch(agentSlug)) {
+    body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }]
+  }
   const res = await fetch(proxyUrl, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ system, messages, model, max_tokens: 4000 }),
+    body: JSON.stringify(body),
   })
 
   if (!res.ok) {
@@ -339,7 +385,13 @@ async function callDirect(
   system: string,
   messages: AnthropicMessage[],
   model: string,
+  agentSlug?: string,
 ): Promise<string> {
+  const body: Record<string, unknown> = { model, max_tokens: 4000, system, messages }
+  // Internet dla analitykow (Rae, Zoe): serwerowe narzedzie web_search Anthropic.
+  if (maWebSearch(agentSlug)) {
+    body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }]
+  }
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -348,7 +400,7 @@ async function callDirect(
       'anthropic-dangerous-direct-browser-access': 'true',
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ model, max_tokens: 4000, system, messages }),
+    body: JSON.stringify(body),
   })
 
   if (!res.ok) {
@@ -363,7 +415,15 @@ async function callDirect(
   }
 
   const data = await res.json()
-  const text: string | undefined = data?.content?.[0]?.text
+  // Odpowiedz moze miec WIELE blokow content (tekst + wyniki web_search).
+  // Zbieramy WSZYSTKIE bloki typu 'text' i sklejamy, nie tylko content[0].
+  type Blok = { type?: string; text?: string }
+  const bloki: Blok[] = Array.isArray(data?.content) ? data.content : []
+  const text = bloki
+    .filter((b) => b.type === 'text' && typeof b.text === 'string')
+    .map((b) => b.text as string)
+    .join('\n')
+    .trim()
   if (!text) {
     return 'Model zwrocil pusta odpowiedz. Sprobuj ponownie albo przeformuluj pytanie.'
   }
@@ -382,6 +442,7 @@ async function callDirect(
 export async function callModel(
   system: string,
   history: ChatMessage[],
+  agentSlug?: string,
 ): Promise<string> {
   const messages: AnthropicMessage[] = history.map((m) => ({
     role: m.role,
@@ -392,7 +453,13 @@ export async function callModel(
 
   // (a) Klucz uzytkownika ma pierwszenstwo: tryb realny z modelem z ustawien.
   if (mode === 'klucz') {
-    return await callDirect(getApiKey() as string, system, messages, getModel())
+    return await callDirect(
+      getApiKey() as string,
+      system,
+      messages,
+      getModel(),
+      agentSlug,
+    )
   }
 
   // Model z ustawien uzytkownika (getModel), z fallbackiem na env/domyslny.
@@ -406,6 +473,7 @@ export async function callModel(
       system,
       messages,
       model,
+      agentSlug,
     )
   }
 
@@ -416,6 +484,7 @@ export async function callModel(
       system,
       messages,
       model,
+      agentSlug,
     )
   }
 
@@ -443,7 +512,8 @@ export async function sendMessage(
 
   try {
     const system = buildSystemPrompt(agentSlug)
-    return await callModel(system, history)
+    // agentSlug przekazany dalej: analitycy (Rae, Zoe) dostaja web_search.
+    return await callModel(system, history, agentSlug)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     return `Wystapil blad podczas rozmowy z agentem: ${msg}. Sprawdz konfiguracje (klucz API lub proxy) i polaczenie z siecia.`

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Mic, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Brain, Mic, Plus, Trash2 } from 'lucide-react'
 import { getAgent } from '../data/agents'
 import {
   nowyId,
@@ -8,7 +8,10 @@ import {
   dodajSkilla,
   przelaczSkilla,
   usunSkilla,
+  pamiecAgenta,
+  usunWlasnyPlikMozgu,
   type Umiejetnosc,
+  type PlikWlasnyMozgu,
 } from '../lib/storage'
 import Avatar from '../components/Avatar'
 import RozmowaGlosowa from '../components/RozmowaGlosowa'
@@ -21,6 +24,41 @@ function NaglowekSekcji({ children }: { children: React.ReactNode }) {
       {children}
     </h2>
   )
+}
+
+/** Tytul pliku pamieci: pierwsza linia "# ..." albo nazwa pliku. */
+function tytulPamieci(p: PlikWlasnyMozgu): string {
+  const m = p.tresc.match(/^#\s+(.+)$/m)
+  return m ? m[1].trim() : 'Rozmowa'
+}
+
+/** Krotka data pliku pamieci (z updatedAt). */
+function dataPamieci(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString('pl-PL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/** Podglad tresci pamieci: pomija tytul i linie metadanych (Data/Uczestnik). */
+function podgladPamieci(tresc: string, max = 220): string {
+  const czyste = tresc
+    .split('\n')
+    .filter(
+      (l) =>
+        !l.startsWith('#') &&
+        !/^-\s*(Data|Uczestnik)\s*:/i.test(l.trim()) &&
+        l.trim() !== '',
+    )
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return czyste.length > max ? `${czyste.slice(0, max)}...` : czyste
 }
 
 /**
@@ -37,11 +75,13 @@ export default function AgentProfile() {
   const [nazwa, setNazwa] = useState('')
   const [instrukcja, setInstrukcja] = useState('')
   const [glosOtwarty, setGlosOtwarty] = useState(false)
+  const [pamiec, setPamiec] = useState<PlikWlasnyMozgu[]>([])
   const { toast, pokazToast } = useToast()
 
-  // Wczytanie wlasnych umiejetnosci przy wejsciu i zmianie agenta.
+  // Wczytanie wlasnych umiejetnosci i pamieci przy wejsciu i zmianie agenta.
   useEffect(() => {
     setSkille(slug ? skilleAgenta(slug) : [])
+    setPamiec(slug ? pamiecAgenta(slug) : [])
     setNazwa('')
     setInstrukcja('')
   }, [slug])
@@ -96,6 +136,13 @@ export default function AgentProfile() {
     usunSkilla(id)
     setSkille(skilleAgenta(agent.slug))
     pokazToast('Usunieto umiejetnosc.')
+  }
+
+  function usunPamiec(sciezka: string) {
+    if (!agent) return
+    usunWlasnyPlikMozgu(sciezka)
+    setPamiec(pamiecAgenta(agent.slug))
+    pokazToast('Usunieto wpis pamieci.')
   }
 
   return (
@@ -344,6 +391,57 @@ export default function AgentProfile() {
               Dodaj
             </button>
           </div>
+        </div>
+      </section>
+
+      {/* Pamiec agenta */}
+      <section className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6">
+        <div className="flex items-center gap-2">
+          <Brain size={15} style={{ color: agent.accent }} aria-hidden />
+          <NaglowekSekcji>Pamiec</NaglowekSekcji>
+          <span className="rounded-full bg-zinc-800/80 px-1.5 py-px text-[0.65rem] font-medium tabular-nums text-zinc-400">
+            {pamiec.length}
+          </span>
+        </div>
+        <p className="mt-1.5 text-xs text-zinc-500">
+          Streszczenia wczesniejszych rozmow z {agent.personImie ?? agent.name}.
+          Agent czyta je razem z mozgiem i przywola, gdy zapytasz o wczesniejsze
+          ustalenia. Zapis wlaczysz lub wylaczysz w Ustawieniach.
+        </p>
+
+        <div className="mt-4 space-y-2">
+          {pamiec.length === 0 && (
+            <p className="text-xs text-zinc-500">
+              Brak zapisanej pamieci. Po zakonczeniu rozmowy pojawi sie tutaj
+              automatycznie.
+            </p>
+          )}
+          {pamiec.map((p) => (
+            <div
+              key={p.sciezka}
+              className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/60 px-3.5 py-3"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold text-zinc-100">
+                  {tytulPamieci(p)}
+                </div>
+                <div className="mt-0.5 text-[0.65rem] text-zinc-500">
+                  {dataPamieci(p.updatedAt)}
+                </div>
+                <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+                  {podgladPamieci(p.tresc)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => usunPamiec(p.sciezka)}
+                aria-label={`Usun wpis pamieci: ${tytulPamieci(p)}`}
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+              >
+                <Trash2 size={14} aria-hidden />
+              </button>
+            </div>
+          ))}
         </div>
       </section>
 

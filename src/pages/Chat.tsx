@@ -12,7 +12,14 @@ import {
   Trash2,
 } from 'lucide-react'
 import { getAgent } from '../data/agents'
-import { sendMessage, hasApiKey, type ChatMessage as Msg } from '../lib/ai'
+import {
+  sendMessage,
+  hasApiKey,
+  callModel,
+  getMode,
+  buildPamiecPrompt,
+  type ChatMessage as Msg,
+} from '../lib/ai'
 import { isSttSupported, startListening, stopListening } from '../lib/voice'
 import {
   nowyId,
@@ -21,6 +28,8 @@ import {
   zapiszRozmowe,
   usunRozmowe,
   zapiszNotatke,
+  zapiszPamiecAgenta,
+  pamiecAutoWlaczona,
   type Rozmowa,
 } from '../lib/storage'
 import ChatMessage from '../components/ChatMessage'
@@ -101,6 +110,54 @@ function tytulRozmowy(messages: Msg[]): string {
   return t.length > 60 ? `${t.slice(0, 60)}...` : t
 }
 
+/** Przycina tekst do zapisu awaryjnego pamieci (brak klucza albo blad modelu). */
+function skrocTekst(t: string, max = 1500): string {
+  return t.length > max ? `${t.slice(0, max)}\n...(skrocono)` : t
+}
+
+/**
+ * AUTO-ZAPIS PAMIECI z rozmowy tekstowej (po id rozmowy z sf_rozmowy).
+ * Wolane przy "Nowa rozmowa" oraz przy odejsciu/zmianie agenta. Warunki:
+ * rozmowa ma > 4 wpisy, przelacznik sf_pamiec_auto wlaczony i nie zapisano jej
+ * jeszcze (flaga pamiecZapisana w obiekcie rozmowy chroni przed dublowaniem).
+ * Czyta rozmowe ze storage po id, wiec ma pewny agentSlug nawet przy zmianie trasy.
+ */
+async function zapiszPamiecZRozmowy(id: string): Promise<void> {
+  const rozmowa = wczytajRozmowy().find((r) => r.id === id)
+  if (!rozmowa) return
+  if (rozmowa.messages.length <= 4) return
+  if (!pamiecAutoWlaczona()) return
+  if (rozmowa.pamiecZapisana) return
+  const a = getAgent(rozmowa.agentSlug)
+  if (!a) return
+  // Oznacz od razu (idempotencja): "Nowa rozmowa" i odejscie moga wystrzelic razem.
+  zapiszRozmowe({ ...rozmowa, pamiecZapisana: true })
+  const imie = a.personImie ?? a.name
+  const tekst = rozmowa.messages
+    .map((m) =>
+      m.role === 'user' ? `Wlasciciel: ${m.content}` : `${a.name}: ${m.content}`,
+    )
+    .join('\n')
+  const dataDnia = new Date().toISOString().slice(0, 10)
+  const tytul = `Rozmowa z ${imie} ${dataDnia}`
+  let streszczenie = ''
+  try {
+    if (getMode() !== 'demo') {
+      streszczenie = (
+        await callModel(buildPamiecPrompt(imie), [
+          { role: 'user', content: tekst },
+        ])
+      ).trim()
+    } else {
+      streszczenie = skrocTekst(tekst)
+    }
+  } catch {
+    streszczenie = skrocTekst(tekst)
+  }
+  if (!streszczenie) streszczenie = skrocTekst(tekst)
+  zapiszPamiecAgenta(a.slug, tytul, streszczenie)
+}
+
 export default function Chat() {
   const { slug } = useParams<{ slug: string }>()
   const agent = getAgent(slug)
@@ -132,10 +189,23 @@ export default function Chat() {
     setPokazHistorie(false)
   }, [slug])
 
+  // Zawsze aktualne id biezacej rozmowy: cleanup efektu odejscia czyta je z ref,
+  // wiec przy zmianie agenta zapisze pamiec POPRZEDNIEJ rozmowy (stan jeszcze stary).
+  const convIdRef = useRef(convId)
+  convIdRef.current = convId
+
   // Sprzataj nasluch przy odmontowaniu strony.
   useEffect(() => {
     return () => stopListening()
   }, [])
+
+  // Odejscie ze strony lub zmiana agenta: auto-zapis pamieci biezacej rozmowy.
+  // Cleanup [slug] odpala sie przy zmianie sluga i przy odmontowaniu.
+  useEffect(() => {
+    return () => {
+      void zapiszPamiecZRozmowy(convIdRef.current)
+    }
+  }, [slug])
 
   // automatyczny zapis biezacej rozmowy do localStorage (sf_rozmowy)
   useEffect(() => {
@@ -219,6 +289,8 @@ export default function Chat() {
   /** Zaczyna nowa, pusta rozmowe (poprzednia jest juz auto-zapisana). */
   function nowaRozmowa() {
     if (loading) return
+    // Zapisz pamiec z konczonej rozmowy, zanim przelaczymy id na nowe.
+    void zapiszPamiecZRozmowy(convId)
     setConvId(nowyId())
     setMessages([])
     setInput('')

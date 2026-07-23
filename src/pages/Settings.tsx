@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   BarChart3,
   BookOpen,
+  Brain,
   Check,
   ExternalLink,
   Eye,
@@ -34,6 +35,7 @@ import {
   czytajAutoWlaczone,
   ustawCzytajAuto,
 } from '../lib/voice'
+import { pamiecAutoWlaczona, ustawPamiecAuto } from '../lib/storage'
 
 const MODELS: { value: string; label: string }[] = [
   { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6 (domyslny, szybki)' },
@@ -137,11 +139,20 @@ export default function Settings() {
     getVoiceQuality(),
   )
 
+  // Automatyczna pamiec rozmow: po zakonczeniu rozmowy agent zapisuje jej streszczenie.
+  const [pamiecAuto, setPamiecAuto] = useState(() => pamiecAutoWlaczona())
+
   function przelaczAutoCzytaj() {
     if (!glosTtsOK) return
     const nowy = !autoCzytaj
     setAutoCzytaj(nowy)
     ustawCzytajAuto(nowy)
+  }
+
+  function przelaczPamiecAuto() {
+    const nowy = !pamiecAuto
+    setPamiecAuto(nowy)
+    ustawPamiecAuto(nowy)
   }
 
   function wybierzJakoscGlosu(wybor: JakoscGlosu) {
@@ -426,6 +437,51 @@ export default function Settings() {
           <p className="border-t border-zinc-800 pt-3 text-xs leading-relaxed text-zinc-500">
             Wersja pro (ElevenLabs / OpenAI realtime, naturalny glos i nizsze
             opoznienia) jest w przygotowaniu.
+          </p>
+        </div>
+      </section>
+
+      {/* Sekcja: Pamiec rozmow */}
+      <section aria-label="Pamiec rozmow" className="mt-10">
+        <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-400">
+          <Brain size={14} className="text-brand-soft" aria-hidden />
+          Pamiec rozmow
+        </h2>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-zinc-200">
+                Automatyczna pamiec rozmow
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+                Po zakonczeniu rozmowy (glosowej lub tekstowej) agent zapisuje jej
+                krotkie streszczenie do wlasnej pamieci. Dzieki temu pamieta
+                wczesniejsze ustalenia i przywola je, gdy o nie zapytasz.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={pamiecAuto}
+              aria-label="Automatyczna pamiec rozmow"
+              onClick={przelaczPamiecAuto}
+              className={[
+                'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors',
+                pamiecAuto ? 'bg-brand' : 'bg-zinc-700',
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'inline-block h-4 w-4 transform rounded-full bg-zinc-950 transition-transform',
+                  pamiecAuto ? 'translate-x-6' : 'translate-x-1',
+                ].join(' ')}
+                aria-hidden
+              />
+            </button>
+          </div>
+          <p className="mt-3 border-t border-zinc-800 pt-3 text-xs leading-relaxed text-zinc-500">
+            Streszczenia trafiaja do mozgu firmy (grupa "Pamiec: imie") i mozesz je
+            przejrzec oraz usunac w profilu agenta i w zakladce Mozg firmy.
           </p>
         </div>
       </section>

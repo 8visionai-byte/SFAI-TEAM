@@ -659,8 +659,9 @@ export async function startRozmowa(
   }
 
   /**
-   * Obsluga narzedzia uruchom_zespol (TYLKO COO). Waliduje slugi (max 6, bez
-   * duplikatow), emituje onZespol start dla kazdego, ROWNOLEGLE odpala realnych
+   * Obsluga narzedzia uruchom_zespol (TYLKO COO). Waliduje slugi (max = liczba
+   * wszystkich specjalistow, bez duplikatow), emituje onZespol start dla kazdego,
+   * potem ROWNOLEGLE odpala realnych
    * specjalistow przez sendMessage (Anthropic), po kazdym emituje koniec + raport.
    * Zbiera raporty, przycina do ~1200 znakow, sklada w jeden string i odsyla jako
    * function_call_output, po czym (bezpiecznie) prosi model o response.create,
@@ -683,7 +684,8 @@ export async function startRozmowa(
     }
 
     // Waliduj slugi: tylko realni specjalisci (bez COO), bez pustych zadan,
-    // bez duplikatow, maksymalnie 6 rownolegle.
+    // bez duplikatow. Limit rowny liczbie WSZYSTKICH specjalistow (dozwolone.size),
+    // zeby narada mogla objac cala dziewiatke, a nie tylko 6 pierwszych.
     const dozwolone = new Set(
       agents.filter((a) => a.slug !== 'coo').map((a) => a.slug),
     )
@@ -696,7 +698,7 @@ export async function startRozmowa(
         uzyte.add(z.agent)
         return true
       })
-      .slice(0, 6)
+      .slice(0, dozwolone.size)
 
     // DETERMINISTYCZNA narada: gdy ostatnia wypowiedz usera prosi o caly zespol,
     // dopelniamy zadania dla WSZYSTKICH specjalistow (model bywa oszczedny).
