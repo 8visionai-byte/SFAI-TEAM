@@ -2,7 +2,7 @@ import { getAgent } from '../data/agents'
 import { getAgentPrompt, getFullBrain, getBrainCard } from './content'
 // Import bezpieczny: storage.ts bierze z ai.ts wylacznie typ (import type),
 // wiec nie powstaje cykl w czasie dzialania.
-import { aktywneSkilleAgenta } from './storage'
+import { aktywneSkilleAgenta, getProfil } from './storage'
 
 export interface ChatMessage {
   role: 'user' | 'assistant'
@@ -108,6 +108,29 @@ const CHAT_RULES = [
   '- Jeśli czegoś nie ma w mózgu, powiedz wprost i zaproponuj, jakie dane uzupełnić.',
 ].join('\n')
 
+/**
+ * Personalny ton pod zalogowany profil (Pawel = szef firmy, Marcin = wspolwlasciciel).
+ * Zwraca zdanie wstrzykiwane do zasad rozmowy w czacie i w glosie; gdy brak profilu,
+ * zwraca pusty string (nic nie doklejamy).
+ */
+function tonOsobisty(): string {
+  const profil = getProfil()
+  if (!profil) return ''
+  const rola = profil.id === 'marcin' ? 'wspolwlasciciel' : 'szef firmy'
+  return (
+    `Rozmawiasz z ${profil.imie} (${rola}). ` +
+    `Zwracaj sie do niego po imieniu, cieplo, luzno i sympatycznie (np. "Czesc ${profil.imie}!", ` +
+    'czasem zartobliwie "szefie/szefuniu"), lekko przyjacielsko-flirtujacy, ' +
+    'ale zawsze pomocny i profesjonalny w tresci. Jestes mloda kobieta, mow naturalnie.'
+  )
+}
+
+/** Zasady rozmowy z doklejonym personalnym tonem pod zalogowany profil. */
+function regulyZTonem(): string {
+  const ton = tonOsobisty()
+  return ton ? `${CHAT_RULES}\n${ton}` : CHAT_RULES
+}
+
 /** Buduje system prompt dla danego agenta z osadzonego mozgu i persony. */
 export function buildSystemPrompt(agentSlug: string): string {
   const agent = getAgent(agentSlug)
@@ -163,7 +186,7 @@ export function buildSystemPrompt(agentSlug: string): string {
     pamiecInfo,
     ...(webInfo ? [webInfo] : []),
     '',
-    CHAT_RULES,
+    regulyZTonem(),
   ].join('\n')
 }
 
@@ -276,7 +299,7 @@ export function buildVoicePrompt(agentSlug: string): string {
     '',
     preambula,
     '',
-    CHAT_RULES,
+    regulyZTonem(),
     '',
     'To rozmowa GLOSOWA: mow zwiezle i naturalnie, krotkie zdania, jak czlowiek przez telefon. Bez list punktowanych na glos. Bez em-dash.',
   ].join('\n')

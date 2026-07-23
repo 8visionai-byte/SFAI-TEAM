@@ -8,6 +8,7 @@
  */
 import type { Agent } from '../data/agents'
 import { speak, cancel, oczyscDoMowy } from './voice'
+import { getProfil } from './storage'
 
 /** Aktualnie grane audio ElevenLabs (do zatrzymania przy sprzataniu / barge-in). */
 let biezaceAudio: HTMLAudioElement | null = null
@@ -37,12 +38,18 @@ function pierwszeZdanie(tekst: string): string {
   return (m ? m[0] : czysty).trim()
 }
 
-/** Buduje tekst powitania persony: "Czesc, jestem <Imie>, <rola>. <co robie>." */
+/**
+ * Buduje tekst powitania persony po imieniu usera:
+ * "Czesc <Uzytkownik>, jestem <Imie>, <rola>. <co robie>."
+ * Gdy brak profilu, wita bez imienia usera.
+ */
 export function powitanieTekst(agent: Agent): string {
   const imie = agent.personImie ?? agent.name
   const rola = agent.role.toLowerCase()
   const co = pierwszeZdanie(agent.mission)
-  return `Czesc, jestem ${imie}, ${rola}. ${co}`
+  const user = getProfil()?.imie
+  const powitanie = user ? `Czesc ${user}, jestem ${imie}` : `Czesc, jestem ${imie}`
+  return `${powitanie}, ${rola}. ${co}`
 }
 
 export interface OpcjeMowyPersony {

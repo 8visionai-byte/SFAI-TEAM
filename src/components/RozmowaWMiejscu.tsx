@@ -18,8 +18,11 @@ import {
 } from '../lib/ai'
 import {
   dodajPlikMozgu,
+  imieUczestnika,
   pamiecAutoWlaczona,
+  transkrypcjeAutoWlaczone,
   zapiszPamiecAgenta,
+  zapiszTranskrypcje,
 } from '../lib/storage'
 import { isSttSupported, startListening, stopListening } from '../lib/voice'
 import CharacterAvatar from './CharacterAvatar'
@@ -102,6 +105,8 @@ export default function RozmowaWMiejscu({
   // Czy zapisano juz pamiec z tej rozmowy (auto-zapis na koniec / odmontowanie).
   // Chroni przed dublowaniem, gdy koniec i sprzatanie wystrzela blisko siebie.
   const pamiecZapisanaRef = useRef(false)
+  // Czy zapisano juz PELNA transkrypcje z tej rozmowy (idempotencja jak pamiec).
+  const transkrypcjaZapisanaRef = useRef(false)
   const aktywnyRef = useRef(true)
   // Ostatni zaraportowany poziom (throttling, zeby nie odswiezac mapy co klatke).
   const ostatniPoziomRef = useRef(0)
@@ -140,8 +145,9 @@ export default function RozmowaWMiejscu({
       return
     }
     sprzataj()
-    // Auto-zapis pamieci agenta (idempotentny, chroniony flaga).
+    // Auto-zapis pamieci agenta + pelnej transkrypcji (idempotentne, chronione flaga).
     void autoZapiszPamiec()
+    void autoZapiszTranskrypcje()
     const proponuj =
       bylRaportRef.current || transkryptRef.current.length > 6
     if (proponuj) setPytajBriefing(true)
@@ -157,8 +163,9 @@ export default function RozmowaWMiejscu({
     aktywnyRef.current = true
     rozpocznij()
     return () => {
-      // Odmontowanie (np. przelaczenie persony): auto-zapis pamieci przed sprzataniem.
+      // Odmontowanie (np. przelaczenie persony): auto-zapis pamieci i transkrypcji.
       void autoZapiszPamiec()
+      void autoZapiszTranskrypcje()
       sprzataj()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -184,11 +191,13 @@ export default function RozmowaWMiejscu({
 
   // --- Start rozmowy: powitanie -> tor realtime lub podstawowy ---------------
 
-  /** Instrukcja powitania dla modelu realtime: wita sie glosem persony. */
+  /** Instrukcja powitania dla modelu realtime: wita sie glosem persony po imieniu usera. */
   function powitanieInstrukcja(): string {
+    const uczestnik = imieUczestnika()
     return (
-      `Przywitaj sie krotko po polsku: "Czesc, jestem ${imie}, ` +
-      `${agent.role.toLowerCase()}." i zapytaj krotko, w czym mozesz pomoc. ` +
+      `Przywitaj sie krotko, cieplo i po imieniu z ${uczestnik} po polsku: ` +
+      `"Czesc ${uczestnik}! Jestem ${imie}, ${agent.role.toLowerCase()}." ` +
+      `i zapytaj krotko, w czym mozesz pomoc. ` +
       `Bez em-dash, bez zmyslonych liczb, nie dodawaj nic wiecej.`
     )
   }
@@ -432,6 +441,21 @@ export default function RozmowaWMiejscu({
   }
 
   /**
+   * AUTO-ZAPIS PELNEJ TRANSKRYPCJI na koniec rozmowy glosowej (obok streszczenia
+   * pamieci). Zapisuje CALY zapis wypowiedzi do mozgu (grupa 'transkrypcje').
+   * Sterowane przelacznikiem "Zapisuj pelne transkrypcje" (sf_transkrypcje_auto,
+   * domyslnie wlaczony). Idempotentne, wymaga realnej rozmowy (wypowiedz usera).
+   */
+  async function autoZapiszTranskrypcje() {
+    if (transkrypcjaZapisanaRef.current) return
+    if (!transkrypcjeAutoWlaczone()) return
+    const bylUser = transkryptRef.current.some((l) => l.kto === 'user')
+    if (!bylUser) return
+    transkrypcjaZapisanaRef.current = true
+    zapiszTranskrypcje(imie, budujTranskrypt())
+  }
+
+  /**
    * Zapisuje biezaca rozmowe do bazy wiedzy (sf_mozg_wlasne, grupa 'z-rozmow').
    * Gdy jest polaczenie z modelem (klucz/proxy/env), Claude wyciaga zwiezly plik MD
    * (wazne dane/ustalenia/fakty o firmie). Bez klucza zapisujemy surowa transkrypcje.
@@ -472,6 +496,7 @@ export default function RozmowaWMiejscu({
       tresc = `# ${tytul}\n\n\`\`\`\n${rozmowaTekst}\n\`\`\`\n`
     }
 
+    tresc = wstawUczestnika(tresc, imieUczestnika())
     const slug = (zrobSlug(tytul) || 'rozmowa') + '-' + Date.now().toString(36)
     dodajPlikMozgu({ sciezka: `z-rozmow/${slug}.md`, tresc, grupa: 'z-rozmow' })
     if (aktywnyRef.current) setZapisywanie(false)
@@ -522,6 +547,7 @@ export default function RozmowaWMiejscu({
       tresc = `# ${tytul}\n\n\`\`\`\n${rozmowaTekst}\n\`\`\`\n`
     }
 
+    tresc = wstawUczestnika(tresc, imieUczestnika())
     const slug = zrobSlug(tytul) || 'narada'
     dodajPlikMozgu({
       sciezka: `briefingi/${dataDnia}-${slug}.md`,
@@ -710,6 +736,15 @@ function listaPerson(): string {
 /** Przycina transkrypt do zapisu awaryjnego (brak klucza albo blad modelu). */
 function skrocTranskrypt(t: string, max = 1500): string {
   return t.length > max ? `${t.slice(0, max)}\n...(skrocono)` : t
+}
+
+/** Wstawia linie "Uczestnik: <imie>" tuz pod pierwszym naglowkiem pliku MD. */
+function wstawUczestnika(md: string, uczestnik: string): string {
+  const linia = `> Uczestnik: ${uczestnik}`
+  if (md.includes(linia)) return md
+  const nl = md.indexOf('\n')
+  if (nl < 0) return `${md}\n\n${linia}\n`
+  return `${md.slice(0, nl + 1)}\n${linia}\n${md.slice(nl + 1)}`
 }
 
 /** Slug tytulu do sciezki pliku (bez polskich znakow, spacji i interpunkcji). */

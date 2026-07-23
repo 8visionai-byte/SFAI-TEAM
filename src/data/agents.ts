@@ -43,7 +43,7 @@ export const agents: Agent[] = [
     name: 'COO',
     role: 'Orkiestrator zespolu',
     tileNo: 'COO',
-    accent: '#5B8DEF',
+    accent: '#3584F2', // niebieska poswiata awatara Lea (v2, 2026-07-23)
     claudeName: 'sf-coo',
     hasPrompt: true,
     mission:
@@ -66,7 +66,7 @@ export const agents: Agent[] = [
     name: 'Specjalista od wiedzy i materialow',
     role: 'Wiedza, produkt, materialy',
     tileNo: '1',
-    accent: '#34D399',
+    accent: '#E02D39', // czerwona poswiata awatara Sam (v2, 2026-07-23)
     claudeName: 'sf-wiedza',
     hasPrompt: true,
     mission:
@@ -94,7 +94,7 @@ export const agents: Agent[] = [
     name: 'Asystent od ogarniania',
     role: 'Operacje i back office',
     tileNo: '2',
-    accent: '#2DD4BF',
+    accent: '#2AC0D1', // cyjanowa poswiata awatara Mia (v2, 2026-07-23)
     claudeName: 'sf-operacje',
     hasPrompt: true,
     mission:
@@ -121,7 +121,7 @@ export const agents: Agent[] = [
     name: 'Analityk rynku',
     role: 'Research i analiza',
     tileNo: '3',
-    accent: '#A78BFA',
+    accent: '#A156CC', // fioletowa poswiata awatara Rae (v2, 2026-07-23)
     claudeName: 'sf-analityk',
     hasPrompt: true,
     mission: 'Daje przewage informacyjna, produkuje decyzje, nie raporty.',
@@ -149,7 +149,7 @@ export const agents: Agent[] = [
     name: 'Pamiec calego zespolu',
     role: 'Fundament, kurator mozgu',
     tileNo: '4',
-    accent: '#FBBF24',
+    accent: '#E6E8F0', // biala/srebrna poswiata awatara Vera (v2, 2026-07-23)
     claudeName: 'sf-pamiec',
     hasPrompt: true,
     mission:
@@ -177,7 +177,7 @@ export const agents: Agent[] = [
     name: 'Copywriter marki',
     role: 'Tresci i marketing',
     tileNo: '5',
-    accent: '#F472B6',
+    accent: '#EB4B80', // rozowo-magenta poswiata awatara Mila (v2, 2026-07-23)
     claudeName: 'sf-copywriter',
     hasPrompt: true,
     mission:
@@ -205,7 +205,7 @@ export const agents: Agent[] = [
     name: 'Handlowiec od korzysci',
     role: 'Sprzedaz i oferta',
     tileNo: '6',
-    accent: '#4ADE80',
+    accent: '#F29624', // zloto-pomaranczowa poswiata awatara Jade (v2, 2026-07-23)
     claudeName: 'sf-handlowiec',
     hasPrompt: true,
     mission: 'Domyka przez diagnoze luki i wartosc, bez rabatowania.',
@@ -232,7 +232,7 @@ export const agents: Agent[] = [
     name: 'Opiekun klienta',
     role: 'Obsluga klienta i relacje',
     tileNo: '7',
-    accent: '#38BDF8',
+    accent: '#46DB91', // zielona poswiata awatara Ella (v2, 2026-07-23)
     claudeName: 'sf-opiekun-klienta',
     hasPrompt: true,
     mission: 'Dba o retencje, onboarding i relacje po sprzedazy.',
@@ -259,7 +259,7 @@ export const agents: Agent[] = [
     name: 'Drugi glos przy decyzjach',
     role: 'Strategia i straznik marki',
     tileNo: '8',
-    accent: '#FB7185',
+    accent: '#EB4B60', // koralowo-czerwona poswiata awatara Nora (v2, 2026-07-23)
     claudeName: 'sf-strateg',
     hasPrompt: true,
     mission: 'Kwestionuje pomysly, broni marki i mowi nie z uzasadnieniem.',
@@ -280,7 +280,7 @@ export const agents: Agent[] = [
     name: 'Analityk Social Mediów',
     role: 'Marketing i social media',
     tileNo: '10',
-    accent: '#F97316',
+    accent: '#E6911C', // zlota poswiata awatara Zoe (v2, 2026-07-23)
     claudeName: 'sf-analityk-social',
     hasPrompt: true,
     mission:

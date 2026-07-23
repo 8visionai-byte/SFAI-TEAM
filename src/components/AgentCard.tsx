@@ -79,43 +79,47 @@ export default function AgentCard({ agent, onGlos }: AgentCardProps) {
       {/* ROLA najmniejszym, wygaszonym tekstem */}
       <p className="mt-1 text-xs text-zinc-400">{agent.role}</p>
 
-      {/* Akcja glosu: wyrazna pigulka przy nazwie (osobna od kliku w karte i "Rozmawiaj") */}
-      {onGlos && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            onGlos(agent)
-          }}
-          aria-label={`Porozmawiaj glosem z ${agent.personImie ?? agent.name}`}
-          title={`Porozmawiaj glosem z ${agent.personImie ?? agent.name}`}
-          className="voice-pill relative z-20 mt-3 inline-flex h-10 items-center gap-2 rounded-full border bg-zinc-950/70 px-4 text-sm font-semibold text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+      {/* Para przyciskow: "Mów głosem" + "Rozmawiaj" w JEDNYM stylu (spojna para). */}
+      <div className="relative z-20 mt-4 flex w-full flex-col items-stretch gap-2">
+        {onGlos && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onGlos(agent)
+            }}
+            aria-label={`Porozmawiaj glosem z ${agent.personImie ?? agent.name}`}
+            title={`Porozmawiaj glosem z ${agent.personImie ?? agent.name}`}
+            className="voice-pill inline-flex h-10 items-center justify-center gap-2 rounded-full border bg-zinc-950/70 px-4 text-sm font-semibold text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+            style={{
+              borderColor: `${agent.accent}80`,
+              ['--acc-ring' as string]: `${agent.accent}59`,
+            }}
+          >
+            <Mic size={18} aria-hidden />
+            <span>Mów głosem</span>
+          </button>
+        )}
+
+        {/* "Rozmawiaj": ten sam ksztalt pigulki co glos, prowadzi wprost do czatu */}
+        <Link
+          to={`/czat/${agent.slug}`}
+          aria-label={`Rozmawiaj z agentem ${agent.name}`}
+          className="voice-pill inline-flex h-10 items-center justify-center gap-2 rounded-full border bg-zinc-950/70 px-4 text-sm font-semibold text-zinc-100 outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
           style={{
             borderColor: `${agent.accent}80`,
             ['--acc-ring' as string]: `${agent.accent}59`,
           }}
         >
-          <Mic size={18} aria-hidden />
-          <span>Mów głosem</span>
-        </button>
-      )}
-
-      {/* Przycisk "Rozmawiaj": nad linkiem-nakladka, prowadzi wprost do czatu */}
-      <Link
-        to={`/czat/${agent.slug}`}
-        aria-label={`Rozmawiaj z agentem ${agent.name}`}
-        className="relative z-20 mt-4 inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-zinc-400 transition-colors hover:text-zinc-100 group-hover:text-zinc-100"
-        style={{ ['--acc' as string]: agent.accent }}
-      >
-        <span className="transition-colors group-hover:[color:var(--acc)]">
-          Rozmawiaj
-        </span>
-        <ArrowRight
-          size={16}
-          className="transition-transform duration-200 group-hover:translate-x-1 group-hover:[color:var(--acc)] motion-reduce:transform-none"
-        />
-      </Link>
+          <span>Rozmawiaj</span>
+          <ArrowRight
+            size={16}
+            className="transition-transform duration-200 group-hover:translate-x-0.5 motion-reduce:transform-none"
+            aria-hidden
+          />
+        </Link>
+      </div>
     </div>
   )
 }

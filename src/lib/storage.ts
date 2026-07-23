@@ -8,6 +8,8 @@ export interface Rozmowa {
   tytul: string
   messages: ChatMessage[]
   updatedAt: string
+  /** Imie profilu, ktory prowadzil rozmowe (Pawel / Marcin). */
+  uczestnik?: string
   /**
    * Czy z tej rozmowy zapisano juz streszczenie do pamieci agenta.
    * Flaga chroni przed dublowaniem (odejscie + "Nowa rozmowa" moga wystrzelic razem).
@@ -25,7 +27,25 @@ export interface Notatka {
   tytul: string
   /** Tresc w markdown. */
   tresc: string
+  /** Imie profilu, ktory zapisal notatke (Pawel / Marcin). */
+  uczestnik?: string
 }
+
+/** Identyfikator profilu uzytkownika. */
+export type IdProfilu = 'pawel' | 'marcin'
+
+/** Profil uzytkownika (bez backendu, localStorage sf_profil). */
+export interface Profil {
+  id: IdProfilu
+  imie: string
+  rola: 'admin' | 'uzytkownik'
+}
+
+/** Dwa stale profile firmy. Pawel = admin (widzi klucze i integracje). */
+export const PROFILE: Profil[] = [
+  { id: 'pawel', imie: 'Pawel', rola: 'admin' },
+  { id: 'marcin', imie: 'Marcin', rola: 'uzytkownik' },
+]
 
 /** Pojedynczy wpis przebiegu w Centrum Dowodzenia (localStorage, klucz sf_centrum). */
 export type WpisCentrum =
@@ -69,6 +89,8 @@ const KEY_SKILLE = 'sf_skille'
 const KEY_MOZG_NADPISY = 'sf_mozg_nadpisy'
 const KEY_MOZG_WLASNE = 'sf_mozg_wlasne'
 const KEY_PAMIEC_AUTO = 'sf_pamiec_auto'
+const KEY_PROFIL = 'sf_profil'
+const KEY_TRANSKRYPCJE_AUTO = 'sf_transkrypcje_auto'
 
 /** Bezpieczny dostep do localStorage (tryb prywatny moze rzucic wyjatek). */
 function safeStorage(): Storage | null {
@@ -101,6 +123,51 @@ function writeList<T>(key: string, list: T[]): void {
 /** Prosty unikalny identyfikator (czas + losowa koncowka). */
 export function nowyId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+/** Slug do sciezki pliku: male litery, bez polskich znakow, spacje->'-'. */
+function slugProsty(tekst: string): string {
+  const slug = (tekst || 'plik')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/ł/g, 'l')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug || 'plik'
+}
+
+// --- Profil uzytkownika (localStorage sf_profil) ---------------------------
+
+/** Zwraca zapisany profil (Pawel / Marcin) albo null, gdy nie wybrano. */
+export function getProfil(): Profil | null {
+  try {
+    const raw = safeStorage()?.getItem(KEY_PROFIL)
+    if (!raw) return null
+    const parsed: unknown = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object') {
+      const id = (parsed as { id?: unknown }).id
+      const znany = PROFILE.find((p) => p.id === id)
+      if (znany) return znany
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/** Zapisuje wybrany profil w localStorage. */
+export function setProfil(profil: Profil): void {
+  try {
+    safeStorage()?.setItem(KEY_PROFIL, JSON.stringify(profil))
+  } catch {
+    // Brak dostepu do storage nie moze zablokowac UI.
+  }
+}
+
+/** Imie zalogowanego uczestnika (do tagowania zapisow); fallback 'Uzytkownik'. */
+export function imieUczestnika(): string {
+  return getProfil()?.imie ?? 'Uzytkownik'
 }
 
 // --- Rozmowy ---------------------------------------------------------------
@@ -282,12 +349,14 @@ export function zapiszPamiecAgenta(
   const id = nowyId()
   const agent = getAgent(slug)
   const imie = agent?.personImie ?? agent?.name ?? slug
+  const uczestnik = imieUczestnika()
   const tytulCzysty = (tytul || `Rozmowa z ${imie} ${data}`).trim()
   const naglowek = [
     `# ${tytulCzysty}`,
     '',
     `- Data: ${data}`,
-    `- Uczestnik: ${imie}`,
+    `- Agent: ${imie}`,
+    `- Uczestnik: ${uczestnik}`,
     '',
     tresc.trim(),
     '',
@@ -326,6 +395,55 @@ export function ustawPamiecAuto(wl: boolean): void {
   } catch {
     // Brak dostepu do storage nie moze zablokowac UI.
   }
+}
+
+// --- Pelne transkrypcje rozmow glosowych (grupa 'transkrypcje') -------------
+
+/** Czy auto-zapis PELNYCH transkrypcji jest wlaczony (domyslnie TAK). */
+export function transkrypcjeAutoWlaczone(): boolean {
+  try {
+    const v = safeStorage()?.getItem(KEY_TRANSKRYPCJE_AUTO)
+    return v == null ? true : v === '1'
+  } catch {
+    return true
+  }
+}
+
+/** Wlacza/wylacza auto-zapis pelnych transkrypcji rozmow. */
+export function ustawTranskrypcjeAuto(wl: boolean): void {
+  try {
+    safeStorage()?.setItem(KEY_TRANSKRYPCJE_AUTO, wl ? '1' : '0')
+  } catch {
+    // Brak dostepu do storage nie moze zablokowac UI.
+  }
+}
+
+/**
+ * Zapisuje PELNA transkrypcje rozmowy glosowej do mozgu (sf_mozg_wlasne,
+ * grupa 'transkrypcje'). Obok streszczenia pamieci trzymamy pelny zapis wypowiedzi.
+ * Sciezka: transkrypcje/<data>-<slug persony>-<uczestnik>-<id>.md (id chroni przed
+ * nadpisaniem kolejnych rozmow tego samego dnia). Naglowek: data, agent, uczestnik.
+ */
+export function zapiszTranskrypcje(agentImie: string, pelnaTresc: string): void {
+  const data = new Date().toISOString().slice(0, 10)
+  const uczestnik = imieUczestnika()
+  const id = nowyId()
+  const naglowek = [
+    `# Transkrypcja rozmowy z ${agentImie} ${data}`,
+    '',
+    `- Data: ${data}`,
+    `- Agent: ${agentImie}`,
+    `- Uczestnik: ${uczestnik}`,
+    '',
+    pelnaTresc.trim(),
+    '',
+  ].join('\n')
+  zapiszWlasnyPlikMozgu({
+    sciezka: `transkrypcje/${data}-${slugProsty(agentImie)}-${slugProsty(uczestnik)}-${id}.md`,
+    tresc: naglowek,
+    grupa: 'transkrypcje',
+    updatedAt: new Date().toISOString(),
+  })
 }
 
 // --- Centrum Dowodzenia: trwalosc biezacej rozmowy -------------------------

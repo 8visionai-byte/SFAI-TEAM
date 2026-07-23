@@ -73,6 +73,7 @@ const GROUP_COLOR: Record<string, string> = {
   wlasne: '#2DD4BF', // wlasne pliki uzytkownika
   notatki: '#E4E4E7', // twoje notatki
   briefingi: '#C084FC', // briefingi z narad zespolu
+  transkrypcje: '#22D3EE', // pelne transkrypcje rozmow glosowych
 }
 
 /** Czytelne etykiety grup w legendzie. */
@@ -87,6 +88,7 @@ const GROUP_LABEL: Record<string, string> = {
   wlasne: 'Wlasne pliki',
   notatki: 'Twoje notatki',
   briefingi: 'Briefingi z narad',
+  transkrypcje: 'Transkrypcje rozmow',
 }
 
 /** Kolejnosc grup w legendzie. */
@@ -100,6 +102,8 @@ const GROUP_RANK = [
   'zespol',
   'wlasne',
   'notatki',
+  'briefingi',
+  'transkrypcje',
 ]
 
 /** Opisy grup (1-2 zdania, prosty polski) do panelu bocznego i tooltipow legendy. */
@@ -121,6 +125,10 @@ export const GROUP_OPIS: Record<string, string> = {
     'Pliki dodane recznie w aplikacji. Zapisane w tej przegladarce i czytane przez agentow razem z reszta mozgu.',
   notatki:
     'Rozmowy i ustalenia zapisane recznie przyciskiem Zapisz do pamieci. Twoja warstwa wiedzy dopieta do grafu.',
+  briefingi:
+    'Zwiezle briefingi z narad zespolu: temat, ustalenia, decyzje i nastepne kroki, zapisane na koniec rozmowy.',
+  transkrypcje:
+    'Pelne zapisy wypowiedzi z rozmow glosowych. Obok streszczen pamieci, do dokladnego odtworzenia, co padlo i z kim.',
 }
 
 /** Slug agenta z klucza grupy pamieci 'pamiec-<slug>' (albo null). */

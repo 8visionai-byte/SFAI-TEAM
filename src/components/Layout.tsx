@@ -3,8 +3,19 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import Sidebar from './Sidebar'
 import Logo from './Logo'
+import { ProfilProvider, useProfil } from './ProfilContext'
+import WyborProfilu from './WyborProfilu'
 
 export default function Layout() {
+  return (
+    <ProfilProvider>
+      <LayoutInner />
+    </ProfilProvider>
+  )
+}
+
+function LayoutInner() {
+  const { profil } = useProfil()
   const [mobileOpen, setMobileOpen] = useState(false)
   const location = useLocation()
 
@@ -22,6 +33,11 @@ export default function Layout() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [mobileOpen])
+
+  // Pierwsze wejscie (brak wybranego profilu): ekran wyboru zamiast aplikacji.
+  if (!profil) {
+    return <WyborProfilu />
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-zinc-950">

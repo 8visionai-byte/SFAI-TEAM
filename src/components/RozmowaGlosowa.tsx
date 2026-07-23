@@ -8,6 +8,7 @@ import {
 } from '../lib/realtime'
 import { mowPowitanie, mowTekstem, zatrzymajMowe } from '../lib/eleven'
 import { sendMessage, type ChatMessage } from '../lib/ai'
+import { imieUczestnika } from '../lib/storage'
 import { isSttSupported, startListening, stopListening } from '../lib/voice'
 import CharacterAvatar from './CharacterAvatar'
 import MarkdownView from './MarkdownView'
@@ -217,11 +218,13 @@ export default function RozmowaGlosowa({ agent, onClose }: Props) {
 
   // --- Start rozmowy: powitanie -> tor realtime lub podstawowy ---------------
 
-  /** Instrukcja powitania dla modelu realtime: wita sie glosem persony. */
+  /** Instrukcja powitania dla modelu realtime: wita sie glosem persony po imieniu usera. */
   function powitanieInstrukcja(): string {
+    const uczestnik = imieUczestnika()
     return (
-      `Przywitaj sie krotko po polsku: "Czesc, jestem ${imie}, ` +
-      `${agent.role.toLowerCase()}." i zapytaj krotko, w czym mozesz pomoc. ` +
+      `Przywitaj sie krotko, cieplo i po imieniu z ${uczestnik} po polsku: ` +
+      `"Czesc ${uczestnik}! Jestem ${imie}, ${agent.role.toLowerCase()}." ` +
+      `i zapytaj krotko, w czym mozesz pomoc. ` +
       `Bez em-dash, bez zmyslonych liczb, nie dodawaj nic wiecej.`
     )
   }

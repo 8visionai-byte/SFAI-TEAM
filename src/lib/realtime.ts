@@ -17,7 +17,7 @@
 import { type Agent, agents, getAgent } from '../data/agents'
 import { buildVoicePrompt, getVoiceModel, sendMessage } from './ai'
 import { szukajWMozgu } from './content'
-import { dodajPlikMozgu, nowyId } from './storage'
+import { dodajPlikMozgu, imieUczestnika, nowyId } from './storage'
 
 /** Stan rozmowy glosowej (wspolny dla realtime i toru podstawowego). */
 export type StanRozmowy =
@@ -612,7 +612,7 @@ export async function startRozmowa(
 
     const sciezka = `z-rozmow/${sciezkaSlug(tytulOk)}.md`
     const dataDnia = new Date().toISOString().slice(0, 10)
-    const naglowek = `# ${tytulOk}\n\n> Zrodlo: rozmowa glosowa, ${dataDnia}\n\n`
+    const naglowek = `# ${tytulOk}\n\n> Zrodlo: rozmowa glosowa, ${dataDnia}\n> Uczestnik: ${imieUczestnika()}\n\n`
     dodajPlikMozgu({
       sciezka,
       grupa: 'z-rozmow',

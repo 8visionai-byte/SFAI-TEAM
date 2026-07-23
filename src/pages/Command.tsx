@@ -242,8 +242,8 @@ interface PortretProps {
   agent: Agent
   /** realny rozmiar w px (steruje bramka detali portretu wektorowego) */
   px: number
-  /** klasy rozmiaru kontenera (skaluja portret na mniejszych ekranach) */
-  sizeClass: string
+  /** bok kwadratowego kontenera awatara w px (skaluje sie plynnie z geometria) */
+  boxPx: number
   /** pierscien-aura jako box-shadow (2.2) */
   aura: string
   /** czy aura ma oddychac (node-pulse) */
@@ -263,7 +263,7 @@ interface PortretProps {
 function Portret({
   agent,
   px,
-  sizeClass,
+  boxPx,
   aura,
   pulsuj,
   glow,
@@ -274,8 +274,8 @@ function Portret({
 
   return (
     <div
-      className={`avatar-hover relative ${sizeClass}`}
-      style={{ ['--accent-ring' as string]: glow }}
+      className="avatar-hover relative"
+      style={{ width: boxPx, height: boxPx, ['--accent-ring' as string]: glow }}
     >
       {/* Puls aury jako osobna warstwa (nie koliduje ze statycznym ringiem) */}
       {pulsuj && (
@@ -408,24 +408,79 @@ function MapaNeuronu({
   const N = teamAgents.length
 
   // Kompaktowy uklad na waskich ekranach (mobile): mniejsze portrety i etykiety.
-  // Desktop: duzy owal wypelniajacy CALY panel + etykiety/mikrofony na zewnatrz.
+  // Desktop: duzy owal wypelniajacy CALY panel; imie POD awatarem, mikrofon jako
+  // nakladka NA awatarze. Rozmiary +~25% wzgledem poprzedniej wersji.
   const compact = w < 640
-  // Zapas przy krawedzi na etykiete (imie+rola) i mikrofon ustawione RADIALNIE
-  // NA ZEWNATRZ okregu. Powiekszone wraz z portretami (desktop specjalista ~104px),
-  // zeby etykiety/mikrofony nie wychodzily poza plotno. Poziomo wiecej niz pionowo.
-  const margX = compact ? 104 : 162
-  const margY = compact ? 96 : 144
-  // Promienie liczone OSOBNO z szerokosci i wysokosci -> owal rozsuwa agentow
-  // na boki i wypelnia cala dostepna przestrzen panelu (nie maly kwadrat).
-  // Podloga niska, zeby na krotkim/waskim panelu etykiety nie uciekly poza plotno.
-  const Rx = Math.max(compact ? 58 : 130, w / 2 - margX)
-  const Ry = Math.max(compact ? 88 : 96, h / 2 - margY)
 
-  // Promien "krawedzi" wezla = polowa portretu + grubosc pierscienia-aury.
-  // Nici zaczynaja/koncza sie na tych krawedziach, a nie w srodkach, zeby
-  // czasteczki wychodzily zza portretu COO i wchodzily w portret specjalisty.
-  const specEdge = compact ? 37 : 61 // portret 56/104 px -> r 28/52 + ~9 aura
-  const cooEdge = compact ? 58 : 74 // portret 96/128 px -> r 48/64 + ~10 aura
+  // Docelowe (maksymalne) boki portretow w px. Desktop: COO 160, specjalista 130.
+  // Faktyczny rozmiar moze zmalec ponizej (odstep sasiadow, duze N), by uklad
+  // miescil sie dla dowolnej liczby agentow bez kolizji.
+  const specTarget = compact ? 74 : 130
+
+  // Zapas przy krawedzi panelu na podpis (imie + rola) RADIALNIE NA ZEWNATRZ.
+  // Liczony dla NAJWIEKSZEGO portretu (rezerwa) -> gdy portret zmaleje, podpis i
+  // tak sie miesci, a plotno NIGDY nie przewija sie w poziomie. Poziomo > pionowo.
+  const margX = compact ? 100 : 176
+  const margY = compact ? 88 : 132
+
+  // Promienie owalu liczone OSOBNO z szerokosci i wysokosci. Podlogi to tylko
+  // zabezpieczenie na zdegenerowane wymiary; normalnie decyduje w/2 - marg.
+  const Rx = Math.max(compact ? 40 : 120, w / 2 - margX)
+  let Ry = Math.max(compact ? 100 : 150, h / 2 - margY)
+  // Na waskim mobile nie pozwalamy owalowi zrobic sie zbyt wysokim i chudym, bo
+  // wtedy wezly kumuluja sie przy biegunach (za maly odstep). Rundszy owal =
+  // rownomierne rozlozenie sasiadow.
+  if (compact) Ry = Math.min(Ry, Rx * 2.4)
+
+  // Dokladne odleglosci na owalu (nie z przyblizenia kolowego): najmniejszy odstep
+  // sasiadow (dobor rozmiaru specjalisty) i najmniejsza odleglosc wezla od srodka
+  // (dobor rozmiaru COO). Pozycje zaleza tylko od Rx/Ry/N, wiec licze je tutaj.
+  let minAdj = Infinity
+  let minDist = Infinity
+  for (let i = 0; i < N; i++) {
+    const th = -Math.PI / 2 + i * ((2 * Math.PI) / N)
+    const px1 = cx + Rx * Math.cos(th)
+    const py1 = cy + Ry * Math.sin(th)
+    const d = Math.hypot(px1 - cx, py1 - cy)
+    if (d < minDist) minDist = d
+    const th2 = -Math.PI / 2 + ((i + 1) % N) * ((2 * Math.PI) / N)
+    const px2 = cx + Rx * Math.cos(th2)
+    const py2 = cy + Ry * Math.sin(th2)
+    const ad = Math.hypot(px1 - px2, py1 - py2)
+    if (ad < minAdj) minAdj = ad
+  }
+  if (!Number.isFinite(minAdj)) minAdj = 2 * Rx
+  if (!Number.isFinite(minDist)) minDist = Math.min(Rx, Ry)
+
+  // Skala dla duzej liczby agentow (N>10): dodatkowo zmniejsza specjalistow.
+  const skalaN = N > 10 ? 10 / N : 1
+  // Bok portretu specjalisty: docelowy*skalaN, ale nie wiecej niz pozwala odstep
+  // sasiadow (brak nachodzenia), i nie mniej niz sensowne minimum.
+  const odstep = compact ? 10 : 18
+  const specPx = Math.max(
+    compact ? 40 : 92,
+    Math.min(Math.round(specTarget * skalaN), Math.round(minAdj - odstep)),
+  )
+  // Bok portretu COO: docelowy, ale ograniczony tak, by najblizszy specjalista go
+  // nie dotykal (2*(odleglosc - promien specjalisty - luz)). Podloga trzyma sensowny
+  // rozmiar na bardzo waskich ekranach (dopuszczalne minimalne musniecie jak dawniej).
+  const cooCap = Math.round(2 * (minDist - specPx / 2 - (compact ? 6 : 10)))
+  const cooPx = Math.max(
+    compact ? 84 : 128,
+    Math.min(compact ? 116 : 160, cooCap),
+  )
+
+  // Krawedz wezla = promien portretu; nic konczy sie LEKKO POD awatarem (overlap
+  // ~4px), wiec nigdy nie ma przerwy miedzy nicia a okregiem (przypadek Mii).
+  const specEdge = specPx / 2 - 4
+  const cooEdge = cooPx / 2 - 4
+
+  // Podpis (imie + rola) na zewnatrz: od srodka wezla o promien portretu + zapas,
+  // by nie kolidowal z mikrofonem-nakladka przy dolnej krawedzi awatara.
+  const off = specPx / 2 + (compact ? 28 : 44)
+
+  // Bok przycisku-mikrofonu (nakladka przy dolnej krawedzi awatara).
+  const micPx = compact ? 34 : 40
 
   const wezly: Wezel[] = gotowe
     ? teamAgents.map((a, i) => {
@@ -471,7 +526,7 @@ function MapaNeuronu({
   return (
     <div
       ref={stageRef}
-      className="relative w-full flex-1 min-h-[380px] sm:min-h-[680px]"
+      className="relative w-full flex-1 min-h-[540px] sm:min-h-[720px]"
     >
       {/* Warstwa 0: glebokie tlo sceny (radial + winieta + siatka) */}
       <div
@@ -649,31 +704,104 @@ function MapaNeuronu({
         </svg>
       )}
 
-      {/* COO w geometrycznym srodku (klik, gdy nie trwa praca -> profil) */}
+      {/* COO w geometrycznym srodku. Klik w awatar = rozmowa glosowa; klik w imie
+          = profil. Mikrofon jako nakladka przy dolnej krawedzi awatara. */}
       {gotowe &&
         (() => {
           const imieCoo = coo.personImie ?? coo.name
           const wRozmowieCoo = rozmowaSlug === coo.slug
           const ktosRozmawia = rozmowaSlug != null
           const przyciemnionyCoo = ktosRozmawia && !wRozmowieCoo
-          const zawartoscCoo = (
-            <div className="flex flex-col items-center text-center">
-              <Portret
-                agent={coo}
-                px={128}
-                sizeClass="h-24 w-24 sm:h-32 sm:w-32"
-                aura={
-                  wRozmowieCoo
-                    ? auraRozmowy(rozmowaStan, rozmowaPoziom, '#5B8DEF', reduced)
-                    : auraCoo(stanCoo)
-                }
-                pulsuj={wRozmowieCoo || cooAktywny}
-                glow="#5B8DEFaa"
-              />
-              <div className="mt-2 w-40 rounded-xl bg-zinc-950/70 px-3 py-1 leading-tight backdrop-blur-sm">
-                <div className="text-sm font-semibold text-zinc-50">
-                  {imieCoo}
-                </div>
+          const tytulGlosCoo = wRozmowieCoo
+            ? `Zakoncz rozmowe z ${imieCoo}`
+            : `Kliknij, aby porozmawiac glosem z ${imieCoo}`
+          const portretCoo = (
+            <Portret
+              agent={coo}
+              px={cooPx}
+              boxPx={cooPx}
+              aura={
+                wRozmowieCoo
+                  ? auraRozmowy(rozmowaStan, rozmowaPoziom, '#5B8DEF', reduced)
+                  : auraCoo(stanCoo)
+              }
+              pulsuj={wRozmowieCoo || cooAktywny}
+              glow="#5B8DEFaa"
+            />
+          )
+          return (
+            <div
+              className={[
+                'absolute z-10 flex flex-col items-center transition-opacity duration-300',
+                przyciemnionyCoo ? 'opacity-40' : 'opacity-100',
+              ].join(' ')}
+              style={{ left: cx, top: cy, transform: 'translate(-50%,-50%)' }}
+            >
+              {/* Awatar (klik = glos) + mikrofon-nakladka */}
+              <div className="relative" style={{ width: cooPx, height: cooPx }}>
+                {onGlos ? (
+                  <button
+                    type="button"
+                    onClick={() => onGlos(coo)}
+                    aria-label={tytulGlosCoo}
+                    title={tytulGlosCoo}
+                    aria-pressed={wRozmowieCoo}
+                    className="block rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+                  >
+                    {portretCoo}
+                  </button>
+                ) : (
+                  portretCoo
+                )}
+                {onGlos && (
+                  <button
+                    type="button"
+                    onClick={() => onGlos(coo)}
+                    aria-label={tytulGlosCoo}
+                    title={tytulGlosCoo}
+                    aria-pressed={wRozmowieCoo}
+                    className={[
+                      'voice-pill absolute bottom-0 left-1/2 z-20 inline-flex items-center justify-center rounded-full border outline-none focus-visible:ring-2 focus-visible:ring-brand/60',
+                      wRozmowieCoo
+                        ? 'node-pulse border-brand text-zinc-950'
+                        : 'border-brand/50 bg-zinc-950/85 text-brand-soft',
+                    ].join(' ')}
+                    style={{
+                      width: micPx,
+                      height: micPx,
+                      transform: 'translate(-50%,42%)',
+                      ...(wRozmowieCoo
+                        ? {
+                            background: '#5B8DEF',
+                            ['--glow' as string]: 'rgba(91,141,239,0.55)',
+                            ['--acc-ring' as string]: 'rgba(91,141,239,0.34)',
+                          }
+                        : { ['--acc-ring' as string]: 'rgba(91,141,239,0.34)' }),
+                    }}
+                  >
+                    <Mic size={compact ? 17 : 19} aria-hidden />
+                  </button>
+                )}
+              </div>
+
+              {/* Imie pod awatarem (klik = profil) + status */}
+              <div className="mt-5 w-44 rounded-xl bg-zinc-950/70 px-3 py-1 text-center leading-tight backdrop-blur-sm">
+                {running ? (
+                  <div className="text-sm font-semibold text-zinc-50">
+                    {imieCoo}
+                  </div>
+                ) : (
+                  <Link
+                    to={`/agent/${coo.slug}`}
+                    aria-label={`Profil agenta ${imieCoo}`}
+                    title={`Profil: ${imieCoo}`}
+                    className="block rounded outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+                  >
+                    <span className="text-sm font-semibold text-zinc-50 transition-colors hover:text-white">
+                      {imieCoo}
+                    </span>
+                  </Link>
+                )}
                 <div className="text-xs font-medium text-brand-soft">
                   {wRozmowieCoo
                     ? etykietaRozmowy(rozmowaStan, imieCoo)
@@ -686,77 +814,14 @@ function MapaNeuronu({
               </div>
             </div>
           )
-          const stylCoo = {
-            left: cx,
-            top: cy,
-            transform: 'translate(-50%,-50%)',
-          }
-          return (
-            <div
-              className={[
-                'absolute z-10 flex flex-col items-center transition-opacity duration-300',
-                przyciemnionyCoo ? 'opacity-40' : 'opacity-100',
-              ].join(' ')}
-              style={stylCoo}
-            >
-              {running ? (
-                <div>{zawartoscCoo}</div>
-              ) : (
-                <Link
-                  to={`/agent/${coo.slug}`}
-                  aria-label={`Profil agenta ${imieCoo}`}
-                  title={imieCoo}
-                  className="rounded-3xl outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-                >
-                  {zawartoscCoo}
-                </Link>
-              )}
-              {onGlos && (
-                <button
-                  type="button"
-                  onClick={() => onGlos(coo)}
-                  aria-label={
-                    wRozmowieCoo
-                      ? `Zakoncz rozmowe z ${imieCoo}`
-                      : `Porozmawiaj glosem z ${imieCoo}`
-                  }
-                  title={
-                    wRozmowieCoo
-                      ? `Zakoncz rozmowe z ${imieCoo}`
-                      : `Porozmawiaj glosem z ${imieCoo}`
-                  }
-                  aria-pressed={wRozmowieCoo}
-                  className={[
-                    'voice-pill relative z-20 mt-2.5 inline-flex h-10 w-10 items-center justify-center rounded-full border outline-none focus-visible:ring-2 focus-visible:ring-brand/60',
-                    wRozmowieCoo
-                      ? 'node-pulse border-brand text-zinc-950'
-                      : 'border-brand/50 bg-zinc-950/85 text-brand-soft',
-                  ].join(' ')}
-                  style={
-                    wRozmowieCoo
-                      ? {
-                          background: '#5B8DEF',
-                          ['--glow' as string]: 'rgba(91,141,239,0.55)',
-                          ['--acc-ring' as string]: 'rgba(91,141,239,0.34)',
-                        }
-                      : { ['--acc-ring' as string]: 'rgba(91,141,239,0.34)' }
-                  }
-                >
-                  <Mic size={20} aria-hidden />
-                </button>
-              )}
-            </div>
-          )
         })()}
 
-      {/* Specjalisci na owalu. Portret siedzi w punkcie wezla; podpis + mikrofon
-          sa przesuniete RADIALNIE NA ZEWNATRZ (kierunek od srodka), a chipy do
-          wewnatrz. Dzieki temu etykiety i mikrofony leza na obrzezu, rowno
-          rozlozone, i nigdy nie nachodza na sasiadow, nici ani na COO. */}
+      {/* Specjalisci na owalu. Awatar w punkcie wezla (klik = rozmowa glosowa),
+          imie RADIALNIE NA ZEWNATRZ (klik = profil), mikrofon jako nakladka przy
+          dolnej krawedzi awatara. Bez chipow subagentow (czysty wezel). */}
       {wezly.map((n) => {
         const a = getAgent(n.slug)!
         const stan = stany[n.slug] ?? 'idle'
-        const pokazChipy = stan === 'active' || stan === 'done'
         const imie = a.personImie ?? a.name
         const wRozmowie = rozmowaSlug === n.slug
         const ktosRozmawia = rozmowaSlug != null
@@ -772,27 +837,19 @@ function MapaNeuronu({
               ? KOLOR_DONE
               : undefined
         const opacityCls = przyciemniony ? 'opacity-40' : 'opacity-100'
+        const tytulGlos = wRozmowie
+          ? `Zakoncz rozmowe z ${imie}`
+          : `Kliknij, aby porozmawiac glosem z ${imie}`
 
-        // Punkt bloku podpis+mikrofon: NA ZEWNATRZ wzdluz wektora (ox, oy).
-        // Wieksze na desktopie, bo portret specjalisty urosl do ~104px.
-        const off = compact ? 60 : 98
+        // Podpis (imie + rola) NA ZEWNATRZ wzdluz wektora (ox, oy) od srodka.
         const etyX = n.nx + n.ox * off
         const etyY = n.ny + n.oy * off
-        // Chipy zespolu: do WEWNATRZ (przeciwnie do etykiety), bez kolizji z nia.
-        // Wiekszy chOff na desktopie, zeby chipy nie chowaly sie pod wiekszym portretem.
-        const chOff = compact ? 46 : 72
-        const chX = n.nx - n.ox * chOff
-        const chY = n.ny - n.oy * chOff
 
         const portret = (
           <Portret
             agent={a}
-            px={compact ? 64 : 104}
-            sizeClass={
-              compact
-                ? 'h-14 w-14'
-                : 'h-[5.5rem] w-[5.5rem] sm:h-[6.5rem] sm:w-[6.5rem]'
-            }
+            px={specPx}
+            boxPx={specPx}
             aura={
               wRozmowie
                 ? auraRozmowy(rozmowaStan, rozmowaPoziom, a.accent, reduced)
@@ -806,7 +863,7 @@ function MapaNeuronu({
 
         return (
           <div key={n.slug}>
-            {/* Portret w punkcie wezla (klik -> profil, gdy nie trwa praca) */}
+            {/* Awatar w punkcie wezla: klik = glos, mikrofon-nakladka na dole */}
             <div
               className={`absolute z-10 transition-opacity duration-300 ${opacityCls}`}
               style={{
@@ -815,128 +872,94 @@ function MapaNeuronu({
                 transform: 'translate(-50%,-50%)',
               }}
             >
-              {running ? (
-                <div title={imie} aria-label={imie}>
-                  {portret}
-                </div>
-              ) : (
-                <Link
-                  to={`/agent/${n.slug}`}
-                  aria-label={`Profil agenta ${imie}`}
-                  title={imie}
-                  className="block rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-                >
-                  {portret}
-                </Link>
-              )}
+              <div className="relative" style={{ width: specPx, height: specPx }}>
+                {onGlos ? (
+                  <button
+                    type="button"
+                    onClick={() => onGlos(a)}
+                    aria-label={tytulGlos}
+                    title={tytulGlos}
+                    aria-pressed={wRozmowie}
+                    className="block rounded-full outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+                  >
+                    {portret}
+                  </button>
+                ) : (
+                  portret
+                )}
+                {onGlos && (
+                  <button
+                    type="button"
+                    onClick={() => onGlos(a)}
+                    aria-label={tytulGlos}
+                    title={tytulGlos}
+                    aria-pressed={wRozmowie}
+                    className={[
+                      'voice-pill absolute bottom-0 left-1/2 z-20 inline-flex items-center justify-center rounded-full border outline-none focus-visible:ring-2 focus-visible:ring-brand/60',
+                      wRozmowie
+                        ? 'node-pulse text-zinc-950'
+                        : 'bg-zinc-950/85 text-zinc-100',
+                    ].join(' ')}
+                    style={{
+                      width: micPx,
+                      height: micPx,
+                      transform: 'translate(-50%,42%)',
+                      ...(wRozmowie
+                        ? {
+                            background: a.accent,
+                            borderColor: a.accent,
+                            ['--glow' as string]: `${a.accent}88`,
+                            ['--acc-ring' as string]: `${a.accent}59`,
+                          }
+                        : {
+                            borderColor: `${a.accent}80`,
+                            ['--acc-ring' as string]: `${a.accent}59`,
+                          }),
+                    }}
+                  >
+                    <Mic size={compact ? 16 : 18} aria-hidden />
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Chipy zespolu wykonawczego: do wewnatrz okregu (nie zaslaniaja
-                podpisu ani sasiadow) */}
-            {pokazChipy && (
-              <div
-                className={`pointer-events-none absolute z-[9] flex max-w-[128px] flex-wrap justify-center gap-1 transition-opacity duration-300 ${opacityCls}`}
-                style={{
-                  left: chX,
-                  top: chY,
-                  transform: 'translate(-50%,-50%)',
-                }}
-              >
-                {a.subagents.slice(0, 3).map((s) => (
-                  <span
-                    key={s}
-                    className={[
-                      'whitespace-nowrap rounded-full border bg-zinc-950/80 px-1.5 py-0.5 text-[0.6rem] leading-none text-zinc-400',
-                      stan === 'active' && !reduced ? 'chip-flicker' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                    style={{ borderColor: `${a.accent}55` }}
-                  >
-                    {s}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Podpis (imie + rola) + WYRAZNY mikrofon: RADIALNIE NA ZEWNATRZ.
-                Mikrofon start/koniec rozmowy w miejscu (aktywny = akcent + puls). */}
+            {/* Imie (+ rola/status) RADIALNIE NA ZEWNATRZ. Klik w imie = profil. */}
             <div
-              className={`absolute z-10 flex flex-col items-center transition-opacity duration-300 ${opacityCls}`}
+              className={`absolute z-10 ${compact ? 'w-[64px]' : 'w-[120px]'} text-center leading-tight transition-opacity duration-300 ${opacityCls}`}
               style={{
                 left: etyX,
                 top: etyY,
                 transform: 'translate(-50%,-50%)',
               }}
             >
-              <div
-                className={`${compact ? 'w-[72px]' : 'w-[116px]'} text-center leading-tight`}
-              >
-                {running ? (
-                  <div className="text-[0.8rem] font-semibold text-zinc-50">
-                    {imie}
-                  </div>
-                ) : (
-                  <Link
-                    to={`/agent/${n.slug}`}
-                    aria-label={`Profil agenta ${imie}`}
-                    title={imie}
-                    className="block rounded outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-                  >
-                    <span className="text-[0.8rem] font-semibold text-zinc-50 transition-colors hover:text-white">
-                      {imie}
-                    </span>
-                  </Link>
-                )}
+              {running ? (
                 <div
-                  className="mt-0.5 text-[0.66rem] font-medium"
-                  style={{ color: rolaKolor }}
+                  className={`${compact ? 'text-[0.72rem]' : 'text-[0.85rem]'} font-semibold text-zinc-50`}
                 >
-                  <span className={rolaKolor ? undefined : 'text-zinc-400'}>
-                    {wRozmowie ? etykietaRozmowy(rozmowaStan, imie) : a.role}
-                  </span>
+                  {imie}
                 </div>
-              </div>
-
-              {onGlos && (
-                <button
-                  type="button"
-                  onClick={() => onGlos(a)}
-                  aria-label={
-                    wRozmowie
-                      ? `Zakoncz rozmowe z ${imie}`
-                      : `Porozmawiaj glosem z ${imie}`
-                  }
-                  title={
-                    wRozmowie
-                      ? `Zakoncz rozmowe z ${imie}`
-                      : `Porozmawiaj glosem z ${imie}`
-                  }
-                  aria-pressed={wRozmowie}
-                  className={[
-                    'voice-pill relative z-20 mt-1.5 inline-flex items-center justify-center rounded-full border outline-none focus-visible:ring-2 focus-visible:ring-brand/60',
-                    compact ? 'h-9 w-9' : 'h-10 w-10',
-                    wRozmowie
-                      ? 'node-pulse text-zinc-950'
-                      : 'bg-zinc-950/85 text-zinc-100',
-                  ].join(' ')}
-                  style={
-                    wRozmowie
-                      ? {
-                          background: a.accent,
-                          borderColor: a.accent,
-                          ['--glow' as string]: `${a.accent}88`,
-                          ['--acc-ring' as string]: `${a.accent}59`,
-                        }
-                      : {
-                          borderColor: `${a.accent}80`,
-                          ['--acc-ring' as string]: `${a.accent}59`,
-                        }
-                  }
+              ) : (
+                <Link
+                  to={`/agent/${n.slug}`}
+                  aria-label={`Profil agenta ${imie}`}
+                  title={`Profil: ${imie}`}
+                  className="block rounded outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
                 >
-                  <Mic size={compact ? 18 : 20} aria-hidden />
-                </button>
+                  <span
+                    className={`${compact ? 'text-[0.72rem]' : 'text-[0.85rem]'} font-semibold text-zinc-50 transition-colors hover:text-white`}
+                  >
+                    {imie}
+                  </span>
+                </Link>
               )}
+              <div
+                className="mt-0.5 text-[0.64rem] font-medium"
+                style={{ color: rolaKolor }}
+              >
+                <span className={rolaKolor ? undefined : 'text-zinc-400'}>
+                  {wRozmowie ? etykietaRozmowy(rozmowaStan, imie) : a.role}
+                </span>
+              </div>
             </div>
           </div>
         )

@@ -35,7 +35,13 @@ import {
   czytajAutoWlaczone,
   ustawCzytajAuto,
 } from '../lib/voice'
-import { pamiecAutoWlaczona, ustawPamiecAuto } from '../lib/storage'
+import {
+  pamiecAutoWlaczona,
+  ustawPamiecAuto,
+  transkrypcjeAutoWlaczone,
+  ustawTranskrypcjeAuto,
+} from '../lib/storage'
+import { useProfil } from '../components/ProfilContext'
 
 const MODELS: { value: string; label: string }[] = [
   { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6 (domyslny, szybki)' },
@@ -142,6 +148,15 @@ export default function Settings() {
   // Automatyczna pamiec rozmow: po zakonczeniu rozmowy agent zapisuje jej streszczenie.
   const [pamiecAuto, setPamiecAuto] = useState(() => pamiecAutoWlaczona())
 
+  // Pelne transkrypcje rozmow glosowych (obok streszczenia). Widoczne dla obu profili.
+  const [transkrypcjeAuto, setTranskrypcjeAuto] = useState(() =>
+    transkrypcjeAutoWlaczone(),
+  )
+
+  // Sekcja kluczy API i integracji jest widoczna TYLKO dla admina (Pawel).
+  const { profil } = useProfil()
+  const admin = profil?.rola === 'admin'
+
   function przelaczAutoCzytaj() {
     if (!glosTtsOK) return
     const nowy = !autoCzytaj
@@ -153,6 +168,12 @@ export default function Settings() {
     const nowy = !pamiecAuto
     setPamiecAuto(nowy)
     ustawPamiecAuto(nowy)
+  }
+
+  function przelaczTranskrypcjeAuto() {
+    const nowy = !transkrypcjeAuto
+    setTranskrypcjeAuto(nowy)
+    ustawTranskrypcjeAuto(nowy)
   }
 
   function wybierzJakoscGlosu(wybor: JakoscGlosu) {
@@ -199,11 +220,14 @@ export default function Settings() {
           Ustawienia
         </h1>
         <p className="mt-1 text-sm text-zinc-400">
-          Podlacz wlasny klucz Anthropic, aby agenci odpowiadali naprawde.
+          {admin
+            ? 'Podlacz wlasny klucz Anthropic, aby agenci odpowiadali naprawde.'
+            : 'Ustaw glos, pamiec i transkrypcje rozmow pod siebie.'}
         </p>
       </header>
 
-      {/* Sekcja: polaczenie z modelem */}
+      {/* Sekcja: polaczenie z modelem (TYLKO admin) */}
+      {admin && (
       <section aria-label="Polaczenie z modelem">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
@@ -345,6 +369,7 @@ export default function Settings() {
           </p>
         </div>
       </section>
+      )}
 
       {/* Sekcja: Glos JARVIS */}
       <section aria-label="Glos JARVIS" className="mt-10">
@@ -479,6 +504,38 @@ export default function Settings() {
               />
             </button>
           </div>
+          {/* Pelne transkrypcje rozmow glosowych (widoczne dla obu profili) */}
+          <div className="mt-4 flex items-start justify-between gap-4 border-t border-zinc-800 pt-4">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-zinc-200">
+                Zapisuj pelne transkrypcje rozmow
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+                Po kazdej rozmowie glosowej, obok streszczenia, zapisze do mozgu
+                pelny zapis wypowiedzi (grupa "Transkrypcje rozmow"). Przyda sie do
+                dokladnego odtworzenia, co dokladnie padlo.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={transkrypcjeAuto}
+              aria-label="Zapisuj pelne transkrypcje rozmow"
+              onClick={przelaczTranskrypcjeAuto}
+              className={[
+                'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors',
+                transkrypcjeAuto ? 'bg-brand' : 'bg-zinc-700',
+              ].join(' ')}
+            >
+              <span
+                className={[
+                  'inline-block h-4 w-4 transform rounded-full bg-zinc-950 transition-transform',
+                  transkrypcjeAuto ? 'translate-x-6' : 'translate-x-1',
+                ].join(' ')}
+                aria-hidden
+              />
+            </button>
+          </div>
           <p className="mt-3 border-t border-zinc-800 pt-3 text-xs leading-relaxed text-zinc-500">
             Streszczenia trafiaja do mozgu firmy (grupa "Pamiec: imie") i mozesz je
             przejrzec oraz usunac w profilu agenta i w zakladce Mozg firmy.
@@ -486,7 +543,8 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* Sekcja: integracje i mozliwosci */}
+      {/* Sekcja: integracje i mozliwosci (TYLKO admin) */}
+      {admin && (
       <section aria-label="Integracje i mozliwosci" className="mt-10">
         <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-zinc-400">
           Integracje i mozliwosci
@@ -545,6 +603,7 @@ export default function Settings() {
           })}
         </div>
       </section>
+      )}
     </div>
   )
 }

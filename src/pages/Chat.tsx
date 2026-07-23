@@ -30,6 +30,7 @@ import {
   zapiszNotatke,
   zapiszPamiecAgenta,
   pamiecAutoWlaczona,
+  imieUczestnika,
   type Rozmowa,
 } from '../lib/storage'
 import ChatMessage from '../components/ChatMessage'
@@ -224,6 +225,7 @@ export default function Chat() {
       tytul: tytulRozmowy(messages),
       messages,
       updatedAt: new Date().toISOString(),
+      uczestnik: imieUczestnika(),
     })
     setHistoria(rozmowyAgenta(agent.slug))
   }, [messages, convId, agent])
@@ -328,6 +330,7 @@ export default function Chat() {
       data: new Date().toISOString(),
       tytul: tytulRozmowy(messages),
       tresc,
+      uczestnik: imieUczestnika(),
     })
     pokazToast(
       'Zapisano notatkę. W kolejnej wersji trafi automatycznie do mózgu firmy.',
