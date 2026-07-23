@@ -542,6 +542,47 @@ export function zapiszTranskrypcje(agentImie: string, pelnaTresc: string): void 
   })
 }
 
+/** Pelne transkrypcje rozmow danej agentki, najnowsze pierwsze. */
+export function transkrypcjeAgenta(imie: string): PlikWlasnyMozgu[] {
+  const slug = slugProsty(imie)
+  return wczytajWlasnePlikiMozgu()
+    .filter((p) => p.grupa === 'transkrypcje' && p.sciezka.includes(`-${slug}-`))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+}
+
+// --- Twarde fakty agenta (JEDEN zywy plik, grupa 'fakty') -------------------
+
+/**
+ * MODEL PAMIECI DLUGOTRWALEJ: kazda agentka ma DOKLADNIE JEDEN zywy plik twardych
+ * faktow (osoby, firmy, projekty, preferencje wlascicieli, trwale ustalenia,
+ * skojarzenia). Sciezka 'fakty/<slug>.md', grupa 'fakty'. Aktualizowany po kazdej
+ * rozmowie (scalanie przez model), wstrzykiwany do promptu czatu i glosu.
+ *
+ * Zapis idzie do sf_mozg_wlasne, wiec plik jest od razu czytany przez getFullBrain()
+ * (kontekst czatu) i szukajWMozgu() (glos, narzedzie przeszukaj_wiedze).
+ */
+function sciezkaFaktow(slug: string): string {
+  return `fakty/${slug}.md`
+}
+
+/** Wczytuje plik twardych faktow agentki (tresc MD) albo null, gdy jeszcze nie ma. */
+export function wczytajFaktyAgenta(slug: string): string | null {
+  const p = wczytajWlasnePlikiMozgu().find(
+    (x) => x.sciezka === sciezkaFaktow(slug),
+  )
+  return p ? p.tresc : null
+}
+
+/** Zapisuje/nadpisuje plik twardych faktow agentki (grupa 'fakty'). */
+export function zapiszFaktyAgenta(slug: string, tresc: string): void {
+  zapiszWlasnyPlikMozgu({
+    sciezka: sciezkaFaktow(slug),
+    tresc: tresc.trim(),
+    grupa: 'fakty',
+    updatedAt: new Date().toISOString(),
+  })
+}
+
 // --- Centrum Dowodzenia: trwalosc biezacej rozmowy -------------------------
 
 /** Odczytuje ostatni przebieg Centrum ([] gdy brak). */

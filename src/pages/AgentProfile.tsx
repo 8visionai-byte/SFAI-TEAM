@@ -1,6 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Brain, Mic, Plus, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  ArrowRight,
+  Brain,
+  Mic,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Save,
+  Sparkles,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { getAgent } from '../data/agents'
 import {
   nowyId,
@@ -13,10 +25,14 @@ import {
   wczytajPersonaNadpis,
   zapiszPersonaNadpis,
   usunPersonaNadpis,
+  wczytajFaktyAgenta,
+  zapiszFaktyAgenta,
   type Umiejetnosc,
   type PlikWlasnyMozgu,
 } from '../lib/storage'
+import { getMode, przebudujFaktyOdZera } from '../lib/ai'
 import Avatar from '../components/Avatar'
+import MarkdownView from '../components/MarkdownView'
 import RozmowaGlosowa from '../components/RozmowaGlosowa'
 import Toast, { useToast } from '../components/Toast'
 
@@ -82,12 +98,19 @@ export default function AgentProfile() {
   // Edytowalna persona (nadpis od wlasciciela): dwa pola tekstowe.
   const [kimJestem, setKimJestem] = useState('')
   const [jakSieZwracam, setJakSieZwracam] = useState('')
+  // Twarde fakty agentki (pamiec dlugotrwala): podglad, edycja, przebudowa.
+  const [fakty, setFakty] = useState('')
+  const [edytujeFakty, setEdytujeFakty] = useState(false)
+  const [draftFakty, setDraftFakty] = useState('')
+  const [przebudowa, setPrzebudowa] = useState(false)
   const { toast, pokazToast } = useToast()
 
-  // Wczytanie wlasnych umiejetnosci, pamieci i nadpisu persony przy zmianie agenta.
+  // Wczytanie wlasnych umiejetnosci, pamieci, faktow i nadpisu persony przy zmianie agenta.
   useEffect(() => {
     setSkille(slug ? skilleAgenta(slug) : [])
     setPamiec(slug ? pamiecAgenta(slug) : [])
+    setFakty(slug ? (wczytajFaktyAgenta(slug) ?? '') : '')
+    setEdytujeFakty(false)
     const nadpis = slug ? wczytajPersonaNadpis(slug) : null
     setKimJestem(nadpis?.kimJestem ?? '')
     setJakSieZwracam(nadpis?.jakSieZwracam ?? '')
@@ -152,6 +175,45 @@ export default function AgentProfile() {
     usunWlasnyPlikMozgu(sciezka)
     setPamiec(pamiecAgenta(agent.slug))
     pokazToast('Usunieto wpis pamieci.')
+  }
+
+  function zacznijEdycjeFaktow() {
+    setDraftFakty(fakty)
+    setEdytujeFakty(true)
+  }
+
+  function zapiszFakty() {
+    if (!agent) return
+    const t = draftFakty.trim()
+    zapiszFaktyAgenta(agent.slug, t)
+    setFakty(t)
+    setEdytujeFakty(false)
+    pokazToast('Zapisano twarde fakty. Agent zna je od nastepnej wiadomosci.')
+  }
+
+  async function przebudujFakty() {
+    if (!agent || przebudowa) return
+    if (getMode() === 'demo') {
+      pokazToast('Przebudowa faktow wymaga klucza API (dodaj w Ustawieniach).')
+      return
+    }
+    setPrzebudowa(true)
+    try {
+      const imie = agent.personImie ?? agent.name
+      const nowa = await przebudujFaktyOdZera(agent.slug, imie)
+      if (nowa) {
+        setFakty(nowa)
+        setDraftFakty(nowa)
+        setEdytujeFakty(false)
+        pokazToast('Przebudowano fakty z pamieci i transkrypcji.')
+      } else {
+        pokazToast('Brak materialu do przebudowy. Najpierw porozmawiaj z agentem.')
+      }
+    } catch {
+      pokazToast('Nie udalo sie przebudowac faktow. Sprobuj ponownie.')
+    } finally {
+      setPrzebudowa(false)
+    }
   }
 
   function zapiszPersone() {
@@ -481,6 +543,88 @@ export default function AgentProfile() {
               Dodaj
             </button>
           </div>
+        </div>
+      </section>
+
+      {/* Twarde fakty (pamiec dlugotrwala) */}
+      <section className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <Sparkles size={15} style={{ color: agent.accent }} aria-hidden />
+          <NaglowekSekcji>Twarde fakty</NaglowekSekcji>
+          <div className="ml-auto flex flex-shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={przebudujFakty}
+              disabled={przebudowa}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900/80 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              title="Zbuduj plik faktow od zera z ostatnich rozmow i transkrypcji"
+            >
+              <RefreshCw
+                size={13}
+                aria-hidden
+                className={przebudowa ? 'animate-spin' : ''}
+              />
+              {przebudowa ? 'Przebudowuje...' : 'Przebuduj z pamieci i transkrypcji'}
+            </button>
+            {edytujeFakty ? (
+              <>
+                <button
+                  type="button"
+                  onClick={zapiszFakty}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-2.5 py-1.5 text-xs font-semibold text-zinc-950 transition-colors hover:bg-brand-soft"
+                >
+                  <Save size={13} aria-hidden />
+                  Zapisz
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEdytujeFakty(false)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900/80 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
+                >
+                  <X size={13} aria-hidden />
+                  Anuluj
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={zacznijEdycjeFaktow}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900/80 px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white"
+              >
+                <Pencil size={13} aria-hidden />
+                Edytuj
+              </button>
+            )}
+          </div>
+        </div>
+        <p className="mt-1.5 text-xs text-zinc-500">
+          Jeden zywy plik pamieci dlugotrwalej {agent.personImie ?? agent.name}:
+          osoby, firmy, projekty, preferencje i trwale ustalenia. Uzupelnia sie sam
+          po kazdej rozmowie (gdy auto-pamiec wlaczona) i wchodzi do glowy agenta w
+          czacie oraz w rozmowie glosem.
+        </p>
+
+        <div className="mt-4">
+          {edytujeFakty ? (
+            <textarea
+              value={draftFakty}
+              onChange={(e) => setDraftFakty(e.target.value)}
+              spellCheck={false}
+              rows={16}
+              aria-label="Edycja twardych faktow"
+              placeholder="## Osoby&#10;- ...&#10;&#10;## Firmy i projekty&#10;- ...&#10;&#10;## Preferencje Pawla i Marcina&#10;- ...&#10;&#10;## Trwale ustalenia&#10;- ...&#10;&#10;## Skojarzenia i wnioski&#10;- ..."
+              className="min-h-[320px] w-full resize-y rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 font-mono text-[0.85rem] leading-relaxed text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-brand/50 focus:ring-1 focus:ring-brand/40"
+            />
+          ) : fakty.trim() ? (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-4 py-3">
+              <MarkdownView>{fakty}</MarkdownView>
+            </div>
+          ) : (
+            <p className="text-xs text-zinc-500">
+              Brak twardych faktow. Porozmawiaj z agentem albo kliknij "Przebuduj z
+              pamieci i transkrypcji", a fakty pojawia sie tutaj.
+            </p>
+          )}
         </div>
       </section>
 

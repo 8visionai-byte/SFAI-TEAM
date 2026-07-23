@@ -8,6 +8,11 @@ import {
   getSesja,
   authNaglowek,
   wczytajPersonaNadpis,
+  wczytajFaktyAgenta,
+  zapiszFaktyAgenta,
+  pamiecAgenta,
+  transkrypcjeAgenta,
+  pamiecAutoWlaczona,
 } from './storage'
 
 export interface ChatMessage {
@@ -186,6 +191,34 @@ function personaNadpisBlok(agentSlug: string): string {
   return linie.join('\n')
 }
 
+/** Twardy limit dlugosci wstrzykiwanych faktow (znaki), zeby zmiescic budzet promptu. */
+const FAKTY_LIMIT = 6000
+
+/**
+ * Blok TWARDYCH FAKTOW agentki (jej dlugotrwala pamiec): caly plik fakty/<slug>.md
+ * wstrzykiwany do promptu czatu i glosu tuz po bloku tozsamosci. Model traktuje te
+ * fakty jako pewne. Pusty string, gdy agentka nie ma jeszcze zadnych faktow.
+ */
+function faktyBlok(agentSlug: string): string {
+  const surowe = (wczytajFaktyAgenta(agentSlug) ?? '').trim()
+  if (!surowe) return ''
+  const fakty = surowe.length > FAKTY_LIMIT ? surowe.slice(0, FAKTY_LIMIT) : surowe
+  return [
+    '=== TWOJA PAMIEC TWARDYCH FAKTOW (znasz to na pewno) ===',
+    'To Twoja pamiec dlugotrwala: osoby, firmy, projekty, preferencje wlascicieli (Pawel, Marcin) i trwale ustalenia. Traktuj te fakty jako pewne i aktualne. Gdy pytanie ich dotyczy, odpowiadaj wprost z tej pamieci, nie zgaduj.',
+    fakty,
+  ].join('\n')
+}
+
+/**
+ * Instrukcja przeszukiwania CALEJ pamieci na wyrazna prosbe wlasciciela.
+ * Wersja glosowa uzywa narzedzia przeszukaj_wiedze; czat przeglada mozg powyzej.
+ */
+const PRZESZUKAJ_INFO_GLOS =
+  'Gdy Pawel albo Marcin prosi: "odnies sie do pamieci", "przeszukaj wszystko", "co wiemy o...": uzyj przeszukaj_wiedze WIELOKROTNIE z roznymi zapytaniami (osoby, tematy, daty) i polacz twarde fakty z transkrypcjami rozmow.'
+const PRZESZUKAJ_INFO_CZAT =
+  'Gdy Pawel albo Marcin prosi: "odnies sie do pamieci", "przeszukaj wszystko", "co wiemy o...": przejrzyj w mozgu powyzej pliki z grup twardych faktow, pamieci i transkrypcji (rozne watki: osoby, tematy, daty) i polacz je w jedna odpowiedz.'
+
 /** Buduje system prompt dla danego agenta z osadzonego mozgu i persony. */
 export function buildSystemPrompt(agentSlug: string): string {
   const agent = getAgent(agentSlug)
@@ -233,6 +266,8 @@ export function buildSystemPrompt(agentSlug: string): string {
   // Edytowalna persona od wlasciciela (nadrzedna) + lista kolezanek do odsylania.
   const nadpis = personaNadpisBlok(agentSlug)
   const zespol = listaKolezanek(agentSlug)
+  // Twarde fakty agentki (pamiec dlugotrwala) tuz po bloku tozsamosci (persona).
+  const fakty = faktyBlok(agentSlug)
 
   return [
     '=== MOZG FIRMY (pelna tresc, czytaj przed odpowiedzia) ===',
@@ -241,11 +276,13 @@ export function buildSystemPrompt(agentSlug: string): string {
     '=== TWOJA PERSONA ===',
     persona,
     ...(nadpis ? ['', nadpis] : []),
+    ...(fakty ? ['', fakty] : []),
     ...(sekcjaSkilli ? ['', sekcjaSkilli] : []),
     '',
     zespol,
     '',
     pamiecInfo,
+    PRZESZUKAJ_INFO_CZAT,
     ...(webInfo ? [webInfo] : []),
     '',
     regulyZTonem(),
@@ -272,6 +309,105 @@ export function buildPamiecPrompt(imiePersony: string): string {
 }
 
 /**
+ * System prompt do AKTUALIZACJI/EKSTRAKCJI pliku TWARDYCH FAKTOW agentki.
+ * Model dostaje dotychczasowy plik + transkrypcje i zwraca pelna, scalona tresc MD.
+ */
+export function buildFaktyPrompt(imiePersony: string): string {
+  return [
+    `Jestes ${imiePersony}. Prowadzisz WLASNY plik twardych faktow: Twoja pamiec dlugotrwala o firmie, ludziach i ustaleniach.`,
+    'Dostajesz DOTYCHCZASOWY plik faktow oraz TRANSKRYPCJE nowej rozmowy (albo zrodla do zbudowania pliku od zera).',
+    'ZAKTUALIZUJ plik: dodaj nowe twarde fakty (osoby, relacje, decyzje, preferencje), SCAL z istniejacymi (nie duplikuj), NIE usuwaj potwierdzonych faktow, popraw jesli nowa rozmowa je prostuje, utrzymaj strukture sekcji i limit.',
+    'Uzyj DOKLADNIE tych sekcji, w tej kolejnosci (naglowek ## dla kazdej, nawet gdy sekcja pusta):',
+    '## Osoby',
+    '## Firmy i projekty',
+    '## Preferencje Pawla i Marcina',
+    '## Trwale ustalenia',
+    '## Skojarzenia i wnioski',
+    'Kazdy fakt to zwiezly punkt listy od "- ". Przy osobach podaj kim jest i od czego (np. "- Klaudiusz: ..."). Nie powtarzaj wielokrotnie "1.".',
+    'Zasady: prosty polski, bez em-dash, tylko potwierdzone fakty. Nie zmyslaj liczb, osob ani ustalen.',
+    'Limit calosci: okolo 6000 znakow. Gdy braknie miejsca, zostaw najwazniejsze i najswiezsze fakty.',
+    'Zwroc TYLKO pelna, nowa tresc pliku markdown. Bez wstepu, bez komentarzy, bez bloku kodu.',
+  ].join('\n')
+}
+
+/** Zdejmuje ewentualny blok kodu ```markdown, gdy model owinie odpowiedz. */
+function oczyscMd(s: string): string {
+  return s
+    .trim()
+    .replace(/^```(?:markdown|md)?\s*\n?/i, '')
+    .replace(/\n?```\s*$/i, '')
+    .trim()
+}
+
+/**
+ * AKTUALIZACJA twardych faktow agentki po rozmowie (glos i czat). Bierze biezacy
+ * plik faktow + transkrypcje tej rozmowy, prosi model o scalona tresc i nadpisuje
+ * fakty/<slug>.md. Sterowane tym samym przelacznikiem co pamiec (sf_pamiec_auto).
+ * Bez klucza (tryb demo) pomija: fakty wymagaja modelu. Nie rzuca wyjatkow.
+ */
+export async function aktualizujFaktyPoRozmowie(
+  slug: string,
+  imiePersony: string,
+  transkrypcja: string,
+): Promise<void> {
+  if (!pamiecAutoWlaczona()) return
+  if (getMode() === 'demo') return
+  const t = (transkrypcja ?? '').trim()
+  if (!t) return
+  const dotychczas = (wczytajFaktyAgenta(slug) ?? '').trim()
+  const user = [
+    '=== DOTYCHCZASOWY PLIK FAKTOW (moze byc pusty) ===',
+    dotychczas || '(brak - to pierwszy zapis, utworz plik od zera)',
+    '',
+    '=== TRANSKRYPCJA NOWEJ ROZMOWY ===',
+    t,
+  ].join('\n')
+  try {
+    const nowa = (
+      await callModel(buildFaktyPrompt(imiePersony), [
+        { role: 'user', content: user },
+      ])
+    ).trim()
+    if (nowa) zapiszFaktyAgenta(slug, oczyscMd(nowa))
+  } catch {
+    // Blad modelu: zostawiamy dotychczasowe fakty bez zmian.
+  }
+}
+
+/**
+ * PRZEBUDOWA twardych faktow OD ZERA z ostatnich ~10 plikow pamieci i transkrypcji
+ * agentki. Uzywane przez przycisk w profilu agenta. Zwraca nowa tresc albo null
+ * (tryb demo albo brak materialu). Zapisuje wynik do fakty/<slug>.md.
+ */
+export async function przebudujFaktyOdZera(
+  slug: string,
+  imiePersony: string,
+): Promise<string | null> {
+  if (getMode() === 'demo') return null
+  const zrodla = [...pamiecAgenta(slug), ...transkrypcjeAgenta(imiePersony)]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 10)
+  if (zrodla.length === 0) return null
+  const material = zrodla.map((z) => z.tresc.trim()).join('\n\n---\n\n')
+  const user = [
+    '=== DOTYCHCZASOWY PLIK FAKTOW (moze byc pusty) ===',
+    '(brak - buduj plik od zera z ponizszych zrodel)',
+    '',
+    '=== ZRODLA: OSTATNIE ROZMOWY I TRANSKRYPCJE ===',
+    material,
+  ].join('\n')
+  const nowa = (
+    await callModel(buildFaktyPrompt(imiePersony), [
+      { role: 'user', content: user },
+    ])
+  ).trim()
+  if (!nowa) return null
+  const czysta = oczyscMd(nowa)
+  zapiszFaktyAgenta(slug, czysta)
+  return czysta
+}
+
+/**
  * Wersja promptu dla ROZMOWY GLOSOWEJ (OpenAI Realtime). Realtime ma twardy
  * limit 16384 tokenow na instrukcje, wiec zamiast calego mozgu (getFullBrain)
  * dajemy rdzen (Karta Mozgu) + persone + skille + zasady. Zwiezle, ale spojne
@@ -295,6 +431,7 @@ export function buildVoicePrompt(agentSlug: string): string {
     'Nie zmyslasz liczb ani faktow: jesli czegos nie ma w wiedzy, powiedz to wprost.',
     'Masz tez narzedzie zapisz_do_bazy: mozesz utrwalac wazne ustalenia w bazie wiedzy firmy. Gdy w rozmowie padnie trwaly, warty zapamietania fakt (nowa cena, decyzja, ustalenie o kliencie idealnym, sprawdzony sposob na obiekcje, nowa informacja o ofercie), PROAKTYWNIE zaproponuj zapis: "Chcesz, zebym zapisal to do naszej bazy?". Po wyraznej zgodzie wywolaj zapisz_do_bazy z rzeczowym tytulem i zwiezla trescia. Nie zapisuj rzeczy ulotnych, dygresji ani niepotwierdzonych liczb i nie zapisuj bez zgody.',
     'Masz pamiec wczesniejszych rozmow: gdy wlasciciel pyta o wczesniejsze ustalenia ("o czym rozmawialismy", "co ustalilismy"), uzyj przeszukaj_wiedze z odpowiednim zapytaniem.',
+    PRZESZUKAJ_INFO_GLOS,
   ]
   // COO (Leo) realnie uruchamia zespol glosem: narzedzie uruchom_zespol odpala
   // wybranych specjalistow, a gdy wroca raporty, Leo referuje je glosem. To sama
@@ -326,8 +463,9 @@ export function buildVoicePrompt(agentSlug: string): string {
       : ''
   }
   // Realtime ma twardy budzet ~16k tokenow na instrukcje. Gdy persona jest duza,
-  // TNIEMY persone (blok tozsamosci i Karta Mozgu zostaja w calosci).
-  const PERSONA_LIMIT = 18000
+  // TNIEMY persone (blok tozsamosci, twarde fakty i Karta Mozgu zostaja w calosci).
+  // Limit 14000: robimy miejsce na blok twardych faktow (do 6000 znakow) pod sufitem 40k.
+  const PERSONA_LIMIT = 14000
   if (persona.length > PERSONA_LIMIT) {
     persona =
       persona.slice(0, PERSONA_LIMIT) +
@@ -351,11 +489,14 @@ export function buildVoicePrompt(agentSlug: string): string {
   // Edytowalna persona od wlasciciela (nadrzedna) + lista kolezanek do odsylania.
   const nadpis = personaNadpisBlok(agentSlug)
   const zespol = listaKolezanek(agentSlug)
+  // Twarde fakty agentki (pamiec dlugotrwala) tuz po bloku tozsamosci.
+  const fakty = faktyBlok(agentSlug)
 
   const out = [
     '=== KIM JESTES (najwazniejsze, czytaj najpierw) ===',
     tozsamosc,
     ...(nadpis ? ['', nadpis] : []),
+    ...(fakty ? ['', fakty] : []),
     '',
     '=== RDZEN WIEDZY O FIRMIE (Karta Mozgu) ===',
     card,

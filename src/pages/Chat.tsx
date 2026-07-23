@@ -18,6 +18,7 @@ import {
   callModel,
   getMode,
   buildPamiecPrompt,
+  aktualizujFaktyPoRozmowie,
   type ChatMessage as Msg,
 } from '../lib/ai'
 import { isSttSupported, startListening, stopListening } from '../lib/voice'
@@ -157,6 +158,9 @@ async function zapiszPamiecZRozmowy(id: string): Promise<void> {
   }
   if (!streszczenie) streszczenie = skrocTekst(tekst)
   zapiszPamiecAgenta(a.slug, tytul, streszczenie)
+  // Aktualizacja twardych faktow agentki (jeden zywy plik). Ten sam moment i
+  // toggle co pamiec. Bez klucza pomija sama (fakty wymagaja modelu).
+  void aktualizujFaktyPoRozmowie(a.slug, imie, tekst)
 }
 
 export default function Chat() {

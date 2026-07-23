@@ -10,6 +10,7 @@ import {
 } from '../lib/realtime'
 import { mowPowitanie, mowTekstem, zatrzymajMowe } from '../lib/eleven'
 import {
+  aktualizujFaktyPoRozmowie,
   buildPamiecPrompt,
   callModel,
   getMode,
@@ -441,6 +442,9 @@ export default function RozmowaWMiejscu({
     }
     if (!streszczenie) streszczenie = skrocTranskrypt(rozmowaTekst)
     zapiszPamiecAgenta(agent.slug, tytul, streszczenie)
+    // Aktualizacja twardych faktow agentki (jeden zywy plik). Ten sam moment i
+    // toggle co pamiec. Bez klucza pomija sama (fakty wymagaja modelu).
+    void aktualizujFaktyPoRozmowie(agent.slug, imie, rozmowaTekst)
   }
 
   /**

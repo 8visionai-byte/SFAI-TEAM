@@ -122,6 +122,7 @@ function etykietaGrupy(key: string): string {
   if (key === 'z-rozmow') return 'Z rozmow'
   if (key === 'briefingi') return 'Briefingi z narad'
   if (key === 'transkrypcje') return 'Transkrypcje rozmow'
+  if (key === 'fakty') return 'Twarde fakty'
   if (key.startsWith('pamiec-')) {
     const slug = key.slice('pamiec-'.length)
     const a = getAgent(slug)

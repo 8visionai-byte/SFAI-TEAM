@@ -74,6 +74,7 @@ const GROUP_COLOR: Record<string, string> = {
   notatki: '#E4E4E7', // twoje notatki
   briefingi: '#C084FC', // briefingi z narad zespolu
   transkrypcje: '#22D3EE', // pelne transkrypcje rozmow glosowych
+  fakty: '#EAB308', // twarde fakty agentow (pamiec dlugotrwala)
 }
 
 /** Czytelne etykiety grup w legendzie. */
@@ -89,6 +90,7 @@ const GROUP_LABEL: Record<string, string> = {
   notatki: 'Twoje notatki',
   briefingi: 'Briefingi z narad',
   transkrypcje: 'Transkrypcje rozmow',
+  fakty: 'Twarde fakty',
 }
 
 /** Kolejnosc grup w legendzie. */
@@ -100,6 +102,7 @@ const GROUP_RANK = [
   'proof',
   'zespol-i-decyzje',
   'zespol',
+  'fakty',
   'wlasne',
   'notatki',
   'briefingi',
@@ -129,6 +132,8 @@ export const GROUP_OPIS: Record<string, string> = {
     'Zwiezle briefingi z narad zespolu: temat, ustalenia, decyzje i nastepne kroki, zapisane na koniec rozmowy.',
   transkrypcje:
     'Pelne zapisy wypowiedzi z rozmow glosowych. Obok streszczen pamieci, do dokladnego odtworzenia, co padlo i z kim.',
+  fakty:
+    'Zywy plik twardych faktow kazdej agentki: osoby, firmy, projekty, preferencje wlascicieli i trwale ustalenia. Pamiec dlugotrwala, scalana po kazdej rozmowie.',
 }
 
 /** Slug agenta z klucza grupy pamieci 'pamiec-<slug>' (albo null). */

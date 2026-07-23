@@ -232,8 +232,9 @@ export function szukajWMozgu(zapytanie: string, limitZnakow = 6000): string {
   type Jednostka = { etykieta: string; tresc: string; swiezosc: number }
   const jednostki: Jednostka[] = [
     ...getBrainFiles().map((f) => {
-      // Tylko pliki pamieci (grupa 'pamiec-...') dostaja niezerowa swiezosc.
-      const pamiec = f.group.startsWith('pamiec-')
+      // Pliki pamieci (grupa 'pamiec-...') i twardych faktow ('fakty') dostaja
+      // niezerowa swiezosc: przy remisie wyniku rankuja wyzej niz statyczny mozg.
+      const pamiec = f.group.startsWith('pamiec-') || f.group === 'fakty'
       const updatedAt = wlasneMap.get(f.path)
       const swiezosc =
         pamiec && updatedAt ? Date.parse(updatedAt) || 0 : 0

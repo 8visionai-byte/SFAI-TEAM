@@ -317,6 +317,16 @@ export async function startRozmowa(
   // blad OpenAI 'conversation_already_has_active_response'.
   let aktywnaOdpowiedz = false
   let oczekujeResponseCreate = false
+  // Licznik nieskonsumowanych function_call_output. Podnoszony przy KAZDYM
+  // wyslaniu function_call_output do modelu, zerowany przy wyslaniu response.create
+  // (response.create konsumuje output). Zakolejkowany response.create wolno
+  // wyslac TYLKO gdy licznik > 0 (jest NOWA tresc do wypowiedzenia). Goly
+  // response.create bez nowej tresci kazalby modelowi wygenerowac druga, podobna
+  // wypowiedz z tej samej tresci = POWTORKA (raport wlasciciela).
+  let nieskonsumowanyOutput = 0
+  // Licznik zdarzen response.created w tej sesji. Powitanie wolno wyslac tylko
+  // gdy ==0 (zadna odpowiedz jeszcze nie powstala), zeby nie dublowac mowy.
+  let licznikResponseCreated = 0
 
   /** Pelne sprzatanie: idempotentne, wolane z zakoncz() i przy bledzie. */
   function sprzataj() {
@@ -376,8 +386,17 @@ export async function startRozmowa(
       console.info('[realtime] iceConnectionState:', pc.iceConnectionState)
     }
 
-    // Wejscie: mikrofon uzytkownika.
-    mic = await navigator.mediaDevices.getUserMedia({ audio: true })
+    // Wejscie: mikrofon uzytkownika. WYMUSZAMY echoCancellation/noiseSuppression/
+    // autoGainControl w przegladarce, zeby mikrofon NIE lapal glosu agentki z
+    // glosnikow (echo -> VAD tworzylby "wypowiedz usera" -> model odpowiadalby
+    // podobnie = powtorka). Serwerowy noise_reduction near_field zostaje (session.update).
+    mic = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    })
     const trakty = mic.getAudioTracks()
     console.info(
       '[realtime] mic tracks:',
@@ -504,6 +523,7 @@ export async function startRozmowa(
     // (podnosimy flage wspolbieznosci).
     if (typ === 'response.created') {
       aktywnaOdpowiedz = true
+      licznikResponseCreated += 1
       opcje.onStan('mowie')
       return
     }
@@ -545,16 +565,18 @@ export async function startRozmowa(
       transAgent = ''
       opcje.onStan('slucham')
       // Byl zakolejkowany response.create (raporty zespolu czekaly na wolna
-      // linie)? Teraz jest bezpiecznie go odpalic.
+      // linie)? Wolno go odpalic TYLKO gdy jest nieskonsumowany
+      // function_call_output (NOWA tresc do wypowiedzenia). Goly response.create
+      // bez nowej tresci kazalby modelowi POWTORZYC ostatnia kwestie - dlatego guard.
+      // Po wyslaniu kolejka jest wyczyszczona (oczekujeResponseCreate=false).
       if (oczekujeResponseCreate) {
         oczekujeResponseCreate = false
-        if (dc && dc.readyState === 'open') {
-          try {
-            dc.send(JSON.stringify({ type: 'response.create' }))
-            aktywnaOdpowiedz = true
-          } catch {
-            // Kanal mogl paść; kolejne zdarzenia bledu zajma sie reszta.
-          }
+        if (nieskonsumowanyOutput > 0) {
+          wyslijResponseCreateTeraz('kolejka-po-response-done')
+        } else {
+          console.info(
+            '[realtime] pominieto zakolejkowany response.create: brak nowej tresci (guard powtorki)',
+          )
         }
       }
       return
@@ -605,24 +627,11 @@ export async function startRozmowa(
     opcje.onStan('mysle')
 
     const wynik = szukajWMozgu(zapytanie)
-    if (!dc || dc.readyState !== 'open') return
-    try {
-      // 1) wrzuc wynik do konwersacji (output MUSI byc stringiem).
-      dc.send(
-        JSON.stringify({
-          type: 'conversation.item.create',
-          item: {
-            type: 'function_call_output',
-            call_id: callId,
-            output: wynik,
-          },
-        }),
-      )
-      // 2) dopiero teraz kaz modelowi mowic dalej z tego, co znalazl.
-      dc.send(JSON.stringify({ type: 'response.create' }))
-    } catch {
-      // Kanal mogl paść; nastepne zdarzenia bledu zajma sie reszta.
-    }
+    // 1) wrzuc wynik do konwersacji (output MUSI byc stringiem) -> podnosi licznik
+    //    nieskonsumowanego outputu. 2) kaz modelowi mowic dalej z tego, co znalazl
+    //    (response.create konsumuje output, zeruje licznik, loguje powod).
+    if (!odeslijFunctionOutput(callId, wynik)) return
+    wyslijResponseCreateTeraz('function-output:przeszukaj_wiedze')
   }
 
   /**
@@ -654,22 +663,8 @@ export async function startRozmowa(
       tresc: naglowek + tresc.trim() + '\n',
     })
 
-    if (!dc || dc.readyState !== 'open') return
-    try {
-      dc.send(
-        JSON.stringify({
-          type: 'conversation.item.create',
-          item: {
-            type: 'function_call_output',
-            call_id: callId,
-            output: JSON.stringify({ ok: true, sciezka }),
-          },
-        }),
-      )
-      dc.send(JSON.stringify({ type: 'response.create' }))
-    } catch {
-      // Kanal mogl paść; nastepne zdarzenia bledu zajma sie reszta.
-    }
+    if (!odeslijFunctionOutput(callId, JSON.stringify({ ok: true, sciezka }))) return
+    wyslijResponseCreateTeraz('function-output:zapisz_do_bazy')
   }
 
   /**
@@ -679,17 +674,59 @@ export async function startRozmowa(
    * response.done. Uzywane po odeslaniu raportow zespolu, bo user moze gadac
    * dalej podczas pracy zespolu i miec wtedy wlasna aktywna odpowiedz.
    */
-  function wyslijResponseCreate() {
+  function wyslijResponseCreate(powod: string) {
     if (!dc || dc.readyState !== 'open') return
     if (aktywnaOdpowiedz) {
       oczekujeResponseCreate = true
+      console.info('[realtime] response.create zakolejkowany, powod:', powod)
       return
     }
+    wyslijResponseCreateTeraz(powod)
+  }
+
+  /**
+   * Odsyla function_call_output do modelu i podnosi licznik nieskonsumowanego
+   * outputu. Ten licznik jest warunkiem, ze zakolejkowany response.create ma NOWA
+   * tresc do wypowiedzenia (chroni przed powtorka). output MUSI byc stringiem.
+   */
+  function odeslijFunctionOutput(callId: string, output: string): boolean {
+    if (!dc || dc.readyState !== 'open') return false
     try {
-      dc.send(JSON.stringify({ type: 'response.create' }))
-      aktywnaOdpowiedz = true
+      dc.send(
+        JSON.stringify({
+          type: 'conversation.item.create',
+          item: { type: 'function_call_output', call_id: callId, output },
+        }),
+      )
+      nieskonsumowanyOutput += 1
+      return true
     } catch {
       // Kanal mogl paść; nastepne zdarzenia bledu zajma sie reszta.
+      return false
+    }
+  }
+
+  /**
+   * Wysyla response.create OD RAZU (bez kolejkowania). Zeruje licznik
+   * nieskonsumowanego outputu (response.create wlasnie go konsumuje), podnosi
+   * aktywnaOdpowiedz i LOGUJE powod (diagnoza przyszlych powtorzen z konsoli
+   * wlasciciela). Opcjonalny 'response' (np. instrukcja powitania) idzie jako
+   * dodatkowa tresc do modelu.
+   */
+  function wyslijResponseCreateTeraz(powod: string, response?: unknown): boolean {
+    if (!dc || dc.readyState !== 'open') return false
+    try {
+      const payload = response
+        ? { type: 'response.create', response }
+        : { type: 'response.create' }
+      dc.send(JSON.stringify(payload))
+      nieskonsumowanyOutput = 0
+      aktywnaOdpowiedz = true
+      console.info('[realtime] response.create wyslany, powod:', powod)
+      return true
+    } catch {
+      // Kanal mogl paść; nastepne zdarzenia bledu zajma sie reszta.
+      return false
     }
   }
 
@@ -807,23 +844,11 @@ export async function startRozmowa(
    * wspolbieznosci) prosi model o dokonczenie glosem. output MUSI byc stringiem.
    */
   function odeslijRaportyZespolu(callId: string, ok: boolean, raporty: string) {
-    if (!dc || dc.readyState !== 'open') return
-    try {
-      dc.send(
-        JSON.stringify({
-          type: 'conversation.item.create',
-          item: {
-            type: 'function_call_output',
-            call_id: callId,
-            output: JSON.stringify({ ok, raporty }),
-          },
-        }),
-      )
-    } catch {
-      // Kanal mogl paść; nastepne zdarzenia bledu zajma sie reszta.
-      return
-    }
-    wyslijResponseCreate()
+    // Odsyla wynik (podnosi licznik nieskonsumowanego outputu), potem bezpiecznie
+    // wzgledem wspolbieznosci prosi model o dokonczenie glosem (kolejkuje, gdy user
+    // ma teraz wlasna aktywna odpowiedz - odpali sie na response.done z guardem).
+    if (!odeslijFunctionOutput(callId, JSON.stringify({ ok, raporty }))) return
+    wyslijResponseCreate('function-output:uruchom_zespol')
   }
 
   /**
@@ -836,19 +861,20 @@ export async function startRozmowa(
     const tekst = opcje.powitanie
     if (!tekst) return
     if (!dc || dc.readyState !== 'open') return
+    // Powitanie wolno wyslac TYLKO gdy zadna odpowiedz jeszcze nie powstala
+    // (!aktywnaOdpowiedz i licznikResponseCreated==0). Inaczej model juz mowi/mowil
+    // (np. sam ruszyl z VAD) i dolozenie powitania dublowaloby wypowiedz.
+    if (aktywnaOdpowiedz || licznikResponseCreated > 0) {
+      console.info('[realtime] pominieto powitanie: odpowiedz juz powstala')
+      return
+    }
     powitalSie = true
-    try {
-      dc.send(
-        JSON.stringify({
-          type: 'response.create',
-          response: { instructions: tekst },
-        }),
-      )
-      opcje.onStan('mowie')
-    } catch {
+    if (!wyslijResponseCreateTeraz('powitanie', { instructions: tekst })) {
       // Kanal mogl paść; powitanie nie jest krytyczne dla dalszej rozmowy.
       powitalSie = false
+      return
     }
+    opcje.onStan('mowie')
   }
 
   // --- Pomiar poziomu dzwieku (aura) ---------------------------------------
