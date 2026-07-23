@@ -34,18 +34,32 @@ export interface Notatka {
 /** Identyfikator profilu uzytkownika. */
 export type IdProfilu = 'pawel' | 'marcin'
 
-/** Profil uzytkownika (bez backendu, localStorage sf_profil). */
+/**
+ * Rola uprawnien:
+ *  - 'admin-techniczny' (Pawel): pelne korzystanie + sekcja kluczy i integracji,
+ *  - 'admin' (Marcin): pelne korzystanie, bez sekcji kluczy i integracji.
+ */
+export type Rola = 'admin-techniczny' | 'admin'
+
+/** Profil uzytkownika (tozsamosc + rola). Wywodzony z sesji (sf_sesja). */
 export interface Profil {
   id: IdProfilu
   imie: string
-  rola: 'admin' | 'uzytkownik'
+  rola: Rola
 }
 
-/** Dwa stale profile firmy. Pawel = admin (widzi klucze i integracje). */
+/** Dwa stale profile firmy. Pawel = admin techniczny (widzi klucze i integracje). */
 export const PROFILE: Profil[] = [
-  { id: 'pawel', imie: 'Pawel', rola: 'admin' },
-  { id: 'marcin', imie: 'Marcin', rola: 'uzytkownik' },
+  { id: 'pawel', imie: 'Pawel', rola: 'admin-techniczny' },
+  { id: 'marcin', imie: 'Marcin', rola: 'admin' },
 ]
+
+/** Sesja logowania (localStorage sf_sesja). token '' = tryb otwarty (bez hasla). */
+export interface Sesja {
+  token: string
+  uzytkownik: IdProfilu
+  rola: Rola
+}
 
 /** Pojedynczy wpis przebiegu w Centrum Dowodzenia (localStorage, klucz sf_centrum). */
 export type WpisCentrum =
@@ -61,6 +75,19 @@ export interface Umiejetnosc {
   /** Instrukcja tekstowa doklejana do system promptu agenta, gdy aktywna. */
   instrukcja: string
   aktywna: boolean
+}
+
+/**
+ * Edytowalna persona agenta ustawiona przez wlasciciela (localStorage, klucz
+ * sf_persona_nadpis). Nadrzedna nad domyslnym stylem persony w promptach.
+ */
+export interface PersonaNadpis {
+  agentSlug: string
+  /** "Kim jest i jaka jest" (tozsamosc/charakter nadany przez wlasciciela). */
+  kimJestem: string
+  /** "Jak zwraca sie do nas" (forma zwracania sie, ton powitania). */
+  jakSieZwracam: string
+  updatedAt: string
 }
 
 /** Nadpis lokalny pliku mozgu (localStorage, klucz sf_mozg_nadpisy). */
@@ -84,12 +111,13 @@ export interface PlikWlasnyMozgu {
 
 const KEY_ROZMOWY = 'sf_rozmowy'
 const KEY_NOTATKI = 'sf_notatki'
+const KEY_PERSONA_NADPIS = 'sf_persona_nadpis'
 const KEY_CENTRUM = 'sf_centrum'
 const KEY_SKILLE = 'sf_skille'
 const KEY_MOZG_NADPISY = 'sf_mozg_nadpisy'
 const KEY_MOZG_WLASNE = 'sf_mozg_wlasne'
 const KEY_PAMIEC_AUTO = 'sf_pamiec_auto'
-const KEY_PROFIL = 'sf_profil'
+const KEY_SESJA = 'sf_sesja'
 const KEY_TRANSKRYPCJE_AUTO = 'sf_transkrypcje_auto'
 
 /** Bezpieczny dostep do localStorage (tryb prywatny moze rzucic wyjatek). */
@@ -137,18 +165,22 @@ function slugProsty(tekst: string): string {
   return slug || 'plik'
 }
 
-// --- Profil uzytkownika (localStorage sf_profil) ---------------------------
+// --- Sesja logowania i profil (localStorage sf_sesja) ----------------------
 
-/** Zwraca zapisany profil (Pawel / Marcin) albo null, gdy nie wybrano. */
-export function getProfil(): Profil | null {
+/** Zwraca zapisana sesje logowania albo null. */
+export function getSesja(): Sesja | null {
   try {
-    const raw = safeStorage()?.getItem(KEY_PROFIL)
+    const raw = safeStorage()?.getItem(KEY_SESJA)
     if (!raw) return null
     const parsed: unknown = JSON.parse(raw)
     if (parsed && typeof parsed === 'object') {
-      const id = (parsed as { id?: unknown }).id
-      const znany = PROFILE.find((p) => p.id === id)
-      if (znany) return znany
+      const u = (parsed as { uzytkownik?: unknown }).uzytkownik
+      const t = (parsed as { token?: unknown }).token
+      const znany = PROFILE.find((p) => p.id === u)
+      // Rola bierzemy z PROFILE (autorytatywna), nie ze storage.
+      if (znany && typeof t === 'string') {
+        return { token: t, uzytkownik: znany.id, rola: znany.rola }
+      }
     }
     return null
   } catch {
@@ -156,13 +188,38 @@ export function getProfil(): Profil | null {
   }
 }
 
-/** Zapisuje wybrany profil w localStorage. */
-export function setProfil(profil: Profil): void {
+/** Zapisuje sesje logowania (token, uzytkownik, rola). */
+export function setSesja(sesja: Sesja): void {
   try {
-    safeStorage()?.setItem(KEY_PROFIL, JSON.stringify(profil))
+    safeStorage()?.setItem(KEY_SESJA, JSON.stringify(sesja))
   } catch {
     // Brak dostepu do storage nie moze zablokowac UI.
   }
+}
+
+/** Kasuje sesje (wylogowanie). */
+export function wyloguj(): void {
+  try {
+    safeStorage()?.removeItem(KEY_SESJA)
+  } catch {
+    // Brak dostepu do storage nie moze zablokowac UI.
+  }
+}
+
+/**
+ * Naglowek autoryzacji do wywolan /api/* (Bearer z tokenu sesji).
+ * Gdy token pusty (tryb otwarty) lub brak sesji, zwraca pusty obiekt.
+ */
+export function authNaglowek(): Record<string, string> {
+  const t = getSesja()?.token
+  return t ? { Authorization: `Bearer ${t}` } : {}
+}
+
+/** Zwraca profil (Pawel / Marcin) wywodzony z sesji albo null. */
+export function getProfil(): Profil | null {
+  const s = getSesja()
+  if (!s) return null
+  return PROFILE.find((p) => p.id === s.uzytkownik) ?? null
 }
 
 /** Imie zalogowanego uczestnika (do tagowania zapisow); fallback 'Uzytkownik'. */
@@ -262,6 +319,45 @@ export function usunSkilla(id: string): void {
   writeList(
     KEY_SKILLE,
     wczytajSkille().filter((s) => s.id !== id),
+  )
+}
+
+// --- Edytowalna persona agenta (sf_persona_nadpis) --------------------------
+
+/** Nadpis persony danego agenta albo null (brak = obowiazuje domyslna persona). */
+export function wczytajPersonaNadpis(agentSlug: string): PersonaNadpis | null {
+  return (
+    readList<PersonaNadpis>(KEY_PERSONA_NADPIS).find(
+      (p) => p.agentSlug === agentSlug,
+    ) ?? null
+  )
+}
+
+/** Zapisuje/aktualizuje nadpis persony danego agenta (po agentSlug). */
+export function zapiszPersonaNadpis(
+  agentSlug: string,
+  kimJestem: string,
+  jakSieZwracam: string,
+): void {
+  const list = readList<PersonaNadpis>(KEY_PERSONA_NADPIS).filter(
+    (p) => p.agentSlug !== agentSlug,
+  )
+  list.push({
+    agentSlug,
+    kimJestem: kimJestem.trim(),
+    jakSieZwracam: jakSieZwracam.trim(),
+    updatedAt: new Date().toISOString(),
+  })
+  writeList(KEY_PERSONA_NADPIS, list)
+}
+
+/** Usuwa nadpis persony (przywraca domyslny styl persony). */
+export function usunPersonaNadpis(agentSlug: string): void {
+  writeList(
+    KEY_PERSONA_NADPIS,
+    readList<PersonaNadpis>(KEY_PERSONA_NADPIS).filter(
+      (p) => p.agentSlug !== agentSlug,
+    ),
   )
 }
 

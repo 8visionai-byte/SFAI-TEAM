@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, Brain, Settings, Repeat } from 'lucide-react'
+import { LayoutDashboard, Users, Brain, Settings, LogOut } from 'lucide-react'
 import Logo from './Logo'
 import { useProfil } from './ProfilContext'
 
@@ -14,20 +14,21 @@ const AKCENT_PROFILU: Record<string, string> = {
   marcin: '#34D399',
 }
 
-/** Przelacznik profilu: avatar-inicjal + imie, klik = zmiana na drugi profil. */
-function PrzelacznikProfilu() {
-  const { profil, przelacz } = useProfil()
+/** Zalogowany profil: avatar-inicjal + imie + rola, klik = wyloguj. */
+function PrzyciskWyloguj() {
+  const { profil, wyloguj } = useProfil()
   if (!profil) return null
   const akcent = AKCENT_PROFILU[profil.id] ?? '#5B8DEF'
   const inicjal = profil.imie.charAt(0).toUpperCase()
-  const rola = profil.rola === 'admin' ? 'Admin' : 'Uzytkownik'
+  const rola =
+    profil.rola === 'admin-techniczny' ? 'Admin techniczny' : 'Admin'
 
   return (
     <button
       type="button"
-      onClick={przelacz}
-      title="Zmien profil"
-      aria-label={`Zalogowany profil: ${profil.imie}. Kliknij, aby zmienic profil.`}
+      onClick={wyloguj}
+      title="Wyloguj"
+      aria-label={`Zalogowany profil: ${profil.imie}. Kliknij, aby sie wylogowac.`}
       className="group mb-1 flex w-full items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3 py-2.5 text-left transition-colors hover:border-zinc-700 hover:bg-zinc-900"
     >
       <span
@@ -45,10 +46,10 @@ function PrzelacznikProfilu() {
           {profil.imie}
         </span>
         <span className="block truncate text-[0.7rem] text-zinc-500">
-          {rola} · zmien profil
+          {rola} · wyloguj
         </span>
       </span>
-      <Repeat
+      <LogOut
         size={15}
         className="flex-shrink-0 text-zinc-600 transition-colors group-hover:text-zinc-300"
         aria-hidden
@@ -124,7 +125,7 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
       </nav>
 
       <div className="mx-3 border-t border-zinc-800/80 px-2 py-5">
-        <PrzelacznikProfilu />
+        <PrzyciskWyloguj />
         <div className="mt-3 flex items-center gap-2">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden />
           <div className="text-xs font-semibold text-zinc-300">

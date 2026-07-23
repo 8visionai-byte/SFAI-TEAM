@@ -8,7 +8,7 @@
  */
 import type { Agent } from '../data/agents'
 import { speak, cancel, oczyscDoMowy } from './voice'
-import { getProfil } from './storage'
+import { authNaglowek, getProfil } from './storage'
 
 /** Aktualnie grane audio ElevenLabs (do zatrzymania przy sprzataniu / barge-in). */
 let biezaceAudio: HTMLAudioElement | null = null
@@ -29,27 +29,14 @@ export function zatrzymajMowe(): void {
 }
 
 /**
- * Pierwsze zdanie roli persony (krotki opis "co robie"), oczyszczone do mowy.
- * Bierze misje agenta i przycina do pierwszego zdania.
+ * Buduje tekst powitania persony: krotkie, personalne, BEZ przedstawiania sie
+ * (rozmowca wie, z kim rozmawia). Po imieniu usera, gdy jest profil.
+ * Tor podstawowy nie zna plci uzytkownika modelu, wiec trzymamy neutralne,
+ * cieple powitanie zgodne z tonem person (od razu do rzeczy).
  */
-function pierwszeZdanie(tekst: string): string {
-  const czysty = oczyscDoMowy(tekst)
-  const m = czysty.match(/^[^.!?]+[.!?]?/)
-  return (m ? m[0] : czysty).trim()
-}
-
-/**
- * Buduje tekst powitania persony po imieniu usera:
- * "Czesc <Uzytkownik>, jestem <Imie>, <rola>. <co robie>."
- * Gdy brak profilu, wita bez imienia usera.
- */
-export function powitanieTekst(agent: Agent): string {
-  const imie = agent.personImie ?? agent.name
-  const rola = agent.role.toLowerCase()
-  const co = pierwszeZdanie(agent.mission)
+export function powitanieTekst(): string {
   const user = getProfil()?.imie
-  const powitanie = user ? `Czesc ${user}, jestem ${imie}` : `Czesc, jestem ${imie}`
-  return `${powitanie}, ${rola}. ${co}`
+  return user ? `Czesc ${user}! Co tam u Ciebie?` : 'Czesc! Co tam u Ciebie?'
 }
 
 export interface OpcjeMowyPersony {
@@ -85,7 +72,7 @@ export async function mowTekstem(
   try {
     const res = await fetch('/api/tts', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authNaglowek() },
       body: JSON.stringify({ text: czysty, voiceId }),
     })
 
@@ -134,12 +121,12 @@ function fallbackSpeak(tekst: string, opcje: OpcjeMowyPersony): void {
 }
 
 /**
- * Wita uzytkownika glosem persony. Tekst budowany z pol agenta (imie + rola +
- * misja). ElevenLabs gdy jest klucz, inaczej voice.ts. onEnd po zakonczeniu.
+ * Wita uzytkownika glosem persony. Powitanie krotkie i personalne, bez auto-
+ * prezentacji (patrz powitanieTekst). ElevenLabs gdy jest klucz, inaczej voice.ts.
  */
 export async function mowPowitanie(
   agent: Agent,
   opcje: OpcjeMowyPersony = {},
 ): Promise<void> {
-  await mowTekstem(agent, powitanieTekst(agent), opcje)
+  await mowTekstem(agent, powitanieTekst(), opcje)
 }

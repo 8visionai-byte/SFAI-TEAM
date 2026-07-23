@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  MessageSquare,
   Mic,
   RotateCcw,
   Save,
@@ -980,6 +985,35 @@ export default function Command() {
   const [potwierdzWyczysc, setPotwierdzWyczysc] = useState(false)
   const { toast, pokazToast } = useToast()
 
+  // --- Zwijany panel rozmowy (trwale w localStorage, domyslnie ROZWINIETY) ---
+  const [zwiniety, setZwiniety] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('sf_panel_zwiniety') === '1'
+    } catch {
+      return false
+    }
+  })
+  // Baza licznika "nowych wpisow" od momentu zwiniecia: gdy zwijamy, zapamietujemy
+  // ile wpisow jest juz "widzianych"; wszystko nowe ponad to liczy sie na pasku.
+  const [nowychBaza, setNowychBaza] = useState(0)
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('sf_panel_zwiniety', zwiniety ? '1' : '0')
+    } catch {
+      /* prywatny tryb przegladarki: brak trwalosci, nie blokuje UI */
+    }
+  }, [zwiniety])
+
+  /** Zwija/rozwija panel. Przy zwijaniu zeruje licznik nowych (baza = teraz). */
+  function przelaczPanel() {
+    setZwiniety((prev) => {
+      const next = !prev
+      if (next) setNowychBaza(wpisy.length)
+      return next
+    })
+  }
+
   // --- Glos JARVIS: stan trybu glosowego ---
   const sttOK = isSttSupported()
   const [glosOtwarty, setGlosOtwarty] = useState(false)
@@ -1359,10 +1393,28 @@ export default function Command() {
     }
   }
 
+  // Cos dzieje sie w tle (pasek pokazuje animacje 'typing'): zespol pracuje,
+  // COO mysli/sklada, tryb glosowy nasluchuje/mysli/mowi, albo trwa rozmowa 1:1.
+  const wTle =
+    running ||
+    stanCoo !== 'idle' ||
+    glosStan === 'slucham' ||
+    glosStan === 'mysle' ||
+    glosStan === 'mowie' ||
+    (rozmowaAgent != null &&
+      (rozmowaStan === 'laczenie' ||
+        rozmowaStan === 'slucham' ||
+        rozmowaStan === 'mysle' ||
+        rozmowaStan === 'mowie'))
+  // Licznik nowych wpisow widoczny tylko przy zwinietym panelu.
+  const noweWpisy = zwiniety ? Math.max(0, wpisy.length - nowychBaza) : 0
+
   return (
     <div className="flex h-full flex-col lg:flex-row">
-      {/* Lewa czesc: mapa neuronu (~60%) */}
-      <section className="flex min-h-0 flex-col border-b border-zinc-800/80 lg:w-3/5 lg:border-b-0 lg:border-r">
+      {/* Lewa czesc: mapa neuronu (~60%, cala szerokosc gdy panel zwiniety).
+          lg:flex-1 wypelnia miejsce zwolnione przez zwiniety panel; geometria
+          mapy przelicza sie sama (ResizeObserver na stageRef). */}
+      <section className="flex min-h-0 flex-col border-b border-zinc-800/80 lg:min-w-0 lg:flex-1 lg:border-b-0 lg:border-r">
         <header className="border-b border-zinc-800/80 bg-zinc-950/80 px-5 py-4 backdrop-blur sm:px-8">
           <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-zinc-400">
             <Sparkles size={12} className="text-brand-soft" aria-hidden />
@@ -1395,19 +1447,104 @@ export default function Command() {
         </div>
       </section>
 
-      {/* Prawa czesc: panel czatu (~40%) */}
-      <section className="flex min-h-0 flex-1 flex-col lg:w-2/5">
-        {/* Wskaznik trybu nad czatem (dyskretny) */}
-        <div className="flex items-center gap-2 border-b border-zinc-800/80 bg-zinc-950/80 px-5 py-2 text-[0.7rem] font-medium text-zinc-500 sm:px-6">
-          <span
-            className={[
-              'h-1.5 w-1.5 flex-shrink-0 rounded-full',
-              tryb === 'demo' ? 'bg-amber-400/70' : 'bg-emerald-400/80',
-            ].join(' ')}
-            aria-hidden
-          />
-          <span>{tryb === 'demo' ? 'Tryb demo, symulacja przeplywu' : 'Tryb realny'}</span>
-        </div>
+      {/* Prawa czesc: panel czatu (~40%). Zwijany do waskiego paska (~52px):
+          desktop = pionowy pasek po prawej, mobile = niski pasek na dole. Plynna
+          animacja szerokosci/wysokosci (motion-reduce respektowane). Zwiniety:
+          mapa dostaje cala szerokosc, a wszystko dziala dalej w tle. */}
+      <section
+        className={[
+          'flex min-h-0 flex-col overflow-hidden transition-[width,height] duration-300 ease-out motion-reduce:transition-none',
+          zwiniety
+            ? 'h-[52px] w-full flex-none lg:h-auto lg:w-[52px]'
+            : 'h-auto w-full flex-1 lg:w-2/5 lg:flex-none',
+        ].join(' ')}
+      >
+        {zwiniety ? (
+          /* Zwiniety pasek: klik = rozwiniecie. Ikona czatu + wskaznik aktywnosci
+             (pulsujace kropki gdy cos dzieje sie w tle) + licznik nowych wpisow. */
+          <button
+            type="button"
+            onClick={przelaczPanel}
+            aria-label={
+              noweWpisy > 0
+                ? `Rozwin panel rozmowy, ${noweWpisy} nowych wpisow`
+                : 'Rozwin panel rozmowy'
+            }
+            title="Rozwin panel rozmowy"
+            aria-expanded={false}
+            className="group flex h-full w-full items-center justify-center gap-3 bg-zinc-950/80 px-2 text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-100 lg:flex-col lg:justify-start lg:gap-4 lg:py-5"
+          >
+            {/* Strzalka rozwijania: desktop w lewo (panel wysunie sie w lewo),
+                mobile w gore (panel otworzy sie ku gorze). */}
+            <ChevronLeft
+              size={18}
+              className="hidden flex-shrink-0 opacity-70 transition-opacity group-hover:opacity-100 lg:block"
+              aria-hidden
+            />
+            <ChevronUp
+              size={18}
+              className="flex-shrink-0 opacity-70 transition-opacity group-hover:opacity-100 lg:hidden"
+              aria-hidden
+            />
+
+            {/* Ikona czatu + badge licznika nowych wpisow */}
+            <span className="relative inline-flex flex-shrink-0 items-center justify-center">
+              <MessageSquare size={22} aria-hidden />
+              {noweWpisy > 0 && (
+                <span className="absolute -right-2 -top-2 inline-flex min-w-[1.1rem] items-center justify-center rounded-full bg-brand px-1 text-[0.62rem] font-bold leading-tight text-zinc-950">
+                  {noweWpisy > 99 ? '99+' : noweWpisy}
+                </span>
+              )}
+            </span>
+
+            {/* Wskaznik 'typing': pulsujace kropki gdy cos dzieje sie w tle */}
+            {wTle && (
+              <span
+                className="flex flex-shrink-0 items-center gap-1 text-brand-soft lg:flex-col lg:gap-1.5"
+                aria-hidden
+              >
+                <span className="thinking-dot" />
+                <span className="thinking-dot" style={{ animationDelay: '0.2s' }} />
+                <span className="thinking-dot" style={{ animationDelay: '0.4s' }} />
+              </span>
+            )}
+
+            {/* Etykieta: pionowa na desktopie, pozioma na mobile */}
+            <span className="hidden text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-zinc-500 [writing-mode:vertical-rl] lg:block">
+              Rozmowa zespolu
+            </span>
+            <span className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-zinc-500 lg:hidden">
+              Rozmowa zespolu
+            </span>
+          </button>
+        ) : (
+          <>
+            {/* Wskaznik trybu nad czatem (dyskretny) + przycisk zwijania */}
+            <div className="flex items-center justify-between gap-2 border-b border-zinc-800/80 bg-zinc-950/80 px-5 py-2 text-[0.7rem] font-medium text-zinc-500 sm:px-6">
+              <span className="flex items-center gap-2">
+                <span
+                  className={[
+                    'h-1.5 w-1.5 flex-shrink-0 rounded-full',
+                    tryb === 'demo' ? 'bg-amber-400/70' : 'bg-emerald-400/80',
+                  ].join(' ')}
+                  aria-hidden
+                />
+                <span>
+                  {tryb === 'demo' ? 'Tryb demo, symulacja przeplywu' : 'Tryb realny'}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={przelaczPanel}
+                aria-label="Zwin panel rozmowy"
+                title="Zwin panel rozmowy"
+                aria-expanded={true}
+                className="inline-flex flex-shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/70 p-1.5 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+              >
+                <ChevronRight size={16} className="hidden lg:block" aria-hidden />
+                <ChevronDown size={16} className="lg:hidden" aria-hidden />
+              </button>
+            </div>
         <div
           ref={scrollRef}
           className="min-h-0 flex-1 overflow-y-auto"
@@ -1646,6 +1783,8 @@ export default function Command() {
             </div>
           </div>
         </div>
+          </>
+        )}
       </section>
 
       {/* Overlay rozmowy glosowej (pelnoekranowy) */}

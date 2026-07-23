@@ -218,13 +218,13 @@ export default function RozmowaGlosowa({ agent, onClose }: Props) {
 
   // --- Start rozmowy: powitanie -> tor realtime lub podstawowy ---------------
 
-  /** Instrukcja powitania dla modelu realtime: wita sie glosem persony po imieniu usera. */
+  /** Instrukcja powitania dla modelu realtime: personalnie, po kobiecemu, bez prezentacji. */
   function powitanieInstrukcja(): string {
     const uczestnik = imieUczestnika()
     return (
-      `Przywitaj sie krotko, cieplo i po imieniu z ${uczestnik} po polsku: ` +
-      `"Czesc ${uczestnik}! Jestem ${imie}, ${agent.role.toLowerCase()}." ` +
-      `i zapytaj krotko, w czym mozesz pomoc. ` +
+      `Przywitaj sie krotko, cieplo i personalnie z ${uczestnik} po polsku, w formie zenskiej, ` +
+      `BEZ przedstawiania sie (on wie, kim jestes): np. "Czesc ${uczestnik}! Co tam u Ciebie?" ` +
+      `albo "Hej ${uczestnik}, dobrze Cie slyszec! W czym dzis pomoc?". Od razu do rzeczy. ` +
       `Bez em-dash, bez zmyslonych liczb, nie dodawaj nic wiecej.`
     )
   }
@@ -260,8 +260,10 @@ export default function RozmowaGlosowa({ agent, onClose }: Props) {
         onPoziom: (p) => {
           if (aktywnyRef.current) setPoziom(p)
         },
-        onBlad: () => {
-          // Blad w trakcie sesji: nie wywalamy, informujemy dyskretnie.
+        onBlad: (kod) => {
+          // realtime woła onBlad TYLKO gdy polaczenie realnie padlo
+          // (failed/closed). Bledy przejsciowe sa tam logowane, nie tu.
+          console.warn('[rozmowa] realtime onBlad:', kod)
           if (aktywnyRef.current) setBlad('Cos przeszkodzilo w rozmowie.')
         },
       })

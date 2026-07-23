@@ -11,6 +11,8 @@
 // Luzne typy (bez @vercel/node). Poza tsconfig include:["src"], wiec `npm run build`
 // go nie kompiluje.
 
+import { weryfikacjaTokenu } from './_auth'
+
 const MODEL_ID = 'eleven_flash_v2_5' // multilingual, niska latencja; jezyk PL wykrywany z tekstu
 const MAX_ZNAKOW = 3000
 
@@ -37,7 +39,7 @@ export default async function handler(req: any, res: any) {
     res.setHeader('Vary', 'Origin')
   }
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
 
   if (req.method === 'OPTIONS') {
     res.status(204).end()
@@ -45,6 +47,12 @@ export default async function handler(req: any, res: any) {
   }
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'tylko-post' })
+    return
+  }
+
+  // Bramka logowania: przy ustawionym AUTH_SECRET wymaga waznego tokenu.
+  if (!weryfikacjaTokenu(req).ok) {
+    res.status(401).json({ error: 'wymagane-logowanie' })
     return
   }
 

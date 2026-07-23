@@ -153,9 +153,9 @@ export default function Settings() {
     transkrypcjeAutoWlaczone(),
   )
 
-  // Sekcja kluczy API i integracji jest widoczna TYLKO dla admina (Pawel).
+  // Sekcja kluczy API i integracji jest widoczna TYLKO dla admina technicznego (Pawel).
   const { profil } = useProfil()
-  const admin = profil?.rola === 'admin'
+  const admin = profil?.rola === 'admin-techniczny'
 
   function przelaczAutoCzytaj() {
     if (!glosTtsOK) return

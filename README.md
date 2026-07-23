@@ -111,6 +111,28 @@ Funkcje w `api/` sa poza `tsconfig` (`include: ["src"]`), wiec `tsc` ich nie kom
 
 Zeby wlaczyc glos premium (naturalny glos persony ElevenLabs plus plynny realtime OpenAI), dodaj `OPENAI_API_KEY` i `ELEVENLABS_API_KEY` w Vercel (Settings > Environment Variables), a nastepnie zrob redeploy. Bez tych kluczy aplikacja dziala normalnie w trybie podstawowym (glos przegladarki `voice.ts`), nic sie nie psuje.
 
+## Logowanie i globalny klucz
+
+Aplikacja ma prawdziwe logowanie dla 2 kont (Pawel, Marcin), bez bazy danych: hasla siedza w zmiennych srodowiskowych, a sesja to token podpisany HMAC (30 dni, `localStorage` `sf_sesja`). Dzieki temu Marcin korzysta z aplikacji w pelni bez ustawiania zadnego klucza, bo globalny klucz Anthropic zyje na serwerze.
+
+Przeplyw:
+
+1. Ekran logowania: wybierasz konto (Pawel/Marcin), podajesz haslo, `POST /api/login`.
+2. Poprawne haslo to token sesji zapisany w przegladarce. Token idzie w naglowku `Authorization: Bearer <token>` do WSZYSTKICH funkcji `api/` (`/api/chat`, `/api/realtime-token`, `/api/tts`).
+3. Czat idzie przez `/api/chat` (globalny klucz na serwerze). Gdy serwer nie ma klucza, aplikacja spada na klucz z `localStorage` (Ustawienia, tylko Pawel), a na koncu na tryb demo.
+4. Role: **Pawel = admin-techniczny** (widzi w Ustawieniach sekcje kluczy i integracji), **Marcin = admin** (pelne korzystanie, bez tej sekcji).
+5. Gdy `AUTH_SECRET` nie jest ustawiony, `/api/login` zwraca 503 `brak-konfiguracji`, a aplikacja przechodzi w **tryb otwarty** (jak dotychczasowe profile, wejscie bez hasla, z dyskretna nota). Funkcje `api/` tez sa wtedy otwarte, dopoki nie ustawisz sekretu.
+
+Zmienne srodowiskowe do ustawienia w Vercel > Project (webapp) > Settings > Environment Variables, a potem **redeploy**:
+
+- `AUTH_SECRET` to losowy, dlugi string (sekret podpisu tokenu). Bez niego logowanie jest wylaczone (tryb otwarty).
+- `HASLO_PAWEL` to haslo konta Pawla.
+- `HASLO_MARCIN` to haslo konta Marcina.
+- `ANTHROPIC_API_KEY` to globalny klucz Anthropic dla `/api/chat` (Marcin nic nie ustawia). Bez niego czat spada na klucz lokalny/demo.
+- `OPENAI_API_KEY` oraz `ELEVENLABS_API_KEY` (glos, jak w sekcji nizej). Istniejaca nazwa `openaiapi` tez jest obslugiwana.
+
+Pliki: `api/login.ts` (logowanie), `api/_auth.ts` (helper weryfikacji tokenu, prefix `_` to brak trasy w Vercel), `api/chat.ts` (proxy czatu). Sa poza `tsconfig` (`include: ["src"]`), wiec nie wplywaja na `npm run build`.
+
 ## Jak dziala mozg i persony
 
 Tresc jest **osadzona** w repo i wczytywana w czasie buildu (`import.meta.glob` z `?raw`):

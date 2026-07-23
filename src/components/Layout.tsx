@@ -4,7 +4,7 @@ import { Menu, X } from 'lucide-react'
 import Sidebar from './Sidebar'
 import Logo from './Logo'
 import { ProfilProvider, useProfil } from './ProfilContext'
-import WyborProfilu from './WyborProfilu'
+import Logowanie from './Logowanie'
 
 export default function Layout() {
   return (
@@ -34,9 +34,9 @@ function LayoutInner() {
     return () => window.removeEventListener('keydown', onKey)
   }, [mobileOpen])
 
-  // Pierwsze wejscie (brak wybranego profilu): ekran wyboru zamiast aplikacji.
+  // Brak sesji: ekran logowania zamiast aplikacji.
   if (!profil) {
-    return <WyborProfilu />
+    return <Logowanie />
   }
 
   return (

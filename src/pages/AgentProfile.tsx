@@ -10,6 +10,9 @@ import {
   usunSkilla,
   pamiecAgenta,
   usunWlasnyPlikMozgu,
+  wczytajPersonaNadpis,
+  zapiszPersonaNadpis,
+  usunPersonaNadpis,
   type Umiejetnosc,
   type PlikWlasnyMozgu,
 } from '../lib/storage'
@@ -76,12 +79,18 @@ export default function AgentProfile() {
   const [instrukcja, setInstrukcja] = useState('')
   const [glosOtwarty, setGlosOtwarty] = useState(false)
   const [pamiec, setPamiec] = useState<PlikWlasnyMozgu[]>([])
+  // Edytowalna persona (nadpis od wlasciciela): dwa pola tekstowe.
+  const [kimJestem, setKimJestem] = useState('')
+  const [jakSieZwracam, setJakSieZwracam] = useState('')
   const { toast, pokazToast } = useToast()
 
-  // Wczytanie wlasnych umiejetnosci i pamieci przy wejsciu i zmianie agenta.
+  // Wczytanie wlasnych umiejetnosci, pamieci i nadpisu persony przy zmianie agenta.
   useEffect(() => {
     setSkille(slug ? skilleAgenta(slug) : [])
     setPamiec(slug ? pamiecAgenta(slug) : [])
+    const nadpis = slug ? wczytajPersonaNadpis(slug) : null
+    setKimJestem(nadpis?.kimJestem ?? '')
+    setJakSieZwracam(nadpis?.jakSieZwracam ?? '')
     setNazwa('')
     setInstrukcja('')
   }, [slug])
@@ -143,6 +152,20 @@ export default function AgentProfile() {
     usunWlasnyPlikMozgu(sciezka)
     setPamiec(pamiecAgenta(agent.slug))
     pokazToast('Usunieto wpis pamieci.')
+  }
+
+  function zapiszPersone() {
+    if (!agent) return
+    zapiszPersonaNadpis(agent.slug, kimJestem, jakSieZwracam)
+    pokazToast('Zapisano persone. Agent zastosuje ja w kolejnej rozmowie.')
+  }
+
+  function przywrocPersone() {
+    if (!agent) return
+    usunPersonaNadpis(agent.slug)
+    setKimJestem('')
+    setJakSieZwracam('')
+    pokazToast('Przywrocono domyslna persone.')
   }
 
   return (
@@ -226,6 +249,73 @@ export default function AgentProfile() {
           </button>
         </div>
       </div>
+
+      {/* Persona (edytowalna) */}
+      <section className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6">
+        <NaglowekSekcji>Persona (edytowalna)</NaglowekSekcji>
+        <p className="mt-1.5 text-xs text-zinc-500">
+          Twoje ustawienia maja pierwszenstwo nad domyslnym stylem tej persony.
+          Wpisz kim ma byc i jak ma sie do Was zwracac. Dziala od nastepnej
+          wiadomosci, tak samo w czacie i w rozmowie glosem.
+        </p>
+
+        <div className="mt-4 space-y-3">
+          <div>
+            <label
+              htmlFor="persona-kim"
+              className="mb-1 block text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-zinc-500"
+            >
+              Kim jest i jaka jest
+            </label>
+            <textarea
+              id="persona-kim"
+              value={kimJestem}
+              onChange={(e) => setKimJestem(e.target.value)}
+              rows={3}
+              placeholder="Np. Ciepla, konkretna i lekko zadziorna. Traktuje mnie jak partnera, nie klienta."
+              className="w-full resize-y rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm leading-relaxed text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-brand/50 focus:ring-1 focus:ring-brand/40"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="persona-zwrot"
+              className="mb-1 block text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-zinc-500"
+            >
+              Jak zwraca sie do nas
+            </label>
+            <textarea
+              id="persona-zwrot"
+              value={jakSieZwracam}
+              onChange={(e) => setJakSieZwracam(e.target.value)}
+              rows={2}
+              placeholder="Np. Mow mi po imieniu, na luzie. Zaczynaj krotko: 'Czesc! Co robimy?'"
+              className="w-full resize-y rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm leading-relaxed text-zinc-100 outline-none transition-colors placeholder:text-zinc-600 focus:border-brand/50 focus:ring-1 focus:ring-brand/40"
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[0.7rem] text-zinc-600">
+              Zapisuje sie w tej przegladarce.
+            </p>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={przywrocPersone}
+                disabled={!kimJestem.trim() && !jakSieZwracam.trim()}
+                className="inline-flex items-center rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 py-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Przywroc domyslne
+              </button>
+              <button
+                type="button"
+                onClick={zapiszPersone}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3 py-2 text-xs font-semibold text-zinc-950 transition-colors hover:bg-brand-soft"
+              >
+                Zapisz
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* Zespol wykonawczy */}
       <section className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6">

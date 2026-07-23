@@ -5,20 +5,15 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import {
-  getProfil,
-  setProfil as zapiszProfil,
-  PROFILE,
-  type Profil,
-} from '../lib/storage'
+import { getProfil, wyloguj as wylogujSesja, type Profil } from '../lib/storage'
 
 interface ProfilCtx {
-  /** Aktywny profil albo null, gdy jeszcze nie wybrano. */
+  /** Aktywny profil (z sesji sf_sesja) albo null, gdy nie zalogowano. */
   profil: Profil | null
-  /** Ustawia profil (zapis do localStorage + rerender). */
-  wybierz: (p: Profil) => void
-  /** Przelacza na drugi profil (Pawel <-> Marcin). */
-  przelacz: () => void
+  /** Ponownie czyta profil z sesji (po zalogowaniu w ekranie logowania). */
+  odswiez: () => void
+  /** Wylogowuje: kasuje sesje i wraca do ekranu logowania. */
+  wyloguj: () => void
 }
 
 const Ctx = createContext<ProfilCtx | null>(null)
@@ -27,21 +22,17 @@ const Ctx = createContext<ProfilCtx | null>(null)
 export function ProfilProvider({ children }: { children: ReactNode }) {
   const [profil, setP] = useState<Profil | null>(() => getProfil())
 
-  const wybierz = useCallback((p: Profil) => {
-    zapiszProfil(p)
-    setP(p)
+  const odswiez = useCallback(() => {
+    setP(getProfil())
   }, [])
 
-  const przelacz = useCallback(() => {
-    const aktualny = getProfil()
-    const inny =
-      PROFILE.find((p) => p.id !== aktualny?.id) ?? PROFILE[0]
-    zapiszProfil(inny)
-    setP(inny)
+  const wyloguj = useCallback(() => {
+    wylogujSesja()
+    setP(null)
   }, [])
 
   return (
-    <Ctx.Provider value={{ profil, wybierz, przelacz }}>
+    <Ctx.Provider value={{ profil, odswiez, wyloguj }}>
       {children}
     </Ctx.Provider>
   )

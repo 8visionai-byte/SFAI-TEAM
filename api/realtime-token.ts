@@ -9,6 +9,7 @@
 //
 // Luzne typy (bez @vercel/node), zeby nie wchodzic w zaleznosci frontu.
 // Ten plik jest poza tsconfig include:["src"], wiec `npm run build` go nie kompiluje.
+import { weryfikacjaTokenu } from './_auth'
 
 // Domyslny model realtime: PELNY (najwyzsza jakosc glosu, wg RESEARCH-GLOS-JAKOSC.md).
 // Klient moze poprosic o wariant szybki (mini) przez body.model. Mozna nadpisac przez env.
@@ -56,7 +57,7 @@ export default async function handler(req: any, res: any) {
     res.setHeader('Vary', 'Origin')
   }
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
 
   if (req.method === 'OPTIONS') {
     res.status(204).end()
@@ -64,6 +65,12 @@ export default async function handler(req: any, res: any) {
   }
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'tylko-post' })
+    return
+  }
+
+  // Bramka logowania: przy ustawionym AUTH_SECRET wymaga waznego tokenu.
+  if (!weryfikacjaTokenu(req).ok) {
+    res.status(401).json({ error: 'wymagane-logowanie' })
     return
   }
 

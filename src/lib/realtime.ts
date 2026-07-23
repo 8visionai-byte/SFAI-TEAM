@@ -17,7 +17,7 @@
 import { type Agent, agents, getAgent } from '../data/agents'
 import { buildVoicePrompt, getVoiceModel, sendMessage } from './ai'
 import { szukajWMozgu } from './content'
-import { dodajPlikMozgu, imieUczestnika, nowyId } from './storage'
+import { authNaglowek, dodajPlikMozgu, imieUczestnika, nowyId } from './storage'
 
 /** Stan rozmowy glosowej (wspolny dla realtime i toru podstawowego). */
 export type StanRozmowy =
@@ -75,6 +75,22 @@ export interface UchwytRozmowy {
 }
 
 /**
+ * Czy stan polaczenia WebRTC oznacza REALNY koniec rozmowy (baner bledu).
+ * Tylko 'failed' i 'closed' to smierc polaczenia. 'disconnected' bywa przejsciowy
+ * (chwilowy hiccup ICE, potrafi wrocic do 'connected'), 'connecting'/'connected'/
+ * 'new' sa zdrowe, wiec NIE sa krytyczne. Zdarzenia typu 'error' z kanalu danych
+ * (np. anulowana odpowiedz, pojedynczy blad gdy rozmowa dziala dalej) NIE lecza tu:
+ * sa tylko logowane. Dzieki temu baner pokazuje sie wylacznie, gdy rozmowa padla.
+ *
+ * Uwaga: 'closed' pojawia sie takze przy naszym wlasnym zakonczeniu rozmowy
+ * (sprzataj -> pc.close()); tam wolajacy dodatkowo pilnuje flagi zamkniete,
+ * zeby nie pokazac baneru po celowym zamknieciu.
+ */
+export function czyStanKrytyczny(stan: RTCPeerConnectionState): boolean {
+  return stan === 'failed' || stan === 'closed'
+}
+
+/**
  * Zamienia tytul na bezpieczna, unikalna czesc sciezki pliku mozgu:
  * male litery, bez polskich znakow, spacje->'-', z sufiksem nowyId() (brak nadpisania).
  */
@@ -101,7 +117,7 @@ async function pobierzToken(
 ): Promise<{ token: string; model: string }> {
   const res = await fetch('/api/realtime-token', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authNaglowek() },
     body: JSON.stringify({
       voice: glos,
       instructions: instrukcje,
@@ -344,6 +360,22 @@ export async function startRozmowa(
       podepnijPoziomZdalny(e.streams[0])
     }
 
+    // Monitor stanu polaczenia: baner bledu TYLKO gdy rozmowa realnie padla
+    // (polaczenie failed/closed). Stany przejsciowe (disconnected) i zdrowe
+    // (connecting/connected) NIE wyzwalaja baneru. Celowe zamkniecie (sprzataj)
+    // ustawia zamkniete=true wczesniej, wiec 'closed' z naszej reki jest pomijane.
+    pc.onconnectionstatechange = () => {
+      const st = pc.connectionState
+      console.info('[realtime] connectionState:', st)
+      if (czyStanKrytyczny(st) && !zamkniete) {
+        console.error('[realtime] polaczenie padlo, stan:', st)
+        opcje.onBlad?.('polaczenie-zamkniete')
+      }
+    }
+    pc.oniceconnectionstatechange = () => {
+      console.info('[realtime] iceConnectionState:', pc.iceConnectionState)
+    }
+
     // Wejscie: mikrofon uzytkownika.
     mic = await navigator.mediaDevices.getUserMedia({ audio: true })
     const trakty = mic.getAudioTracks()
@@ -529,10 +561,13 @@ export async function startRozmowa(
     }
 
     if (typ === 'error') {
-      console.error('[realtime] error zdarzenie:', JSON.stringify(zd))
+      // Zdarzenie 'error' z kanalu danych bywa PRZEJSCIOWE i NIEBLOKUJACE:
+      // pojedynczy blad gdy rozmowa dziala dalej, anulowana odpowiedz itp.
+      // Dlatego NIE wyzwalamy tu baneru (to robi dopiero smierc polaczenia,
+      // patrz onconnectionstatechange). Logujemy wszystko do konsoli.
       const kod =
         typeof zd?.error?.message === 'string' ? zd.error.message : 'realtime'
-      opcje.onBlad?.(kod)
+      console.error('[realtime] error zdarzenie (nieblokujace):', kod, JSON.stringify(zd))
     }
   }
 
