@@ -167,7 +167,8 @@ export async function startRozmowa(
       name: 'przeszukaj_wiedze',
       description:
         'Przeszukuje baze wiedzy (mozg) firmy SimpleFast.ai i zwraca pasujace fragmenty. ' +
-        'Uzyj gdy potrzebujesz konkretow: cennik, case studies, ICP, oferta, proces, dane firmy. ' +
+        'Uzyj TYLKO gdy potrzebujesz FAKTOW z bazy: cennik, case studies, ICP, oferta, proces, dane firmy. ' +
+        'NIE uzywaj do narad, angazowania zespolu ani zlecania pracy innym: od tego jest uruchom_zespol. ' +
         'Preamble sample phrases: Juz sprawdzam to w naszej bazie. / Chwilke, zaraz to znajde. / Sekunde, siegam po szczegoly.',
       parameters: {
         type: 'object',
@@ -211,7 +212,11 @@ export async function startRozmowa(
       type: 'function',
       name: 'uruchom_zespol',
       description:
-        'Uruchamia wybranych specjalistow zespolu do pracy nad zadaniami. Kazdy dostaje konkretne zadanie i odpowiada raportem. Uzyj gdy pytanie wymaga researchu, opinii lub pracy kilku rol. Preamble sample phrases: Dobra, uruchamiam zespol, daj mi chwile. / Poczekaj, odpalam Raya i Zoe.',
+        'Uruchamia wybranych specjalistow zespolu do REALNEJ pracy nad zadaniami. Kazdy dostaje konkretne zadanie i odpowiada raportem. ' +
+        'UZYJ ZAWSZE, gdy uzytkownik prosi o: narade, burze mozgow, opinie zespolu, "zaangazuj zespol/wszystkich", "zbierz zespol", "zapytaj Raya/Zoe/...", research, przygotowanie czegos przez zespol, albo gdy temat wymaga pracy kilku rol. ' +
+        'Przy prosbie o CALY zespol lub narade przekaz zadania WSZYSTKIM 9 specjalistom (kazdy ze swojej perspektywy). ' +
+        'To narzedzie NAPRAWDE odpala agentow (widac to na mapie), wiec preferuj je nad przeszukaj_wiedze przy kazdej prosbie o prace zespolu. ' +
+        'Preamble sample phrases: Dobra, uruchamiam zespol, daj mi chwile. / Poczekaj, odpalam Raya i Zoe. / Zbieram wszystkich, chwilka.',
       parameters: {
         type: 'object',
         properties: {
@@ -279,6 +284,7 @@ export async function startRozmowa(
   let rafId: number | null = null
   let zamkniete = false
   let transAgent = '' // narastajacy transkrypt biezacej wypowiedzi agenta
+  let ostatniaWypowiedzUsera = '' // do deterministycznej narady w uruchom_zespol
   let dc: RTCDataChannel | null = null // kanal danych 'oai-events'
   let powitalSie = false // strzezenie: powitanie wysylamy tylko raz
   // Analizatory poziomu dzwieku (aura). MUSZA byc zadeklarowane TU, na gorze:
@@ -457,7 +463,8 @@ export async function startRozmowa(
       typ === 'conversation.item.input_audio_transcription.completed' &&
       typeof zd?.transcript === 'string'
     ) {
-      opcje.onTranskrypt(zd.transcript.trim(), 'user', true)
+      ostatniaWypowiedzUsera = zd.transcript.trim()
+      opcje.onTranskrypt(ostatniaWypowiedzUsera, 'user', true)
       return
     }
 
@@ -681,7 +688,7 @@ export async function startRozmowa(
       agents.filter((a) => a.slug !== 'coo').map((a) => a.slug),
     )
     const uzyte = new Set<string>()
-    const wybrane = surowe
+    let wybrane = surowe
       .filter((z) => {
         if (!dozwolone.has(z.agent)) return false
         if (!z.zadanie) return false
@@ -690,6 +697,25 @@ export async function startRozmowa(
         return true
       })
       .slice(0, 6)
+
+    // DETERMINISTYCZNA narada: gdy ostatnia wypowiedz usera prosi o caly zespol,
+    // dopelniamy zadania dla WSZYSTKICH specjalistow (model bywa oszczedny).
+    const SYGNALY_NARADY =
+      /narad|caly zespol|całego zespołu|cały zespół|calym zespolem|całym zespołem|wszyscy|wszystkich|burza mozgow|burzę mózgów|cala firma|cała firma/i
+    if (SYGNALY_NARADY.test(ostatniaWypowiedzUsera)) {
+      const tematBazowy =
+        wybrane[0]?.zadanie ?? ostatniaWypowiedzUsera ?? 'biezacy temat narady'
+      for (const slug of dozwolone) {
+        if (!uzyte.has(slug)) {
+          uzyte.add(slug)
+          wybrane.push({
+            agent: slug,
+            zadanie: `Z perspektywy Twojej roli odnies sie do tematu narady: "${tematBazowy}". Podaj konkretne wnioski i 1-2 rekomendacje.`,
+          })
+        }
+      }
+      console.info('[realtime] narada: dopelniono do calego zespolu,', wybrane.length, 'agentow')
+    }
 
     console.info(
       '[realtime] tool uruchom_zespol',

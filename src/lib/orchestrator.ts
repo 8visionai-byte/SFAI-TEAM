@@ -185,6 +185,30 @@ function systemPlanu(): string {
  * padnie (model odpowiedzial proza), ponawia RAZ z ostrzejsza instrukcja.
  * Zwraca surowa odpowiedz (do ewentualnego fallbacku) oraz sparsowany wynik (albo null).
  */
+/**
+ * DETERMINISTYCZNA gwarancja narady: gdy wlasciciel wprost prosi o caly zespol
+ * (narada, wszyscy, burza mozgow), plan MUSI objac wszystkich specjalistow,
+ * niezaleznie od tego, ilu wybral model. Brakujacym dokladamy zadanie z ich
+ * perspektywy. To usuwa losowosc "modelowi sie nie chcialo".
+ */
+const SYGNALY_NARADY =
+  /narad|caly zespol|całego zespołu|cały zespół|calym zespolem|całym zespołem|wszyscy|wszystkich|burza mozgow|burzę mózgów|cala firma|cała firma|kazdy z zespolu|każdy z zespołu/i
+
+function wymusNarade(pytanie: string, wynik: WynikPlanu): WynikPlanu {
+  if (!SYGNALY_NARADY.test(pytanie)) return wynik
+  const obecni = new Set(wynik.plan.map((k) => k.agent))
+  const plan = [...wynik.plan]
+  for (const slug of DOZWOLONE_SLUGI) {
+    if (!obecni.has(slug)) {
+      plan.push({
+        agent: slug,
+        zadanie: `Z perspektywy Twojej roli odnies sie do tematu: "${pytanie}". Podaj konkretne wnioski i 1-2 rekomendacje.`,
+      })
+    }
+  }
+  return { ...wynik, tryb: 'deleguj', plan }
+}
+
 async function zbudujPlan(
   pytanie: string,
 ): Promise<{ surowy: string; wynik: WynikPlanu | null }> {
@@ -192,7 +216,7 @@ async function zbudujPlan(
 
   const surowy = await callModel(system, [{ role: 'user', content: pytanie }])
   const wynik = parsujPlan(surowy)
-  if (wynik) return { surowy, wynik }
+  if (wynik) return { surowy, wynik: wymusNarade(pytanie, wynik) }
 
   // Ponow RAZ: pokazujemy modelowi jego wlasna (nieczytelna) odpowiedz i zaostrzamy.
   const surowy2 = await callModel(system, [
@@ -205,7 +229,10 @@ async function zbudujPlan(
     },
   ])
   const wynik2 = parsujPlan(surowy2)
-  return { surowy: surowy2, wynik: wynik2 }
+  return {
+    surowy: surowy2,
+    wynik: wynik2 ? wymusNarade(pytanie, wynik2) : null,
+  }
 }
 
 /** Instrukcja dla COO na etapie SYNTEZA. */
