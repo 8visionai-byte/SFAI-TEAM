@@ -57,9 +57,9 @@ export const agents: Agent[] = [
       'Mapa dzwigni sprzedazy',
       'Regula 70% przy eskalacji',
     ],
-    personImie: 'Leo',
+    personImie: 'Lea',
     elevenVoiceId: 'pNInz6obpgDQGcFmaJgB',
-    realtimeVoice: 'cedar', // meski, najlepsza jakosc (RESEARCH-GLOS-JAKOSC.md)
+    realtimeVoice: 'marin', // zenski (zespol kobiecy, awatary 2026-07-23)
   },
   {
     slug: 'wiedza-produkt',
@@ -87,7 +87,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Sam',
     elevenVoiceId: 'ZQe5CZNOzWyzPSCn5a3c',
-    realtimeVoice: 'cedar', // meski, najlepsza jakosc
+    realtimeVoice: 'sage', // zenski (zespol kobiecy, awatary 2026-07-23)
   },
   {
     slug: 'operacje',
@@ -114,7 +114,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Mia',
     elevenVoiceId: 'AZnzlk1XvdvUeBnXmlld',
-    realtimeVoice: 'marin', // zenski, najlepsza jakosc
+    realtimeVoice: 'coral', // zenski (zespol kobiecy, awatary 2026-07-23)
   },
   {
     slug: 'analityk',
@@ -140,9 +140,9 @@ export const agents: Agent[] = [
       'Analiza win-loss',
       'Traffic Light: etyka zrodel',
     ],
-    personImie: 'Ray',
+    personImie: 'Rae',
     elevenVoiceId: 'VR6AewLTigWG4xSOukaG',
-    realtimeVoice: 'cedar', // meski, najlepsza jakosc
+    realtimeVoice: 'alloy', // zenski (zespol kobiecy, awatary 2026-07-23)
   },
   {
     slug: 'pamiec-zespolu',
@@ -170,7 +170,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Vera',
     elevenVoiceId: 'pMsXgVXv3BLzUgSXRplE',
-    realtimeVoice: 'marin', // zenski, najlepsza jakosc
+    realtimeVoice: 'sage', // zenski (zespol kobiecy, awatary 2026-07-23)
   },
   {
     slug: 'copywriter',
@@ -196,9 +196,9 @@ export const agents: Agent[] = [
       'Social B2B',
       'Straznik glosu marki',
     ],
-    personImie: 'Milo',
+    personImie: 'Mila',
     elevenVoiceId: 'ErXwobaYiN019PkySvjV',
-    realtimeVoice: 'cedar', // meski, najlepsza jakosc
+    realtimeVoice: 'coral', // zenski (zespol kobiecy, awatary 2026-07-23)
   },
   {
     slug: 'handlowiec',
@@ -223,9 +223,9 @@ export const agents: Agent[] = [
       'Obsluga obiekcji bez rabatu',
       'Kwalifikacja i discovery luki',
     ],
-    personImie: 'Jack',
+    personImie: 'Jade',
     elevenVoiceId: 'TxGEqnHWrfWFTfGW9XjX',
-    realtimeVoice: 'cedar', // meski, najlepsza jakosc
+    realtimeVoice: 'shimmer', // zenski (zespol kobiecy, awatary 2026-07-23)
   },
   {
     slug: 'opiekun-klienta',
@@ -252,7 +252,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Ella',
     elevenVoiceId: 'EXAVITQu4vr4xnSDxMaL',
-    realtimeVoice: 'marin', // zenski, najlepsza jakosc
+    realtimeVoice: 'marin', // zenski (zespol kobiecy, awatary 2026-07-23)
   },
   {
     slug: 'drugi-glos',
@@ -271,9 +271,9 @@ export const agents: Agent[] = [
       'Weto brandowe w RAPID',
       'Share of Voice marki',
     ],
-    personImie: 'Otto',
+    personImie: 'Nora',
     elevenVoiceId: 't0jbNlBVZ17f02VDIeMI',
-    realtimeVoice: 'cedar', // meski, najlepsza jakosc
+    realtimeVoice: 'alloy', // zenski (zespol kobiecy, awatary 2026-07-23)
   },
   {
     slug: 'analityk-social',
@@ -301,7 +301,7 @@ export const agents: Agent[] = [
     ],
     personImie: 'Zoe',
     elevenVoiceId: '21m00Tcm4TlvDq8ikWAM',
-    realtimeVoice: 'marin', // zenski, najlepsza jakosc
+    realtimeVoice: 'shimmer', // zenski (zespol kobiecy, awatary 2026-07-23)
   },
 ]
 

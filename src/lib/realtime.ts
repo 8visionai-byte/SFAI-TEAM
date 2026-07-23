@@ -213,10 +213,10 @@ export async function startRozmowa(
       name: 'uruchom_zespol',
       description:
         'Uruchamia wybranych specjalistow zespolu do REALNEJ pracy nad zadaniami. Kazdy dostaje konkretne zadanie i odpowiada raportem. ' +
-        'UZYJ ZAWSZE, gdy uzytkownik prosi o: narade, burze mozgow, opinie zespolu, "zaangazuj zespol/wszystkich", "zbierz zespol", "zapytaj Raya/Zoe/...", research, przygotowanie czegos przez zespol, albo gdy temat wymaga pracy kilku rol. ' +
+        'UZYJ ZAWSZE, gdy uzytkownik prosi o: narade, burze mozgow, opinie zespolu, "zaangazuj zespol/wszystkich", "zbierz zespol", "zapytaj Rae/Zoe/...", research, przygotowanie czegos przez zespol, albo gdy temat wymaga pracy kilku rol. ' +
         'Przy prosbie o CALY zespol lub narade przekaz zadania WSZYSTKIM 9 specjalistom (kazdy ze swojej perspektywy). ' +
         'To narzedzie NAPRAWDE odpala agentow (widac to na mapie), wiec preferuj je nad przeszukaj_wiedze przy kazdej prosbie o prace zespolu. ' +
-        'Preamble sample phrases: Dobra, uruchamiam zespol, daj mi chwile. / Poczekaj, odpalam Raya i Zoe. / Zbieram wszystkich, chwilka.',
+        'Preamble sample phrases: Dobra, uruchamiam zespol, daj mi chwile. / Poczekaj, odpalam Rae i Zoe. / Zbieram wszystkich, chwilka.',
       parameters: {
         type: 'object',
         properties: {
