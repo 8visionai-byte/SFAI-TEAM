@@ -11,7 +11,49 @@
 // Luzne typy (bez @vercel/node). Poza tsconfig include:["src"], wiec `npm run build`
 // go nie kompiluje.
 
-import { weryfikacjaTokenu } from './_auth'
+import { createHmac, timingSafeEqual } from 'node:crypto'
+
+// --- Autoryzacja INLINE. Celowo kopiowana w kazdej funkcji: wspoldzielony
+// import ('./_auth') nie byl dolaczany przez bundler funkcji Vercela i kazda
+// funkcja z tym importem padala z FUNCTION_INVOCATION_FAILED (500).
+// Tryb otwarty: brak AUTH_SECRET -> { ok:true, otwarty:true }.
+function weryfikacjaTokenu(req: any): { ok: boolean; otwarty?: boolean; uzytkownik?: string; rola?: string } {
+  const secret = process.env.AUTH_SECRET
+  if (!secret) return { ok: true, otwarty: true }
+
+  const h = req?.headers || {}
+  const rawAuth = h.authorization ?? h.Authorization ?? ''
+  const auth = typeof rawAuth === 'string' ? rawAuth : ''
+  if (!/^Bearer\s+/i.test(auth)) return { ok: false }
+  const token = auth.replace(/^Bearer\s+/i, '').trim()
+
+  const kropka = token.indexOf('.')
+  if (kropka <= 0) return { ok: false }
+  const payload = token.slice(0, kropka)
+  const sig = token.slice(kropka + 1)
+  if (!payload || !sig) return { ok: false }
+
+  const oczekiwany = createHmac('sha256', secret).update(payload).digest()
+  let podany: Buffer
+  try {
+    podany = Buffer.from(sig, 'base64url')
+  } catch {
+    return { ok: false }
+  }
+  if (oczekiwany.length !== podany.length) return { ok: false }
+  if (!timingSafeEqual(oczekiwany, podany)) return { ok: false }
+
+  let dane: any
+  try {
+    dane = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
+  } catch {
+    return { ok: false }
+  }
+  if (typeof dane?.exp !== 'number' || dane.exp < Date.now()) {
+    return { ok: false }
+  }
+  return { ok: true, uzytkownik: dane.u, rola: dane.rola }
+}
 
 const MODEL_ID = 'eleven_flash_v2_5' // multilingual, niska latencja; jezyk PL wykrywany z tekstu
 const MAX_ZNAKOW = 3000

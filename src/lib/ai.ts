@@ -453,11 +453,18 @@ async function callServerChat(
   const body: Record<string, unknown> = { system, messages, model, maxTokens: 4000 }
   if (agentSlug) body.agentSlug = agentSlug
 
-  const res = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...authNaglowek() },
-    body: JSON.stringify(body),
-  })
+  let res: Response
+  try {
+    res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...authNaglowek() },
+      body: JSON.stringify(body),
+    })
+  } catch (e) {
+    // Awaria sieci/funkcji: nie pokazuj bledu, spadnij na kolejny tryb.
+    console.warn('[chat] /api/chat nieosiagalny, fallback:', e)
+    throw new Error(BRAK_KLUCZA_SERWERA)
+  }
 
   if (res.status === 503) {
     // Serwer bez globalnego klucza: sygnal fallbacku na kolejny tryb.
@@ -467,14 +474,11 @@ async function callServerChat(
     return 'Wymagane logowanie: sesja wygasla lub jest nieprawidlowa. Zaloguj sie ponownie.'
   }
   if (!res.ok) {
-    let detail = ''
-    try {
-      const errBody = await res.json()
-      detail = errBody?.error ?? JSON.stringify(errBody)
-    } catch {
-      detail = await res.text().catch(() => '')
-    }
-    return `Nie udalo sie pobrac odpowiedzi z serwera (HTTP ${res.status}). ${detail}`.trim()
+    // KAZDA inna awaria serwera (500 FUNCTION_INVOCATION_FAILED, 502, timeout
+    // funkcji itd.) = sygnal fallbacku: klient ma sprobowac kolejnego trybu
+    // (klucz z Ustawien / proxy / demo), a NIE pokazywac bledu uzytkownikowi.
+    console.warn('[chat] serwer /api/chat niedostepny, HTTP', res.status, '- fallback na kolejny tryb')
+    throw new Error(BRAK_KLUCZA_SERWERA)
   }
 
   const data = await res.json()
