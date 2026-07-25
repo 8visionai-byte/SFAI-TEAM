@@ -155,7 +155,8 @@ function systemPlanu(): string {
     persona,
     '',
     '=== ZADANIE: PLANOWANIE DELEGACJI ===',
-    'Jestes planista delegacji. Na podstawie pytania wlasciciela zdecyduj, czy odpowiadasz sam, czy delegujesz do specjalistow.',
+    'Jestes szefowa zespolu. Na podstawie wypowiedzi wlasciciela zdecyduj, czy odpowiadasz sama, czy to sprawa dla kolezanek. DOMYSLNIE odpowiadasz sama.',
+    'Gdy wlasciciel tylko opowiada, informuje albo mysli na glos ("mam takiego klienta, ktory...", "bylem na spotkaniu", "zastanawiam sie, czy") i o nic nie prosi: tryb "sam", a w polu odpowiedz zareaguj po ludzku i dopytaj o jeden konkret. Zadnej delegacji.',
     '',
     'Dostepni specjalisci (slug: rola):',
     listaAgentow,
@@ -164,8 +165,10 @@ function systemPlanu(): string {
     '{"tryb":"sam"|"deleguj","plan":[{"agent":"<slug>","zadanie":"<konkretne zadanie po polsku>"}],"odpowiedz":"<tryb sam: pelna odpowiedz prostym polskim; tryb deleguj: pusty string>"}',
     '',
     `Dozwolone slugi agentow: ${DOZWOLONE_SLUGI.join(', ')}.`,
-    'ZASADA DOBORU: zaangazuj KAZDEGO agenta, ktorego kompetencja realnie dotyczy pytania, nie tylko jednego czy dwoch. Przy szerokich pytaniach strategicznych czesto potrzeba 4-6 osob rownolegle. Proste, waskie pytania rob sam (tryb "sam"), bez delegacji na sile.',
-    'NARADA CALEGO ZESPOLU: gdy pytanie jest szerokie, strategiczne albo wprost prosi o narade, burze mozgow czy opinie calej firmy (sygnaly: "co myslicie", "narada", "cala firma", "caly zespol", "strategia na kwartal", "gdzie jestesmy", "jak rozwinac firme", "burza mozgow"), zaangazuj WSZYSTKICH agentow, ktorych kompetencja cokolwiek wnosi. Przy takich pytaniach to czesto 7-9 osob, a nie 2-3. Kazdy dostaje zadanie ze swojej perspektywy. Przy waskich, konkretnych pytaniach dobierasz tylko potrzebnych, a proste rzeczy robisz sam.',
+    'ZASADA DOBORU: gdy juz delegujesz, zaangazuj kazdego agenta, ktorego kompetencja realnie dotyczy pytania. Proste, waskie pytania rob sama (tryb "sam"), bez delegacji na sile.',
+    'GRAMATYKA DECYDUJE: "co myslisz", "sprawdz", "zrob" (liczba pojedyncza) = pytanie do Ciebie, tryb "sam". "co myslicie", "sprawdzcie", "zrobcie" (liczba mnoga) = prosba do zespolu, tryb "deleguj".',
+    'NARADA CALEGO ZESPOLU tylko wtedy, gdy wlasciciel WPROST o nia prosi. PROSBY, ktore ja odpalaja: "zrobmy narade", "zbierz zespol", "zaangazuj caly zespol", "zrobcie burze mozgow", "co o tym myslicie", "potrzebuje opinii zespolu". Wtedy kazdy dostaje zadanie ze swojej perspektywy i czesto jest to 7-9 osob.',
+    'TEMATY, ktore SAME Z SIEBIE narady NIE odpalaja: "strategia na kwartal", "gdzie jestesmy", "jak rozwinac firme", "mam takiego klienta". To sa tematy do rozmowy, nie polecenia. Rzeczownik ("klient", "oferta", "research") to temat, poleceniem jest czasownik w trybie rozkazujacym albo "potrzebuje", "chce, zebyscie". Przy nich odpowiadasz sama albo bierzesz 1-2 osoby, chyba ze wlasciciel doda prosbe o zespol.',
     `Deleguj maksymalnie do ${LIMIT_DELEGACJI} agentow (caly dostepny zespol). Nie dodawaj osob, ktorych kompetencja nie dotyka pytania.`,
     'Przyklady mapowania tematu na agentow:',
     '- "jak zwiekszyc sprzedaz": analityk (rynek, konkurencja), handlowiec (oferta, domykanie), copywriter (komunikaty), wiedza-produkt (materialy sprzedazowe), czesto drugi-glos (ryzyka strategii) i analityk-social (kanaly social).',
@@ -176,26 +179,80 @@ function systemPlanu(): string {
     '- "zrobmy narade jak rozwinac firme w tym kwartale": narada calego zespolu, deleguj do WSZYSTKICH agentow, ktorych kompetencja cokolwiek wnosi (analityk, handlowiec, copywriter, analityk-social, wiedza-produkt, opiekun-klienta, operacje, pamiec-zespolu, drugi-glos), kazdy ze swojej perspektywy.',
     '- "popraw ten jeden naglowek": tryb "sam" albo jeden agent (copywriter), bez angazowania zespolu.',
     '- waskie pytanie o jeden temat (np. "napisz jeden post na LinkedIn"): jeden agent (copywriter) albo tryb "sam".',
+    '- "mam takiego klienta, ktory chce zeby AI odbieralo mu telefony": tryb "sam". To opowiesc, nie zlecenie. W polu odpowiedz dopytaj o konkret (branza, skala, budzet), nie rozdawaj zadan.',
     'Zadania musza byc konkretne i wykonalne, po polsku, kazde dopasowane do kompetencji danego agenta.',
   ].join('\n')
 }
 
 /**
- * Buduje plan przez callModel z dedykowanym system promptem. Odporny: gdy parser
- * padnie (model odpowiedzial proza), ponawia RAZ z ostrzejsza instrukcja.
- * Zwraca surowa odpowiedz (do ewentualnego fallbacku) oraz sparsowany wynik (albo null).
+ * BRAMKA DWUCZLONOWA: czy wlasciciel JAWNIE prosi o prace calego zespolu.
+ *
+ * Poprzednia wersja (`SYGNALY_NARADY`) reagowala na pojedyncze slowa
+ * "wszyscy", "wszystkich", "narad", "cala firma". W polszczyznie mowionej
+ * padaja one bez zwiazku z narada, przez co 8 z 14 zwyklych zdan (57%) lapalo
+ * regex: "mam takiego klienta, ktory chce WSZYSTKICH handlowcow przeszkolic",
+ * "u niego CALA FIRMA siedzi na Excelu", "wczoraj mielismy NARADE u klienta".
+ * Pomiary w .planning/v2/AUDYT-DELEGACJI.md, sekcja 2.
+ *
+ * Teraz trafienie wymaga DWOCH czlonow w tej samej wypowiedzi:
+ * czasownika prosby ORAZ rzeczownika oznaczajacego zespol. Slowa "wszyscy"
+ * i "wszystkich" wypadly calkowicie (same nigdy nie znacza "caly zespol").
+ *
+ * Czasownik musi byc w formie POLECENIA (tryb rozkazujacy, "zrobmy", albo
+ * pytanie "zrobisz"), nie w czasie przeszlym. Bez tego "wczoraj ZROBILEM narade
+ * z zespolem" i "URUCHOMILEM juz zespol" (relacja, nie prosba) lapaly bramke.
+ * Dodatkowo bezNegacji zdejmuje zwroty, po ktorych czasownik nie jest prosba:
+ * "NIE CHCE, zeby cala firma o tym wiedziala", "ten KLIENT POTRZEBUJE calego
+ * zespolu ludzi". Pomiary i zestaw testowy: webapp/testy/test-intencje.mjs
+ * (25 zdan wlasciciela + przypadki brzegowe), 0 falszywych alarmow.
+ *
+ * Uzywana w DWOCH miejscach (jedno zrodlo prawdy): tutaj w wymusNarade oraz
+ * w realtime.ts przy dopelnianiu narady po wywolaniu uruchom_zespol.
  */
-/**
- * DETERMINISTYCZNA gwarancja narady: gdy wlasciciel wprost prosi o caly zespol
- * (narada, wszyscy, burza mozgow), plan MUSI objac wszystkich specjalistow,
- * niezaleznie od tego, ilu wybral model. Brakujacym dokladamy zadanie z ich
- * perspektywy. To usuwa losowosc "modelowi sie nie chcialo".
- */
-const SYGNALY_NARADY =
-  /narad|caly zespol|całego zespołu|cały zespół|calym zespolem|całym zespołem|wszyscy|wszystkich|burza mozgow|burzę mózgów|cala firma|cała firma|kazdy z zespolu|każdy z zespołu/i
+const CZASOWNIK_PROSBY =
+  /(zr(o|ó)b(cie|my|isz|icie)?\b|zwo(l|ł)a(j|jcie|jmy|sz)\b|zbierz(cie|my|esz)?\b|odpal(cie|my|isz|icie)?\b|uruchom(cie|my|isz|icie)?\b|zaanga(z|ż)uj(cie|my|esz)?\b|w(l|ł)(a|ą)cz(cie|my|ysz)?\b|rozda(j|jcie|jmy|sz)\b|\bniech\b(?! (im|mu|ci|mi|jej|ich|to|tam)\b)|dawaj|potrzebuj(e|ę)|prosz(e|ę)|chc(e|ę),? ?(zeby|żeby))/i
+const RZECZOWNIK_ZESPOLU =
+  /(narad(a|e|ę|y|zie|zmy|zcie)|burz(a|e|ę|y) m(o|ó)zg|zesp(o|ó)(l|ł)|ca(l|ł)(a|ą|ej|ym) firm|ekip(a|e|ę)|dziewczyn)/i
 
+/**
+ * Zdejmuje z wypowiedzi fragmenty, w ktorych czasownik prosby NIE jest prosba:
+ * negacje ("nie chce, zeby...", "nie zbieraj") i osobe trzecia
+ * ("klient potrzebuje", "on potrzebuje"). Dzieki temu bramka nie musi uzywac
+ * lookbehind, ktorego starsze Safari nie parsuje.
+ */
+function bezNegacji(tekst: string): string {
+  return tekst
+    .replace(
+      /\bnie\s+(chc|potrzebuj|zr(o|ó)b|zbierz|odpal|uruchom|zaanga|w(l|ł)(a|ą)cz|rozdaj|zwo(l|ł)a)[a-ząćęłńóśźż]*/gi,
+      ' ',
+    )
+    .replace(
+      /\b(on|ona|oni|klient|klienci|klientka|szef|firma|zesp(o|ó)(l|ł))[a-ząćęłńóśźż]*\s+potrzebuj[a-ząćęłńóśźż]*/gi,
+      ' ',
+    )
+}
+
+/** Czy wypowiedz jest JAWNA prosba o prace calego zespolu (bramka dwuczlonowa). */
+export function prosbaOZespol(tekst: string): boolean {
+  if (!tekst) return false
+  const t = bezNegacji(tekst)
+  return CZASOWNIK_PROSBY.test(t) && RZECZOWNIK_ZESPOLU.test(t)
+}
+
+/**
+ * DETERMINISTYCZNA gwarancja narady: gdy wlasciciel wprost prosi o caly zespol,
+ * plan MUSI objac wszystkich specjalistow, niezaleznie od tego, ilu wybral model.
+ * Brakujacym dokladamy zadanie z ich perspektywy. To usuwa losowosc
+ * "modelowi sie nie chcialo".
+ *
+ * WAZNE: to jest DOPELNIENIE istniejacej narady, a nie tworzenie jej z niczego.
+ * Gdy model swiadomie zwrocil tryb "sam" (uznal, ze wystarczy odpowiedziec),
+ * NIE nadpisujemy tej decyzji. Wczesniej wymusNarade zamieniala "sam" na
+ * "deleguj" z pelna dziewiatka, czyli regex przebijal ocene modelu.
+ */
 function wymusNarade(pytanie: string, wynik: WynikPlanu): WynikPlanu {
-  if (!SYGNALY_NARADY.test(pytanie)) return wynik
+  if (wynik.tryb !== 'deleguj') return wynik
+  if (!prosbaOZespol(pytanie)) return wynik
   const obecni = new Set(wynik.plan.map((k) => k.agent))
   const plan = [...wynik.plan]
   for (const slug of DOZWOLONE_SLUGI) {
@@ -209,6 +266,11 @@ function wymusNarade(pytanie: string, wynik: WynikPlanu): WynikPlanu {
   return { ...wynik, tryb: 'deleguj', plan }
 }
 
+/**
+ * Buduje plan przez callModel z dedykowanym system promptem. Odporny: gdy parser
+ * padnie (model odpowiedzial proza), ponawia RAZ z ostrzejsza instrukcja.
+ * Zwraca surowa odpowiedz (do ewentualnego fallbacku) oraz sparsowany wynik (albo null).
+ */
 async function zbudujPlan(
   pytanie: string,
 ): Promise<{ surowy: string; wynik: WynikPlanu | null }> {

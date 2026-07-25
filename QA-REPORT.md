@@ -1,116 +1,144 @@
 # QA-REPORT, webapp/ (SF AI TEAM)
 
 Data: 2026-07-25
-Wersja: v3.4 (weryfikacja: GLOBALNA PAMIEC FIRMY + STANDARD ZAPISU + migracja + UI
-Mozgu i grafu; poprzednia v3.3)
+Wersja: v4.0 (weryfikacja: HIERARCHIA INTENCJI, bramka delegacji, opisy narzedzi,
+naturalny jezyk i powitania, opis warstw dla COO; poprzednia v3.4)
 Recenzent: WERYFIKATOR (QA w petli: czytaj kod, napraw sam, potem raportuj)
-Werdykt: GOTOWE z poprawkami. Przeczytalem realny kod calego zakresu v3.4 (nie ufalem
-raportowi poprzednika). Znalazlem 1 powazna luke (pelnoekranowa rozmowa glosowa NIE
-zapisywala niczego do pamieci) i 3 mniejsze niespojnosci ze STANDARDEM ZAPISU. Wszystkie
-naprawione. Build exit 0. Em-dash (U+2014) w src bez src/content = 0. api/ bez importow
-miedzy plikami = potwierdzone. Arytmetyka budzetu promptu glosowego przeliczona skryptem:
-~35 613 znakow w najgorszym przypadku, ~4 400 zapasu pod sufitem 40 000.
+Werdykt: GOTOWE z poprawkami. Przeczytalem realny kod calego zakresu v4.0 (nie ufalem
+raportowi poprzednika ani zielonym testom). Znalazlem 1 realna luke w budzecie promptu
+glosowego (twardy `slice` obcinal KONIEC promptu, czyli dokladnie te zasady jezykowe,
+ktore v4.0 dodaje) i naprawilem ja. Build exit 0. Oba testy: 52/52 i 80/80 PASS.
+Em-dash (U+2014) w `src` bez `src/content` = 0. `api/` bez importow miedzy plikami.
+Budzet glosowy przeliczony skryptem na realnych plikach: **38 458 znakow, zapas 1 542**
+pod sufitem 40 000. PERSONA_LIMIT NIE wymagal obnizki.
 
-## Podsumowanie
+## Co bylo w zakresie v4.0
 
-Zakres v3.4 to cztery rzeczy: (1) GLOBALNA PAMIEC FIRMY (jeden zywy plik
-`pamiec-firmy/fakty-firmy.md` wspolny dla calego zespolu, wstrzykiwany do promptu KAZDEJ
-agentki PRZED jej wlasnymi faktami), (2) STANDARD ZAPISU (naglowek metadanych + stale
-naglowki H2 + atomowe linie + linki `[[...]]`) we wszystkich promptach ekstrakcji,
-(3) UI: sekcja "Pamiec firmy" w Mozgu + etykiety grup + graf z centralnym wezlem pamieci
-firmy i encjami z `[[...]]`, (4) migracja starych zapisow, idempotentna, z flaga.
-
-Warstwa danych, prompty, graf i UI byly zrobione dobrze. Luka siedziala w miejscu, ktorego
-raport poprzednika nie dotykal: aplikacja ma DWA komponenty rozmowy glosowej, a pamiec
-zapisywal tylko jeden.
+Zmiana zachowania rozmowy: przeniesienie wyzwalacza delegacji z TEMATU wypowiedzi na
+AKT MOWY. Wczesniej zdanie "mam takiego klienta, ktory..." odpalalo caly zespol, choc
+wlasciciel tylko opowiadal. Skladowe: (1) HIERARCHIA INTENCJI w promptach, (2) opisy
+narzedzi bez "UZYJ ZAWSZE" / "preferuj nad", (3) zawezona bramka narady w OBU miejscach,
+(4) zakaz kalek z angielskiego + naturalne powitania, (5) opis warstw pracy dla COO.
 
 ## Naprawione w tym przegladzie
 
-1. **KRYTYCZNE: pelnoekranowa rozmowa glosowa nie zapisywala NICZEGO.**
-   `src/components/RozmowaGlosowa.tsx` (uzywana na stronie Zespol i w profilu agentki)
-   nie zbierala transkryptu i nie wolala zadnego zapisu: ani pamieci agentki, ani twardych
-   faktow, ani GLOBALNEJ PAMIECI FIRMY, ani pelnej transkrypcji. Zapis dzialal wylacznie w
-   `RozmowaWMiejscu.tsx` (pasek rozmowy w Centrum Dowodzenia). Wniosek: rozmowa glosem
-   uruchomiona z zakladki "Zespol" przepadala bez sladu, wiec warunek "pamiec zapisywana po
-   KAZDEJ rozmowie (glos + czat, kazda agentka)" NIE byl spelniony.
-   Naprawa: dolozony `transkryptRef` (finalne wypowiedzi z toru realtime i toru
-   podstawowego), `autoZapiszPamiec()` (streszczenie -> pamiec agentki, `aktualizujFaktyPoRozmowie`,
-   `aktualizujPamiecFirmy`) i `autoZapiszTranskrypcje()` (pelna transkrypcja w formacie
-   czatu). Wolane przy zamknieciu i przy odmontowaniu, chronione flagami idempotencji,
-   pod tymi samymi przelacznikami co reszta (`sf_pamiec_auto`, `sf_transkrypcje_auto`).
-   Logika glosu (WebRTC, powitanie, fallback, STT, ElevenLabs) NIE zostala zmieniona.
+1. **Budzet promptu glosowego obcinal nie ten koniec, co trzeba (realna regresja v4.0).**
+   `src/lib/ai.ts`, `buildVoicePrompt`: calosc konczyla sie na `out.slice(0, 40000)`.
+   Komentarz nad limitami obiecywal, ze "persona jest przycinana jako pierwsza", ale kod
+   tego nie robil: goly `slice` scina KONIEC stringa, a na koncu promptu stoja
+   `regulyZTonem()` (czyli TON_PERSONY: formy zenskie, ZAKAZANE ZWROTY, zakaz kalek)
+   i nota o rozmowie glosowej. Czyli przy przepelnieniu jako pierwsze ginelo dokladnie to,
+   co v4.0 dodaje. A przepelnienie jest realne: Karta Mozgu jest edytowalna w zakladce
+   Mozg, nadpis persony i wlasne umiejetnosci wpisuje wlasciciel, i ZADNE z tych trzech
+   pol nie ma limitu dlugosci (`maxLength` nie wystepuje w calym `src/`).
+   Naprawa: prompt sklada teraz funkcja `zloz(persona, karta)`, a przy przepelnieniu
+   tniemy w kolejnosci waznosci: najpierw persone (z nota o cieciu), potem Karte Mozgu.
+   Twardy `slice(0, LIMIT)` zostal jako ostatnie zabezpieczenie. Hierarchia intencji,
+   tozsamosc, pamiec firmy, twarde fakty i zasady rozmowy zostaja nietkniete zawsze.
+   Dowod (symulacja na wyciagnietym ze zrodla `buildVoicePrompt`, 4 scenariusze):
 
-2. **Narzedzie glosowe `zapisz_do_bazy` pisalo plik poza STANDARDEM ZAPISU.**
-   `src/lib/realtime.ts` zapisywal notatke ze starym naglowkiem (`> Zrodlo:` / `> Uczestnik:`),
-   bez bloku metadanych, wiec plik wypadal ze standardu i z pol `typ/agent/osoby/tagi`.
-   Naprawa: plik budowany przez `zapewnijNaglowekMeta` (typ `notatka`, agent = slug agentki,
-   uczestnik, data, `wykryjOsoby`, tagi) + stala sekcja `## Do zapamietania`. Dodatkowo opis
-   parametru `tresc` w definicji narzedzia wymusza teraz atomowe linie i linki `[[...]]`,
-   czyli model dostaje ten sam standard co prompty ekstrakcji. Kontrakt narzedzia
-   (`{ok, sciezka}`, response.create) bez zmian.
+   | scenariusz | dlugosc | zasady rozmowy | nota glosowa na koncu |
+   |---|---|---|---|
+   | Karta 4 540 (stan realny) | 30 605 | SA | TAK |
+   | Karta 10 000 (edycja wlasciciela) | 36 065 | SA | TAK |
+   | Karta 20 000 + umiejetnosci 5 000 | 40 000 | SA | TAK |
+   | Karta 60 000 (absurd) | 40 000 | SA | TAK |
 
-3. **Notatka z Centrum Dowodzenia bez naglowka metadanych.**
-   `src/pages/Command.tsx` zapisywal notatke z pracy zespolu goly tekstem, podczas gdy
-   analogiczny zapis w czacie (`Chat.tsx`) juz mial standard. Naprawa: `zapewnijNaglowekMeta`
-   (typ `notatka`, agent `firma`, imie `Zespol`, uczestnik, osoby, tagi) + sekcja `## Rozmowa`.
+   Przed naprawa wiersze 3 i 4 dawaly "BRAK / NIE" (prompt bez zasad jezykowych).
 
-4. **Linki `[[...]]` w podgladzie notatek nie byly klikalne.**
-   `src/pages/Brain.tsx`: podglad notatki renderowal `MarkdownView` bez `onEncja`, wiec
-   pigulki encji byly martwe (inaczej niz w pamieci firmy, plikach i panelu grafu).
-   Naprawa: przekazany `onEncja={otworzEncje}`.
+2. **Arytmetyka budzetu w komentarzu byla oszacowana, nie zmierzona.**
+   `ai.ts` deklarowal "RAZEM ~38 530, zapas ~1 470" i mial bledne pozycje skladowe
+   (np. lista kolezanek 660 zamiast 499, brak naglowkow sekcji i separatorow).
+   Naprawa: tabelka w komentarzu zastapiona liczbami ZMIERZONYMI skryptem na realnych
+   plikach (`hierarchiaIntencji`, `TON_PERSONY`, `CHAT_RULES`, `coo.md`, `_KARTA-MOZGU.md`,
+   `agents.ts`), z jawnym oznaczeniem dwoch pozycji, ktore sa szacunkiem, bo wpisuje je
+   wlasciciel i nie maja limitu.
+
+3. **Powtorzona literalnie nota o przycietej personie.**
+   Ten sam dlugi string stal w dwoch miejscach `buildVoicePrompt`. Wyciagniety do stalej
+   `NOTA_PERSONA_CIETA` (bez zmiany tresci), zeby oba ciecia nie rozjechaly sie w czasie.
+
+4. **Test przestal pilnowac kontraktu po refaktorze (`testy/test-prompty.mjs`).**
+   Asercja "hierarchia jest PIERWSZYM blokiem" byla przywiazana do literalnego
+   `const out = [`, wiec po zmianie na `zloz(...)` zaczela FAILowac, mimo ze kontrakt
+   (hierarchia pierwsza) jest spelniony. Przepisana na sprawdzenie realnej kolejnosci
+   (`hierarchiaIntencji(...)` -> `''` -> `=== KIM JESTES ===`). Dolozone 4 nowe asercje
+   pilnujace naprawy nr 1 (persona pierwsza do ciecia, potem Karta, twardy slice na koncu,
+   sufit 40000). Test rosnie z 76 na 80 asercji. `testy/README.md` zaktualizowany.
 
 ## Status per punkt weryfikacji
 
 | # | Punkt | Status | Dowod |
 |---|-------|--------|-------|
-| 1 | `npm run build` exit 0 | OK | `tsc && vite build`, vite 5.4.21, 1871 modulow, exit 0 (pelne ostatnie linie na koncu raportu). Jedyne ostrzezenie: rozmiar chunku (>500 kB, informacyjne). |
-| 2 | Em-dash (U+2014) w src bez src/content = 0 | OK | Skan `src/**/*.{ts,tsx,css}`: 0 trafien. W `api/`: 0 trafien. |
-| 3 | api/ bez importow miedzy plikami | OK | Skan `api/*.ts` na `from './...'` / `from '../...'`: 0 trafien. Jedyne importy to `node:crypto` w kazdym z 4 plikow (auth inline, bez wspolnego `_auth`). |
-| 4 | PAMIEC FIRMY: jeden zywy plik, zapis po KAZDEJ rozmowie | OK po naprawie | `storage.ts`: `SCIEZKA_PAMIEC_FIRMY = 'pamiec-firmy/fakty-firmy.md'`, grupa `pamiec-firmy`, `LIMIT_PAMIEC_FIRMY = 10000`, `wczytajPamiecFirmy`/`zapiszPamiecFirmy` (:765-804). `ai.ts` `aktualizujPamiecFirmy` (:513) scala stara pamiec z nowa rozmowa. Callsite'y: czat `Chat.tsx:169`, glos w Centrum `RozmowaWMiejscu.tsx:478`, glos pelnoekranowy `RozmowaGlosowa.tsx` (DOLOZONY w tym przegladzie). Gate'y: `pamiecAutoWlaczona()` + `getMode() !== 'demo'` + niepusta transkrypcja. Blad modelu nie kasuje starej pamieci. |
-| 5 | Wstrzykiwanie do buildSystemPrompt I buildVoicePrompt PRZED faktami agentki | OK | `ai.ts` `pamiecFirmyBlok()` (:239) z naglowkiem "=== PAMIEC FIRMY (wspolna wiedza calego zespolu...)" i cap `PAMIEC_FIRMY_LIMIT = 8000`. Czat: kolejnosc persona -> nadpis -> **pamiec firmy** -> fakty agentki (:337-339). Glos: tozsamosc -> nadpis -> **pamiec firmy** -> fakty agentki (:699-701). W obu przypadkach pamiec firmy stoi PRZED `faktyBlok()`. |
-| 6 | Prompt wspomina WSPOLNA pamiec | OK | `WSPOLNA_PAMIEC_INFO` (:231): "Pamiec firmy jest WSPOLNA: to, co wlasciciel ustalil z kazda z nas, znasz..." doklejane w `pamiecFirmyBlok`, czyli w obu promptach. |
-| 7 | ARYTMETYKA budzetu glosowego policzona i pod 40000 | OK (policzone samodzielnie) | Zmierzone skryptem na realnych plikach: TON_PERSONY 1214, zasady rozmowy 615, tozsamosc baza 1031 (+ `PRZESZUKAJ_INFO_GLOS` ~280), dodatki COO 1660, preambula 304, naglowek pamieci firmy 351 (+ `WSPOLNA_PAMIEC_INFO` ~220), naglowek faktow 283, nota glosowa 265, Karta Mozgu 4540, PAMIEC_FIRMY_LIMIT 8000, FAKTY_LIMIT 4000, PERSONA_LIMIT 10000 (+nota o cieciu), nadpis ~800, skille ~1000, lista kolezanek ~660, ton osobisty ~300. **Razem ~35 613, zapas ~4 387 pod twardym `LIMIT = 40000`** (`ai.ts:720`). Komentarz z arytmetyka w `ai.ts:197-221` zgadza sie z pomiarem. Zabezpieczenie dodatkowe: serwer `realtime-token.ts` tez tnie instrukcje do 40000. |
-| 8 | STANDARD ZAPISU we wszystkich promptach ekstrakcji | OK po naprawie | `STANDARD_ZAPISU` (`ai.ts:366`) wymusza blok metadanych `---` (typ, agent, imie, uczestnik, data, osoby, tagi), stale H2, atomowa linie `- **[[Nazwa]]** \| pole: wartosc \| zrodlo: [[plik]]` i linki `[[...]]`. Uzyty w: `buildPamiecPrompt` (:392), `buildPamiecFirmyPrompt` (:422), `buildFaktyPrompt` (:444), zapis rozmowy do bazy (`RozmowaWMiejscu.tsx:519`), briefing narady (:579). DOLOZONY w tym przegladzie: opis parametru narzedzia `zapisz_do_bazy` (`realtime.ts`) i naglowki metadanych w `realtime.ts` + `Command.tsx`. |
-| 9 | Stale H2 per typ pliku | OK | Pamiec firmy i fakty agentki: `## Osoby`, `## Firmy i projekty`, `## Preferencje wlascicieli`, `## Trwale ustalenia i decyzje`, `## Skojarzenia i wnioski` (te same 5 sekcji, ta sama kolejnosc, nawet gdy pusta). Pamiec rozmowy: `## Ustalenia`, `## Decyzje`, `## Fakty i liczby`, `## Nastepne kroki`. Briefing: Temat / Ustalenia / Decyzje / Nastepne kroki / Do zapamietania. Notatka z rozmowy: Temat / Fakty / Ustalenia / Do zapamietania. |
-| 10 | Transkrypcje: naglowek + format czatu | OK po naprawie | `storage.ts` `zapiszTranskrypcje` (:665) sam buduje naglowek metadanych (typ `transkrypcja`, agent, uczestnik, data, `wykryjOsoby`, tagi) + tytul H1; tresc w formacie czatu `**Ty:** / **<Imie>:**` sklada `budujTranskryptCzytelny` (`RozmowaWMiejscu.tsx:423`, sekcja `## Rozmowa` + opcjonalna `## Raporty zespolu`). Ten sam format dolozony do `RozmowaGlosowa.tsx`. |
-| 11 | Migracja idempotentna z flaga | OK | `storage.ts` `migrujStareZapisy` (:920): natychmiastowy `return` gdy `sf_migracja_v34 === '1'`, pomija pliki majace juz naglowek (`maNaglowekMeta`), TRESCI NIE ZMIENIA (dokleja wylacznie naglowek wyliczony z grupy/sciezki/`updatedAt`), flaga zapisywana po przebiegu, calosc w `try/catch`. Wolana raz w `App.tsx:31` w `useEffect` (podwojne wywolanie w React.StrictMode bezpieczne). |
-| 12 | UI: sekcja Pamiec firmy w Mozgu (podglad/edycja/przebudowa) | OK | `Brain.tsx`: osobna, wyrozniona zakladka "Pamiec firmy" (:538-550) i widok (:581-671) z licznikiem `znaki / LIMIT_PAMIEC_FIRMY`, podgladem `MarkdownView` z klikalnymi `[[...]]`, edycja reczna (`zapiszPamiecRecznie`) i przyciskiem "Przebuduj z ostatnich rozmow" (`przebudujPamiecFirmyOdZera(15)`, `ai.ts:584`) z licznikiem realnych zrodel. Pusty stan opisany po ludzku. |
-| 13 | UI: etykiety grup | OK | `Brain.tsx` `etykietaGrupy` (:132): "Pamiec firmy", "Twarde fakty (agentki)", "Transkrypcje rozmow", "Briefingi z narad", "Z rozmow", "Pamiec: <Imie>". `brainGraph.ts` `GROUP_LABEL` + `GROUP_OPIS` (opisy do panelu i legendy) dla `pamiec-firmy` i `encje`. Wykluczenie pulapki: `slugZPamieci` odrzuca `pamiec-firmy`, wiec nie powstaje etykieta "Pamiec: firmy" (:169-174). |
-| 14 | Graf: centralny wezel pamieci firmy + encje z [[...]] + klikalne linki | OK | `brainGraph.ts`: hub i plik pamieci firmy powiekszone (17 / min. 15, :338 i :361), KAZDA z 9 person dostaje realna krawedz `reads` do pliku pamieci firmy (:426-429), wiec wezel jest realnym centrum sieci. `BrainGraph.tsx:266-276` startuje ten wezel w punkcie (0,0). Encje: `parsujLinkiWiki` + `kluczLinku` + `dopasujPlik` (dopasowanie doslowne, a dla sciezek jednoznaczny prefiks), link trafiajacy w plik daje krawedz plik-plik, nietrafiajacy tworzy wezel `encja` spinajacy wszystkie pliki o tej osobie/firmie (:485-549). Klikalne: `MarkdownView` zamienia `[[Nazwa]]` na przycisk (`onEncja`), `Brain.tsx otworzEncje` otwiera plik albo pokazuje liste plikow z ta encja; `GrafPanel` ma karte encji z lista plikow. |
-| 15 | Wyszukiwarka i mozg widza pamiec firmy | OK | Plik idzie do `sf_mozg_wlasne`, wiec `getBrainFiles()` -> `getFullBrain()` (czat) i `szukajWMozgu()` (glosowe `przeszukaj_wiedze`) widza go automatycznie. Premia swiezosci obejmuje grupy `pamiec-*` (a wiec i `pamiec-firmy`) oraz `fakty` (`content.ts:237`). |
-| 16 | Nietkniete: glos, delegacja, logowanie, internet, mapa, skille, edytor persony, fakty agentek | OK | Zmiany objely 4 pliki: `RozmowaGlosowa.tsx` (tylko DODANIE zbierania transkryptu i zapisow, zero zmian w torze WebRTC/STT/TTS i w powitaniu), `realtime.ts` (tylko format zapisywanego pliku + opis parametru narzedzia; petla zdarzen, guard powtorek, 3 narzedzia i delegacja 9/9 bez zmian), `Command.tsx` (tylko tresc zapisywanej notatki), `Brain.tsx` (jeden props `onEncja`). Zero zmian w `api/`, w logowaniu, w `orchestrator.ts`, w mapie, w skillach, w edytorze persony i w warstwie faktow agentek. |
+| 1 | `npm run build` exit 0 | OK | `tsc && vite build`, vite 5.4.21, 1871 modulow, EXIT=0 po wszystkich naprawach (pelne ostatnie linie na koncu raportu). Jedyne ostrzezenie: rozmiar chunku (>500 kB, informacyjne). |
+| 1 | Em-dash (U+2014) w `src` bez `src/content` = 0 | OK | Skan `src/**/*.{ts,tsx,css}` z wykluczeniem `src/content/`: 0 trafien. W `api/`: 0 trafien. W `src/content/`: rowniez 0. |
+| 1 | `api/` bez importow miedzy plikami | OK | Wszystkie importy w `api/*.ts`: `node:crypto` w 4 plikach (`chat.ts`, `login.ts`, `realtime-token.ts`, `tts.ts`). Zero `from './...'` i `from '../...'`. Auth nadal inline w kazdym pliku (lekcja z commita 5ab7b2e). |
+| 2 | Testy z `webapp/testy/` przechodza | OK | `node testy/test-intencje.mjs` = **52 PASS / 0 FAIL**, exit 0. `node testy/test-prompty.mjs` = **80 PASS / 0 FAIL**, exit 0. Oba czytaja realne zrodla (regexy i funkcje sa WYCINANE z `ai.ts` / `orchestrator.ts` i wykonywane, nie kopiowane). |
+| 3 | Hierarchia intencji w promptach | OK | `ai.ts:hierarchiaIntencji(jestCoo)` (5 przypadkow, domyslny = 1. OPOWIADA -> SLUCHASZ, "ZERO narzedzi, zero planu"). Delegacja stoi dopiero w punkcie 3 i wymaga JAWNEJ prosby albo zgody ("dawaj", "ok, rob"). Punkt 4: "Milczaca zgoda nie istnieje". Blok jest PIERWSZYM elementem promptu glosowego (`buildVoicePrompt`), czyli na najsilniejszej pozycji, i nigdy nie jest przycinany. Wariant COO 3 209 znakow, wariant zwyklej persony 2 932. |
+| 3 | Opisy narzedzi bez "UZYJ ZAWSZE" / "preferuj nad" | OK | Skan `realtime.ts` i `ai.ts` (po zdjeciu komentarzy) na: "UZYJ ZAWSZE", "preferuj nad", "preferuj je nad", "widac to na mapie", "Preamble sample phrases", "wymaga pracy kilku rol" = 0 trafien w obu plikach. `uruchom_zespol` ma teraz bramke "UZYJ TYLKO" + lista "NIE UZYWAJ" + "NIE MASZ PEWNOSCI ... = NIE WYWOLUJ" + "uzywaj jej OSZCZEDNIE" + skala 1-3 osoby domyslnie. `przeszukaj_wiedze` kaze najpierw sprawdzic pamiec firmy i twarde fakty. |
+| 3 | Zawezony SYGNALY_NARADY w OBU miejscach | OK | Stary regex (`narad|wszyscy|wszystkich|cala firma...`) usuniety z `orchestrator.ts` I z `realtime.ts` (test 3 w `test-intencje.mjs` pilnuje, ze deklaracja nie wrocila). Zamiast niego JEDNO zrodlo prawdy: `prosbaOZespol()` w `orchestrator.ts:236`, importowane przez `realtime.ts:20` i uzyte przy dopelnianiu narady (`realtime.ts:804`). Bramka dwuczlonowa: CZASOWNIK_PROSBY (tryb rozkazujacy, nie czas przeszly) ORAZ RZECZOWNIK_ZESPOLU, plus `bezNegacji()` na negacje i osobe trzecia. Zmierzone na 40 zdaniach: 0 falszywych alarmow, w tym na "wczoraj zrobilem narade z zespolem", "u tego klienta cala firma siedzi na Excelu", "nie chce, zeby cala firma o tym wiedziala". |
+| 3 | Lista zakazanych kalek + naturalne powitania | OK | `TON_PERSONY` (`ai.ts:127-129`): sekcja ZAKAZANE ZWROTY ("dobrze Cie slyszec", "w czym dzis pomoc", "jak moge Ci dzis pomoc", "czy moge jeszcze w czyms pomoc") + korpo kalki ("milego dnia", "swietne pytanie", "chetnie pomoge", "na koniec dnia") z polskimi zamiennikami + "ZERO POWTARZANIA WZORCOW". Idzie do KAZDEJ persony, w czacie i w glosie, przez `CHAT_RULES` -> `regulyZTonem()`. Powitania: `eleven.ts:powitanieTekst()` losuje 1 z 4 wariantow (tor podstawowy), a `powitanieInstrukcja()` w OBU komponentach rozmowy (`RozmowaGlosowa.tsx`, `RozmowaWMiejscu.tsx`) podaje modelowi 5 inspiracji + jawny zakaz kalek. Sprawdzilem, ze tresc w obu komponentach jest identyczna. |
+| 3 | Opis warstw dla COO | OK | `ai.ts:706`, blok "CZTERY WARSTWY NARAZ: mowisz, sluchasz, siegasz po wiedze i (po zgodzie) trzymasz prace w tle. To nie sa tryby, ktore sie wykluczaja." + instrukcja, zeby NIE zawieszac rozmowy, gdy kolezanki pracuja, i konkretne przyklady mowienia o pracy w tle. Doklejany tylko dla `slug === 'coo'`. Obok: "Twoja DOMYSLNA praca to rozmowa z wlascicielem, nie odpalanie zespolu" i blok SKALA (domyslnie nikt, dziewiatka tylko na wprost prosbe). |
+| 4 | Pamiec firmy zapisywana i wstrzykiwana | OK, nietkniete | Zapis po KAZDEJ rozmowie w 3 miejscach: czat `Chat.tsx:169`, glos w Centrum `RozmowaWMiejscu.tsx:488`, glos pelnoekranowy `RozmowaGlosowa.tsx:263`. Wstrzykiwanie: `pamiecFirmyBlok()` PRZED `faktyBlok()` w `buildSystemPrompt` i w `buildVoicePrompt` (kolejnosc niezmieniona przez v4.0). W diffie v4.0 warstwa pamieci nie zostala dotknieta ani jedna linia. |
+| 4 | Twarde fakty agentek | OK, nietkniete | `aktualizujFaktyPoRozmowie` wolane w tych samych 3 miejscach, `faktyBlok()` nadal w obu promptach, `FAKTY_LIMIT` 4000 bez zmian. |
+| 4 | Transkrypcje | OK, nietkniete | `zapiszTranskrypcje` w obu komponentach glosowych (`RozmowaGlosowa.tsx:273`, `RozmowaWMiejscu.tsx:503`), `storage.ts` bez zmian w v4.0 (`git diff` na `src/lib/storage.ts` = pusty). |
+| 4 | Delegacja DZIALA, gdy sie o nia poprosi | OK | Nie zabita, tylko zawezona. Glos: `uruchom_zespol` nadal jest w narzedziach COO, a jego opis WYMIENIA prosby, ktore go odpalaja (tryb rozkazujacy mnogi, "zbierz zespol", "zrobmy narade", "burza mozgow", "co o tym MYSLICIE", imie kolezanki jako zlecenie, oraz zgoda po wlasnej propozycji). Czat/Centrum: `systemPlanu()` wprost instruuje tryb "deleguj" na te same prosby. Test: 6 zdan typu DELEGUJ ("Zrob narade z zespolem", "Zbierz caly zespol...", "Zrobcie burze mozgow", "Potrzebuje opinii calego zespolu", "Uruchom zespol...", "Rozdaj dziewczynom zadania") przechodzi bramke = true, a `wymusNarade` dopelnia plan do 9 osob. Prosba o JEDNA osobe ("Zapytaj Rae") celowo nie dopelnia do dziewiatki, ale nadal deleguje (test: agentow=1). |
+| 4 | Glos (WebRTC), mapa, logowanie, internet Rae/Zoe | OK, nietkniete | `git diff` v4.0 objal 6 plikow. W `realtime.ts` zmienily sie WYLACZNIE trzy opisy narzedzi + podmiana regexu na `prosbaOZespol` (petla zdarzen, SDP/WebRTC, guard powtorek, VAD, transkrypcja wejscia bez zmian). W komponentach rozmowy: tylko tekst instrukcji powitania. `api/` (w tym `login.ts`), `Logowanie.tsx`, `Command.tsx` (mapa), `Brain.tsx`, `storage.ts`, `voice.ts`: ZERO zmian. Internet: `maWebSearch()` nadal zwraca true dla `analityk` i `analityk-social`, blok o web search doklejany w obu promptach. |
+| 5 | Budzet promptu glosowego < 40 000 | OK, przeliczone samodzielnie | Zmierzone skryptem na realnych plikach: hierarchia COO 3 209, tozsamosc 3 197 (baza 1 632 + dodatki COO 1 564), nadpis ~800 (szacunek), pamiec firmy 8 528, twarde fakty 4 280, Karta Mozgu 4 540, persona po przycieciu 8 096, umiejetnosci ~1 000 (szacunek), lista kolezanek 499, preambula 482, zasady rozmowy + TON_PERSONY 3 258, ton osobisty 166, nota glosowa 299, naglowki i separatory 104. **RAZEM 38 458, ZAPAS 1 542** pod `LIMIT = 40000`. PERSONA_LIMIT zostaje 8000 (obnizka nie byla potrzebna). Dodatkowe zabezpieczenie: `api/realtime-token.ts` tez tnie instrukcje do 40000. |
+
+## Swiadome decyzje, ktore zostawilem bez zmian
+
+- **Prompt CZATU nie dostaje bloku HIERARCHIA INTENCJI.** To celowe: hierarchia mowi o
+  narzedziach `przeszukaj_wiedze` i `uruchom_zespol`, ktorych w czacie tekstowym NIE MA
+  (czat nie ma function callingu poza web searchem). Wstrzykniecie jej tam kazaloby
+  modelowi obiecywac "zaraz sprawdze w bazie" bez mozliwosci wykonania. Rownowaznik
+  w czacie jest w dwoch miejscach: `CHAT_RULES` ("Gdy tylko opowiada... NIE odpowiadaj
+  planem") i `systemPlanu()` w orkiestratorze ("DOMYSLNIE odpowiadasz sama" + GRAMATYKA
+  DECYDUJE + lista tematow, ktore narady NIE odpalaja).
+- **`wymusNarade` nie nadpisuje decyzji modelu `tryb: "sam"`.** Ryzyko resztkowe: jesli
+  poprosisz wprost o narade, a model mimo to zwroci "sam", narada sie nie odpali (dawniej
+  regex ja wymuszal). Zostawiam, bo to swiadomy kontrakt v4.0, pilnowany testem: regex
+  nie ma przebijac oceny modelu. Prompt planisty wymienia Twoje prosby wprost, wiec w
+  praktyce model powinien wracac z "deleguj".
 
 ## Instrukcja testu dla wlasciciela (Pawel)
 
-Cel: sprawdzic, ze **Rae wie, o czym rozmawiales z Lea**. To jest sedno v3.4.
+Cel v4.0: sprawdzic, ze agentka **slucha, zamiast od razu odpalac zespol**, i ze mowi
+zywym polskim, a nie jak infolinia. Test robisz GLOSEM z **Lea** (to ona ma zespol).
 
-1. W Vercel upewnij sie, ze sa ustawione `ANTHROPIC_API_KEY` (czat i scalanie pamieci)
-   oraz `OPENAI_API_KEY` (glos). Zrob Redeploy projektu `webapp` i otworz produkcyjny URL.
-2. W Ustawieniach sprawdz, ze wlaczony jest przelacznik automatycznej pamieci rozmow
-   (`sf_pamiec_auto`). Bez niego nic sie nie zapisuje, celowo.
-3. Wejdz w zakladke **Zespol** i porozmawiaj glosem z **Lea**. Podaj 2-3 konkretne,
-   trwale fakty, np. "Klaudiusz to moj znajomy z branzy paliwowej" i "budzet na kampanie
-   to 12 tysiecy na kwartal". Zakoncz rozmowe przyciskiem "Zakoncz" (nie zamykaj karty).
-4. Wejdz w **Mozg firmy** > zakladka **Pamiec firmy**. Powinien tam byc plik
-   `pamiec-firmy/fakty-firmy.md` z naglowkiem metadanych i sekcjami Osoby / Firmy i
-   projekty / Preferencje wlascicieli / Trwale ustalenia i decyzje / Skojarzenia,
-   a w nich Twoje fakty w atomowych liniach z linkami `[[Klaudiusz]]`.
-   (Scalanie idzie w tle po zakonczeniu rozmowy: daj mu 10-20 sekund i odswiez widok.)
-5. **Test wlasciwy:** otworz czat albo rozmowe glosowa z **Rae** (inna agentka, nowa
-   rozmowa) i zapytaj wprost: "kim jest Klaudiusz?" oraz "jaki mamy budzet na kampanie?".
-   Rae powinna odpowiedziec z pamieci, bez szukania i bez przypominania. Jesli odpowie
-   "nie wiem", to znaczy, ze plik pamieci firmy jest pusty (wroc do kroku 4).
-6. Klikalne linki: w podgladzie pamieci firmy kliknij pigulke `[[Klaudiusz]]`. Powinna sie
-   pokazac lista wszystkich plikow, ktore o nim mowia. To samo z poziomu zakladki **Graf**:
-   pomaranczowe wezly to encje (osoby, firmy), a duzy wezel w srodku, do ktorego prowadza
-   nitki od wszystkich 9 person, to pamiec firmy.
-7. Reczna kontrola: w zakladce Pamiec firmy dziala "Edytuj" (mozesz poprawic albo dopisac
-   fakt recznie) oraz "Przebuduj z ostatnich rozmow" (sklada pamiec od zera z ostatnich 15
-   plikow rozmow, transkrypcji i briefingow calego zespolu).
+1. W Vercel musza byc `ANTHROPIC_API_KEY` (czat, scalanie pamieci, raporty zespolu) i
+   `OPENAI_API_KEY` (glos). Zrob Redeploy i otworz produkcyjny URL.
+2. **Powitanie.** Wejdz w rozmowe glosowa z Lea i nic nie mow przez chwile. Powinno padnac
+   jedno krotkie zdanie w stylu "Hej Pawel, co tam?" albo "O, jestes. Co slychac?".
+   BLAD, jesli uslyszysz "dobrze Cie slyszec", "w czym dzis pomoc", "jak moge Ci dzis
+   pomoc" albo jesli przedstawi sie z imienia i funkcji. Wejdz w rozmowe 2-3 razy pod rzad:
+   powitanie za kazdym razem ma brzmiec inaczej.
+3. **Test glowny: opowiadasz, ona ma sluchac.** Powiedz dokladnie:
+   "Mam takiego klienta, ktory chce, zeby AI odbieralo mu telefony."
+   Poprawnie: dopyta o JEDEN konkret ("co to za branza?", "duzy ruch maja?") i NIC wiecej.
+   BLAD: rozda zadania zespolowi, zacznie szukac w bazie albo wysypie plan w krokach.
+   Na mapie w Centrum Dowodzenia NIE powinna zapalic sie ani jedna agentka.
+4. **Drugie zdanie kontrolne:** "Bylem dzis na spotkaniu, poszlo slabo." Poprawnie:
+   reakcja po ludzku ("kurcze, a co poszlo nie tak?"). Zero narzedzi, zero planu.
+5. **Trzecie: komentarz, nie rozkaz.** Powiedz: "Trzeba by to jakos policzyc."
+   Poprawnie: ZAPYTA, czy ma dac to Rae, i POCZEKA na Twoja odpowiedz. BLAD: sama odpali
+   zespol. Potem powiedz "dawaj" i dopiero TERAZ zespol ma ruszyc.
+6. **Test odwrotny: delegacja ma dzialac.** Powiedz wprost: "Zrob narade z zespolem na
+   temat wejscia w nowa nisze." Poprawnie: powie na glos, kogo bierze, i na mapie zapala
+   sie WSZYSTKIE dziewiec agentek, a po kilkudziesieciu sekundach Lea zreferuje raporty
+   po imieniu. Jesli tu nic sie nie stanie, delegacja jest za mocno zaduszona: powiedz mi,
+   z jakim dokladnie zdaniem.
+7. **Test na jedna osobe:** "Zapytaj Rae, jak wyglada rynek voicebotow w Polsce."
+   Poprawnie: rusza SAMA Rae (jedna agentka na mapie), nie cala dziewiatka.
+8. **Jezyk.** W calej rozmowie nie powinny padac: "milego dnia", "swietne pytanie",
+   "chetnie pomoge", "czy to brzmi dobrze". Powinny padac krotkie zdania, formy zenskie
+   ("sprawdzilam", "przygotowalam") i potwierdzenia typu "mhm", "jasne".
+9. **Nic sie nie zepsulo (regresja).** Po rozmowie sprawdz w **Mozgu firmy** zakladke
+   **Pamiec firmy**: ma przybyc tresc z tej rozmowy. Zakladka z transkrypcjami: ma byc
+   nowy plik. Potem zapytaj **Rae** w czacie o fakt, ktory podales Lea. Ma go znac.
 
-Uwaga do kroku 3: zapis odpala sie po ZAKONCZENIU rozmowy, nie w jej trakcie. W czacie
-tekstowym dodatkowy warunek to rozmowa dluzsza niz 4 wiadomosci (krotkie zagadniecia nie
-zasmiecaja pamieci).
+Uwaga: pamiec i transkrypcja zapisuja sie PO zakonczeniu rozmowy (przycisk "Zakoncz",
+nie zamykanie karty), scalanie idzie w tle 10-20 sekund.
 
 ## Build (ostatnie linie)
 
@@ -118,19 +146,22 @@ zasmiecaja pamieci).
 ✓ 1871 modules transformed.
 dist/index.html                 0.89 kB │ gzip:   0.48 kB
 dist/assets/index-emUAkKcT.css  45.06 kB │ gzip:   8.95 kB
-dist/assets/index-ClmFO-bj.js   859.56 kB │ gzip: 271.93 kB
-✓ built in 4.39s
+dist/assets/index-CC1ZvlNP.js   869.27 kB │ gzip: 276.04 kB
+✓ built in 4.91s
 ```
-`tsc && vite build` uruchomione PO wszystkich naprawach: EXIT=0 (zmierzone: `npm run build;
-echo "EXIT=$?"`). Jedyne ostrzezenie: rozmiar chunku (>500 kB, informacyjne).
-NIE commitowano (14 plikow zmodyfikowanych, zostaja w drzewie roboczym).
+`tsc && vite build` uruchomione PO wszystkich naprawach: EXIT=0 (zmierzone:
+`npm run build; echo "EXIT=$?"`). Jedyne ostrzezenie: rozmiar chunku (>500 kB,
+informacyjne). Testy po naprawach: `test-intencje.mjs` 52/52 exit 0,
+`test-prompty.mjs` 80/80 exit 0. NIE commitowano (zmiany zostaja w drzewie roboczym).
 
 ## NIEZWERYFIKOWANE
 
-- Realna rozmowa glosowa end-to-end i jakosc scalania pamieci firmy przez model
-  (czy sekcje sa poprawne, czy nie ma duplikatow, czy Rae realnie odpowie o Klaudiuszu):
-  wymaga kluczy w Vercel, mikrofonu i przeprowadzenia rozmowy w przegladarce. Zweryfikowane
-  zostaly: kompilacja, gate'y, kolejnosc wstrzykniec, arytmetyka budzetu i spojnosc zapisow
-  przez odczyt kodu. Ostateczny dowod da TEST z sekcji powyzej.
-- Migracja `sf_migracja_v34` na realnych, starych danych w przegladarce Pawla (kod jest
-  idempotentny i nie zmienia tresci, ale nie mam dostepu do jego localStorage).
+- Realne zachowanie modelu w rozmowie glosowej: czy przy zdaniu "mam takiego klienta..."
+  faktycznie NIE odpali zespolu. Zweryfikowane zostalo wszystko, co da sie sprawdzic bez
+  mikrofonu i kluczy: tresc promptow, kolejnosc blokow, opisy narzedzi, bramka
+  deterministyczna na 40 zdaniach, budzet znakow, kompilacja. Ostateczny dowod da TEST
+  z sekcji powyzej, kroki 3-7. To jest zmiana PROMPTU, wiec jej skutecznosc jest
+  probabilistyczna: bramka `prosbaOZespol` chroni deterministycznie tylko przed
+  rozdmuchaniem 2 agentow do 9, nie przed samym wywolaniem narzedzia przez model.
+- Losowanie powitan w torze podstawowym (`eleven.ts`): kod jest trywialny, ale nie
+  odsluchalem go na zywo.

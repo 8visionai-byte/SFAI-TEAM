@@ -29,14 +29,33 @@ export function zatrzymajMowe(): void {
 }
 
 /**
- * Buduje tekst powitania persony: krotkie, personalne, BEZ przedstawiania sie
- * (rozmowca wie, z kim rozmawia). Po imieniu usera, gdy jest profil.
- * Tor podstawowy nie zna plci uzytkownika modelu, wiec trzymamy neutralne,
- * cieple powitanie zgodne z tonem person (od razu do rzeczy).
+ * Buduje tekst powitania persony: krotkie, po ludzku, BEZ przedstawiania sie
+ * (rozmowca wie, z kim rozmawia) i BEZ pytania "w czym pomoc" (kalka z
+ * angielskiego, brzmi jak infolinia). Po imieniu usera, gdy jest profil.
+ *
+ * Tor podstawowy (ElevenLabs / Web Speech) czyta gotowy tekst, wiec wariacje
+ * losujemy tutaj: przy kolejnych wejsciach powitanie nie brzmi jak nagranie.
  */
+const WARIANTY_POWITANIA_Z_IMIENIEM = [
+  'Hej {i}, co tam?',
+  'O, jestes. Co slychac, {i}?',
+  'Czesc {i}, slucham Cie.',
+  'No hej {i}, mow smialo.',
+]
+const WARIANTY_POWITANIA_BEZ_IMIENIA = [
+  'Hej, co tam?',
+  'O, jestes. Co slychac?',
+  'Czesc, slucham Cie.',
+  'No hej, mow smialo.',
+]
+
 export function powitanieTekst(): string {
   const user = getProfil()?.imie
-  return user ? `Czesc ${user}! Co tam u Ciebie?` : 'Czesc! Co tam u Ciebie?'
+  const lista = user
+    ? WARIANTY_POWITANIA_Z_IMIENIEM
+    : WARIANTY_POWITANIA_BEZ_IMIENIA
+  const wybrane = lista[Math.floor(Math.random() * lista.length)]
+  return user ? wybrane.replace('{i}', user) : wybrane
 }
 
 export interface OpcjeMowyPersony {

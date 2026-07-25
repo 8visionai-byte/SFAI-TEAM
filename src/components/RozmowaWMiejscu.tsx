@@ -196,13 +196,23 @@ export default function RozmowaWMiejscu({
 
   // --- Start rozmowy: powitanie -> tor realtime lub podstawowy ---------------
 
-  /** Instrukcja powitania dla modelu realtime: personalnie, po kobiecemu, bez prezentacji. */
+  /**
+   * Instrukcja powitania dla modelu realtime: jak wita sie kolezanka z zespolu,
+   * po kobiecemu, bez prezentacji i bez pytania "w czym pomoc".
+   * Ta sama tresc musi byc w RozmowaGlosowa.tsx (drugi ekran rozmowy).
+   * Poprzednie brzmienie podawalo modelowi kalki "dobrze Cie slyszec" i
+   * "w czym dzis pomoc", wiec je cytowal (patrz .planning/v2/AUDYT-DELEGACJI.md 3A).
+   */
   function powitanieInstrukcja(): string {
     const uczestnik = imieUczestnika()
     return (
-      `Przywitaj sie krotko, cieplo i personalnie z ${uczestnik} po polsku, w formie zenskiej, ` +
-      `BEZ przedstawiania sie (on wie, kim jestes): np. "Czesc ${uczestnik}! Co tam u Ciebie?" ` +
-      `albo "Hej ${uczestnik}, dobrze Cie slyszec! W czym dzis pomoc?". Od razu do rzeczy. ` +
+      `Przywitaj sie z ${uczestnik} tak, jak wita sie kolezanka z zespolu, po polsku, w formie zenskiej. ` +
+      `Jedno krotkie zdanie, BEZ przedstawiania sie (on wie, kim jestes) i BEZ pytania o pomoc. ` +
+      `Inspiracje, NIE cytuj ich doslownie, za kazdym razem powiedz to inaczej: ` +
+      `"Hej ${uczestnik}, co tam?" / "O, jestes. Co slychac?" / "Czesc ${uczestnik}, slucham Cie." / ` +
+      `"No hej, mow smialo." / "${uczestnik}, jestem. Od czego zaczynamy?". ` +
+      `ZAKAZANE: "dobrze Cie slyszec", "w czym dzis pomoc", "jak moge Ci dzis pomoc" (to kalki z angielskiego, brzmia jak infolinia). ` +
+      `Potem czekaj, az on zacznie. Nic nie proponuj z wlasnej inicjatywy w pierwszym zdaniu. ` +
       `Bez em-dash, bez zmyslonych liczb, nie dodawaj nic wiecej.`
     )
   }

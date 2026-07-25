@@ -17,6 +17,7 @@
 import { type Agent, agents, getAgent } from '../data/agents'
 import { buildVoicePrompt, getVoiceModel, sendMessage } from './ai'
 import { szukajWMozgu } from './content'
+import { prosbaOZespol } from './orchestrator'
 import {
   authNaglowek,
   dodajPlikMozgu,
@@ -190,9 +191,10 @@ export async function startRozmowa(
       name: 'przeszukaj_wiedze',
       description:
         'Przeszukuje baze wiedzy (mozg) firmy SimpleFast.ai i zwraca pasujace fragmenty. ' +
-        'Uzyj TYLKO gdy potrzebujesz FAKTOW z bazy: cennik, case studies, ICP, oferta, proces, dane firmy. ' +
-        'NIE uzywaj do narad, angazowania zespolu ani zlecania pracy innym: od tego jest uruchom_zespol. ' +
-        'Preamble sample phrases: Juz sprawdzam to w naszej bazie. / Chwilke, zaraz to znajde. / Sekunde, siegam po szczegoly.',
+        'UZYJ, gdy wlasciciel pyta o konkret, ktorego NIE MASZ juz w promptcie: cennik, konkretne wdrozenie, klient idealny, oferta, proces, dane firmy, wczesniejsze ustalenia. ' +
+        'NAJPIERW sprawdz pamiec firmy i twarde fakty, ktore masz w instrukcji. Jesli odpowiedz tam jest, odpowiedz sama, BEZ narzedzia. ' +
+        'NIE UZYWAJ, gdy: wlasciciel tylko opowiada albo mysli na glos; pyta Cie o zdanie ("co myslisz"); prosi o prace zespolu (od tego jest uruchom_zespol); odpowiedz juz znasz. ' +
+        'Przykladowe zdania przed uzyciem narzedzia (inspiracja, NIE cytuj doslownie, mow to za kazdym razem inaczej): Juz sprawdzam to w naszej bazie. / Chwilke, zaraz to znajde. / Sekunde, siegam po szczegoly.',
       parameters: {
         type: 'object',
         properties: {
@@ -211,7 +213,7 @@ export async function startRozmowa(
         'Zapisuje wazne ustalenia z rozmowy do bazy wiedzy firmy jako notatke MD. ' +
         'Uzyj gdy wlasciciel poda nowe dane, decyzje, ustalenia, albo poprosi o zapis. ' +
         'Najpierw zaproponuj zapis i poczekaj na zgode, dopiero potem wywolaj to narzedzie. ' +
-        'Preamble sample phrases: Zapisze to do naszej bazy. / Dodaje to do mozgu firmy.',
+        'Przykladowe zdania przed uzyciem narzedzia (inspiracja, NIE cytuj doslownie): Zapisze to do naszej bazy. / Dodaje to do mozgu firmy.',
       parameters: {
         type: 'object',
         properties: {
@@ -235,11 +237,15 @@ export async function startRozmowa(
       type: 'function',
       name: 'uruchom_zespol',
       description:
-        'Uruchamia wybranych specjalistow zespolu do REALNEJ pracy nad zadaniami. Kazdy dostaje konkretne zadanie i odpowiada raportem. ' +
-        'UZYJ ZAWSZE, gdy uzytkownik prosi o: narade, burze mozgow, opinie zespolu, "zaangazuj zespol/wszystkich", "zbierz zespol", "zapytaj Rae/Zoe/...", research, przygotowanie czegos przez zespol, albo gdy temat wymaga pracy kilku rol. ' +
-        'Przy prosbie o CALY zespol lub narade przekaz zadania WSZYSTKIM 9 specjalistom (kazdy ze swojej perspektywy). ' +
-        'To narzedzie NAPRAWDE odpala agentow (widac to na mapie), wiec preferuj je nad przeszukaj_wiedze przy kazdej prosbie o prace zespolu. ' +
-        'Preamble sample phrases: Dobra, uruchamiam zespol, daj mi chwile. / Poczekaj, odpalam Rae i Zoe. / Zbieram wszystkich, chwilka.',
+        'Zleca REALNA prace kolezankom z zespolu: kazda dostaje konkretne zadanie i wraca z raportem. ' +
+        'Operacja KOSZTOWNA i WIDOCZNA (agentki zapalaja sie na mapie, praca trwa kilkadziesiat sekund), wiec uzywaj jej OSZCZEDNIE. ' +
+        'UZYJ TYLKO wtedy, gdy wlasciciel WPROST prosi o prace albo opinie zespolu, czyli pada: tryb rozkazujacy w liczbie mnogiej ("zrobcie", "sprawdzcie", "przygotujcie"), "zbierz zespol", "zrobmy narade", "zaangazuj zespol", "burza mozgow", "co o tym MYSLICIE", "niech ktos to zrobi", "potrzebuje opinii zespolu", albo imie konkretnej kolezanki jako zlecenie ("zapytaj Rae", "daj to Jade", "niech Zoe to sprawdzi"). ' +
+        'UZYJ TAKZE wtedy, gdy sama zaproponowalas prace zespolu i uslyszalas zgode ("dawaj", "ok, rob", "jedziemy", "lec"). ' +
+        'NIE UZYWAJ, gdy wlasciciel: opowiada o kliencie, spotkaniu, sytuacji albo pomysle i o nic nie poprosil ("mam takiego klienta, ktory...", "bylem dzis na spotkaniu"); mysli na glos ("zastanawiam sie", "nie wiem, moze", "z jednej strony"); pyta CIEBIE o zdanie w liczbie pojedynczej ("co myslisz", "jak to widzisz", "co bys zrobila"); pyta o fakt z bazy (od tego jest przeszukaj_wiedze); narzeka, zartuje albo zmienia temat. ' +
+        'W tych przypadkach SLUCHAJ i odpowiedz glosem, najwyzej ZAPROPONUJ prace zespolu jednym zdaniem i poczekaj na odpowiedz. ' +
+        'NIE MASZ PEWNOSCI, czy to prosba = NIE WYWOLUJ. Zapytaj krotko ("chcesz, zebym to rozdala dziewczynom?") i czekaj. Milczaca zgoda nie istnieje. ' +
+        'LICZBA OSOB: domyslnie 1-3 najlepiej pasujace role. Cala dziewiatka WYLACZNIE wtedy, gdy padlo wprost "caly zespol", "narada" albo "zbierz wszystkich". ' +
+        'Przykladowe zdania przed uzyciem narzedzia (inspiracja, NIE cytuj doslownie, mow to za kazdym razem inaczej): Dobra, biore Rae i Jade. / Rozdaje zadania, daj mi chwile. / Poczekaj, odpalam Zoe.',
       parameters: {
         type: 'object',
         properties: {
@@ -789,11 +795,13 @@ export async function startRozmowa(
       })
       .slice(0, dozwolone.size)
 
-    // DETERMINISTYCZNA narada: gdy ostatnia wypowiedz usera prosi o caly zespol,
-    // dopelniamy zadania dla WSZYSTKICH specjalistow (model bywa oszczedny).
-    const SYGNALY_NARADY =
-      /narad|caly zespol|całego zespołu|cały zespół|calym zespolem|całym zespołem|wszyscy|wszystkich|burza mozgow|burzę mózgów|cala firma|cała firma/i
-    if (SYGNALY_NARADY.test(ostatniaWypowiedzUsera)) {
+    // DETERMINISTYCZNA narada: gdy ostatnia wypowiedz usera JAWNIE prosi o caly
+    // zespol, dopelniamy zadania dla WSZYSTKICH specjalistow (model bywa oszczedny).
+    // Bramka dwuczlonowa (patrz prosbaOZespol): musi paść CZASOWNIK PROSBY i
+    // RZECZOWNIK ZESPOLU w tej samej wypowiedzi. Stary regex reagowal na samo
+    // slowo "wszyscy" / "wszystkich" / "narad", przez co "mam takiego klienta,
+    // ktory chce wszystkich handlowcow przeszkolic" rozdmuchiwalo 2 agentow do 9.
+    if (prosbaOZespol(ostatniaWypowiedzUsera)) {
       const tematBazowy =
         wybrane[0]?.zadanie ?? ostatniaWypowiedzUsera ?? 'biezacy temat narady'
       for (const slug of dozwolone) {
