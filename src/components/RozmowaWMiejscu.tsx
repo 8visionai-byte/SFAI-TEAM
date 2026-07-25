@@ -11,10 +11,12 @@ import {
 import { mowPowitanie, mowTekstem, zatrzymajMowe } from '../lib/eleven'
 import {
   aktualizujFaktyPoRozmowie,
+  aktualizujPamiecFirmy,
   buildPamiecPrompt,
   callModel,
   getMode,
   sendMessage,
+  STANDARD_ZAPISU,
   type ChatMessage,
 } from '../lib/ai'
 import {
@@ -22,6 +24,8 @@ import {
   imieUczestnika,
   pamiecAutoWlaczona,
   transkrypcjeAutoWlaczone,
+  wykryjOsoby,
+  zapewnijNaglowekMeta,
   zapiszPamiecAgenta,
   zapiszTranskrypcje,
 } from '../lib/storage'
@@ -411,6 +415,30 @@ export default function RozmowaWMiejscu({
   }
 
   /**
+   * CZYTELNY zapis rozmowy do pliku transkrypcji (STANDARD ZAPISU): format czatu
+   * "**Ty:** ..." / "**<Imie>:** ...", a raporty zespolu w osobnej sekcji
+   * "## Raporty zespolu" (tylko gdy jakies byly). Naglowek metadanych dokleja
+   * zapiszTranskrypcje w storage.ts.
+   */
+  function budujTranskryptCzytelny(): string {
+    const rozmowa: string[] = []
+    const raporty: string[] = []
+    for (const l of transkryptRef.current) {
+      if (l.kto === 'user') rozmowa.push(`**Ty:** ${l.tekst}`)
+      else if (l.kto === 'agent') rozmowa.push(`**${imie}:** ${l.tekst}`)
+      else if (l.kto === 'delegacja')
+        rozmowa.push(`_(${imie} deleguje zadanie: ${nazwaAgenta(l.agent)})_`)
+      else if (l.kto === 'raport')
+        raporty.push(`**${nazwaAgenta(l.agent)}:** ${l.tekst}`)
+    }
+    const czesci = ['## Rozmowa', '', rozmowa.join('\n\n')]
+    if (raporty.length > 0) {
+      czesci.push('', '## Raporty zespolu', '', raporty.join('\n\n'))
+    }
+    return czesci.join('\n')
+  }
+
+  /**
    * AUTO-ZAPIS PAMIECI agenta na koniec rozmowy glosowej (bez pytania).
    * Gdy jest klucz, model robi krotkie streszczenie (3-6 punktow); bez klucza
    * zapisujemy skrocony transkrypt, zeby nic nie przepadlo. Sterowane przelacznikiem
@@ -445,6 +473,9 @@ export default function RozmowaWMiejscu({
     // Aktualizacja twardych faktow agentki (jeden zywy plik). Ten sam moment i
     // toggle co pamiec. Bez klucza pomija sama (fakty wymagaja modelu).
     void aktualizujFaktyPoRozmowie(agent.slug, imie, rozmowaTekst)
+    // GLOBALNA PAMIEC FIRMY (wspolna dla calego zespolu): ten sam moment.
+    // Dzieki temu ustalenie z tej rozmowy zna KAZDA agentka, nie tylko ta jedna.
+    void aktualizujPamiecFirmy(rozmowaTekst, imie, imieUczestnika())
   }
 
   /**
@@ -459,7 +490,7 @@ export default function RozmowaWMiejscu({
     const bylUser = transkryptRef.current.some((l) => l.kto === 'user')
     if (!bylUser) return
     transkrypcjaZapisanaRef.current = true
-    zapiszTranskrypcje(imie, budujTranskrypt())
+    zapiszTranskrypcje(imie, budujTranskryptCzytelny(), agent.slug)
   }
 
   /**
@@ -485,9 +516,15 @@ export default function RozmowaWMiejscu({
           'Jestes redaktorem bazy wiedzy firmy SimpleFast.ai.',
           'Z podanej rozmowy glosowej wyciagnij wazne dane, ustalenia i fakty o firmie i zapisz je jako zwiezly plik markdown po polsku.',
           `Jesli wspominasz osoby z zespolu, uzywaj TYLKO tych imion (nie wymyslaj innych): ${listaPerson()}.`,
-          'Pierwsza linia to "# <krotki, rzeczowy tytul po polsku>". Potem naglowki ## dla sekcji i listy z "-".',
+          STANDARD_ZAPISU,
+          'W naglowku metadanych ustaw: typ: notatka.',
+          'Zaraz pod naglowkiem metadanych daj linie "# <krotki, rzeczowy tytul po polsku>", a potem DOKLADNIE te sekcje, w tej kolejnosci:',
+          '## Temat',
+          '## Fakty',
+          '## Ustalenia',
+          '## Do zapamietania',
           'Poprawna numeracja markdown: nie powtarzaj wielokrotnie "1.", uzywaj "-" albo kolejnych 1. 2. 3.',
-          'Zasady: prosty jezyk, bez zargonu, bez em-dash, tylko potwierdzone fakty i liczby. Niepewna liczba => [DO UZUPELNIENIA]. Nie zmyslaj. Bez wstepow i komentarzy. Calosc max okolo 2500 znakow.',
+          'Zasady: prosty jezyk, bez zargonu, bez em-dash, tylko potwierdzone fakty i liczby. Niepewna liczba => [DO UZUPELNIENIA]. Nie zmyslaj. Calosc max okolo 2500 znakow.',
         ].join('\n')
         const md = await callModel(system, [
           { role: 'user', content: rozmowaTekst },
@@ -503,7 +540,15 @@ export default function RozmowaWMiejscu({
       tresc = `# ${tytul}\n\n\`\`\`\n${rozmowaTekst}\n\`\`\`\n`
     }
 
-    tresc = wstawUczestnika(tresc, imieUczestnika())
+    // STANDARD ZAPISU: naglowek metadanych (gdy model go nie dodal, dokladamy sami).
+    tresc = zapewnijNaglowekMeta(tresc, {
+      typ: 'notatka',
+      agent: agent.slug,
+      imie,
+      uczestnik: imieUczestnika(),
+      osoby: wykryjOsoby(rozmowaTekst),
+      tagi: ['z-rozmow', agent.slug],
+    })
     const slug = (zrobSlug(tytul) || 'rozmowa') + '-' + Date.now().toString(36)
     dodajPlikMozgu({ sciezka: `z-rozmow/${slug}.md`, tresc, grupa: 'z-rozmow' })
     if (aktywnyRef.current) setZapisywanie(false)
@@ -531,14 +576,16 @@ export default function RozmowaWMiejscu({
           'Przygotuj zwiezly BRIEFING z narady zespolu SimpleFast.ai po polsku.',
           `Zespol to WYLACZNIE te osoby, uzywaj TYLKO tych imion (nigdy innych, nie wymyslaj): ${listaPerson()}.`,
           'Pisz prostym jezykiem, bez zargonu i bez em-dash. Nie zmyslaj liczb ani ustalen: jesli czegos nie bylo, pomin.',
-          'Uzyj DOKLADNIE tej struktury (naglowek ## dla kazdej sekcji):',
+          STANDARD_ZAPISU,
+          'W naglowku metadanych ustaw: typ: briefing.',
+          'Zaraz pod naglowkiem metadanych daj linie "# <krotki tytul narady po polsku>", a potem DOKLADNIE te sekcje, w tej kolejnosci:',
           '## Temat',
-          '## Najwazniejsze ustalenia (3-6 punktow listy, kazdy od "- ")',
+          '## Najwazniejsze ustalenia (3-6 atomowych linii, kazda od "- ")',
           '## Decyzje',
-          '## Nastepne kroki (lista "kto -> co", np. "- Rae -> zbada ceny konkurencji")',
+          '## Nastepne kroki (lista "kto -> co", np. "- **[[Rae]]** | zadanie: zbada ceny konkurencji")',
           '## Do zapamietania',
           'Poprawna numeracja markdown: uzywaj naglowkow ## i list z "-" albo kolejnych 1. 2. 3. NIGDY nie powtarzaj wielokrotnie "1.".',
-          'Pierwsza linia pliku to krotki tytul po polsku w formacie "# <tytul narady>". Calosc zwiezla, max okolo 2500 znakow.',
+          'Calosc zwiezla, max okolo 2500 znakow.',
         ].join('\n')
         const md = await callModel(system, [
           { role: 'user', content: rozmowaTekst },
@@ -554,7 +601,16 @@ export default function RozmowaWMiejscu({
       tresc = `# ${tytul}\n\n\`\`\`\n${rozmowaTekst}\n\`\`\`\n`
     }
 
-    tresc = wstawUczestnika(tresc, imieUczestnika())
+    // STANDARD ZAPISU: naglowek metadanych (gdy model go nie dodal, dokladamy sami).
+    tresc = zapewnijNaglowekMeta(tresc, {
+      typ: 'briefing',
+      agent: agent.slug,
+      imie,
+      uczestnik: imieUczestnika(),
+      data: dataDnia,
+      osoby: wykryjOsoby(rozmowaTekst),
+      tagi: ['briefing', 'narada'],
+    })
     const slug = zrobSlug(tytul) || 'narada'
     dodajPlikMozgu({
       sciezka: `briefingi/${dataDnia}-${slug}.md`,
@@ -743,15 +799,6 @@ function listaPerson(): string {
 /** Przycina transkrypt do zapisu awaryjnego (brak klucza albo blad modelu). */
 function skrocTranskrypt(t: string, max = 1500): string {
   return t.length > max ? `${t.slice(0, max)}\n...(skrocono)` : t
-}
-
-/** Wstawia linie "Uczestnik: <imie>" tuz pod pierwszym naglowkiem pliku MD. */
-function wstawUczestnika(md: string, uczestnik: string): string {
-  const linia = `> Uczestnik: ${uczestnik}`
-  if (md.includes(linia)) return md
-  const nl = md.indexOf('\n')
-  if (nl < 0) return `${md}\n\n${linia}\n`
-  return `${md.slice(0, nl + 1)}\n${linia}\n${md.slice(nl + 1)}`
 }
 
 /** Slug tytulu do sciezki pliku (bez polskich znakow, spacji i interpunkcji). */

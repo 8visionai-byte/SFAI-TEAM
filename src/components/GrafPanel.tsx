@@ -8,11 +8,13 @@ import {
   ArrowRight,
   Download,
   Network,
+  Tag,
 } from 'lucide-react'
 import {
   type BrainGraphModel,
   type GraphNode,
   GROUP_OPIS,
+  GRUPA_ENCJE,
   groupLabel,
 } from '../lib/brainGraph'
 import type { BrainFile } from '../lib/content'
@@ -36,6 +38,8 @@ interface Props {
   onOpenFile: (path: string) => void
   /** Pobiera notatke jako .md. */
   onDownloadNote: (n: Notatka) => void
+  /** Klik w link [[Nazwa]] w podgladzie tresci (obsluga w Brain.tsx). */
+  onEncja?: (nazwa: string) => void
 }
 
 /** Ladniejsza nazwa pliku (bez podkreslnika/myslnikow technicznych). */
@@ -69,6 +73,7 @@ export default function GrafPanel({
   onClose,
   onOpenFile,
   onDownloadNote,
+  onEncja,
 }: Props) {
   // --- Stan pusty: podpowiedz zamiast pustego prostokata ---
   if (!node) {
@@ -101,6 +106,9 @@ export default function GrafPanel({
     const f = pliki.find((x) => x.path === node.path)
     tytul = f ? prettyName(f.name) : node.label
     Ikona = FileText
+  } else if (node.kind === 'encja') {
+    tytul = node.pelnaNazwa ?? node.label
+    Ikona = Tag
   }
 
   return (
@@ -128,7 +136,17 @@ export default function GrafPanel({
 
       {/* Tresc wg typu wezla */}
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
-        {node.kind === 'file' && <TrescPliku node={node} pliki={pliki} />}
+        {node.kind === 'file' && (
+          <TrescPliku node={node} pliki={pliki} onEncja={onEncja} />
+        )}
+        {node.kind === 'encja' && (
+          <TrescEncji
+            node={node}
+            model={model}
+            pliki={pliki}
+            onSelect={onSelect}
+          />
+        )}
         {node.kind === 'persona' && <TrescPersony node={node} />}
         {node.kind === 'hub' && (
           <TrescHuba
@@ -166,7 +184,15 @@ export default function GrafPanel({
 }
 
 /** Podglad pliku mozgu w panelu (nie przenosi uzytkownika). */
-function TrescPliku({ node, pliki }: { node: GraphNode; pliki: BrainFile[] }) {
+function TrescPliku({
+  node,
+  pliki,
+  onEncja,
+}: {
+  node: GraphNode
+  pliki: BrainFile[]
+  onEncja?: (nazwa: string) => void
+}) {
   const f = pliki.find((x) => x.path === node.path)
   if (!f) {
     return <p className="text-sm text-zinc-500">Nie znaleziono pliku.</p>
@@ -186,7 +212,86 @@ function TrescPliku({ node, pliki }: { node: GraphNode; pliki: BrainFile[] }) {
           </span>
         )}
       </div>
-      <MarkdownView>{f.content}</MarkdownView>
+      <MarkdownView onEncja={onEncja}>{f.content}</MarkdownView>
+    </div>
+  )
+}
+
+/**
+ * Karta ENCJI (osoba, firma, temat z linku [[...]]): lista plikow, ktore o niej
+ * mowia. To wlasnie encje spinaja pliki roznych agentek w jedna siec powiazan.
+ */
+function TrescEncji({
+  node,
+  model,
+  pliki,
+  onSelect,
+}: {
+  node: GraphNode
+  model: BrainGraphModel
+  pliki: BrainFile[]
+  onSelect: (node: GraphNode) => void
+}) {
+  const nazwa = node.pelnaNazwa ?? node.label
+  // Pliki wskazujace na te encje bierzemy z krawedzi modelu (spojne z grafem).
+  const idPlikow = model.links
+    .filter((l) => l.kind === 'encja' && l.target === node.id)
+    .map((l) => l.source)
+  const powiazane = idPlikow
+    .map((id) => {
+      const wezel = model.nodes.find((n) => n.id === id)
+      const plik = pliki.find((f) => `file:${f.path}` === id)
+      return wezel && plik ? { wezel, plik } : null
+    })
+    .filter((x): x is { wezel: GraphNode; plik: BrainFile } => x !== null)
+
+  return (
+    <div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <GrupaPill group={GRUPA_ENCJE} />
+        <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[0.65rem] font-medium text-amber-200">
+          link [[{nazwa}]]
+        </span>
+      </div>
+      <p className="text-[0.95rem] leading-relaxed text-zinc-300">
+        {powiazane.length > 1
+          ? `Ta encja spina ${powiazane.length} plikow pamieci. Kliknij plik, zeby zobaczyc, co dokladnie o niej wiemy.`
+          : 'Ta encja pojawia sie na razie w jednym pliku pamieci. Im wiecej rozmow, tym wiecej polaczen.'}
+      </p>
+
+      <div className="mt-5 mb-2 flex items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+        Wystepuje w plikach
+        <span className="rounded-full bg-zinc-800/80 px-1.5 py-px text-[0.65rem] font-medium tabular-nums text-zinc-400">
+          {powiazane.length}
+        </span>
+      </div>
+
+      {powiazane.length === 0 ? (
+        <p className="text-sm text-zinc-500">Brak plikow z tym linkiem.</p>
+      ) : (
+        <div className="space-y-0.5">
+          {powiazane.map(({ wezel, plik }) => (
+            <button
+              key={plik.path}
+              type="button"
+              onClick={() => onSelect(wezel)}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-zinc-300 transition-colors hover:bg-zinc-800/70 hover:text-zinc-100"
+            >
+              <span
+                className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                style={{ backgroundColor: wezel.color }}
+                aria-hidden
+              />
+              <span className="min-w-0 flex-1 truncate capitalize">
+                {prettyName(plik.name)}
+              </span>
+              <span className="flex-shrink-0 text-[0.65rem] text-zinc-500">
+                {groupLabel(plik.group)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import type { ChatMessage } from './ai'
-import { getAgent } from '../data/agents'
+import { agents, getAgent } from '../data/agents'
 
 /** Zapisana rozmowa z agentem (localStorage, klucz sf_rozmowy). */
 export interface Rozmowa {
@@ -119,6 +119,8 @@ const KEY_MOZG_WLASNE = 'sf_mozg_wlasne'
 const KEY_PAMIEC_AUTO = 'sf_pamiec_auto'
 const KEY_SESJA = 'sf_sesja'
 const KEY_TRANSKRYPCJE_AUTO = 'sf_transkrypcje_auto'
+/** Flaga jednorazowej migracji starych zapisow do standardu metadanych. */
+const KEY_MIGRACJA_V34 = 'sf_migracja_v34'
 
 /** Bezpieczny dostep do localStorage (tryb prywatny moze rzucic wyjatek). */
 function safeStorage(): Storage | null {
@@ -163,6 +165,137 @@ function slugProsty(tekst: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
   return slug || 'plik'
+}
+
+// --- STANDARD ZAPISU: naglowek metadanych (kazdy nowy plik pamieci) --------
+
+/**
+ * STANDARD ZAPISU (obowiazuje kazdy nowy plik pamieci, faktow, briefingu,
+ * transkrypcji i notatki). Kazdy plik zaczyna sie naglowkiem metadanych:
+ *
+ *   ---
+ *   typ: fakty | pamiec | briefing | transkrypcja | notatka
+ *   agent: <slug albo "firma">
+ *   imie: <Imie persony albo "Zespol">
+ *   uczestnik: <Pawel | Marcin>
+ *   data: RRRR-MM-DD
+ *   osoby: [lista osob wymienionych]
+ *   tagi: [krotkie tagi tematyczne]
+ *   ---
+ *
+ * Pod naglowkiem sekcje ze STALYMI naglowkami H2 (per typ) i ATOMOWE fakty:
+ * jeden fakt = jedna linia "- **[[Nazwa]]** | pole: wartosc | zrodlo: [[plik]]".
+ */
+export type TypZapisu =
+  | 'fakty'
+  | 'pamiec'
+  | 'briefing'
+  | 'transkrypcja'
+  | 'notatka'
+
+/** Pola naglowka metadanych (osoby i tagi moga byc puste). */
+export interface PolaMeta {
+  typ: TypZapisu
+  /** Slug agentki albo "firma" dla pamieci wspolnej. */
+  agent: string
+  /** Imie persony albo "Zespol". */
+  imie: string
+  /** Pawel | Marcin (albo "nieznany" przy migracji starych plikow). */
+  uczestnik?: string
+  /** Data RRRR-MM-DD (domyslnie dzisiaj). */
+  data?: string
+  osoby?: string[]
+  tagi?: string[]
+}
+
+/** Dzisiejsza data w formacie RRRR-MM-DD. */
+function dzisiaj(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+/** Skladnia listy w naglowku: "[a, b]" albo "[]" gdy pusto. */
+function listaMeta(v: string[] | undefined): string {
+  const czyste = (v ?? []).map((x) => x.trim()).filter(Boolean)
+  return `[${Array.from(new Set(czyste)).join(', ')}]`
+}
+
+/** Buduje naglowek metadanych wg STANDARDU ZAPISU (z domykajacym "---"). */
+export function naglowekMeta(p: PolaMeta): string {
+  return [
+    '---',
+    `typ: ${p.typ}`,
+    `agent: ${p.agent || 'firma'}`,
+    `imie: ${p.imie || 'Zespol'}`,
+    `uczestnik: ${p.uczestnik || imieUczestnika()}`,
+    `data: ${p.data || dzisiaj()}`,
+    `osoby: ${listaMeta(p.osoby)}`,
+    `tagi: ${listaMeta(p.tagi)}`,
+    '---',
+  ].join('\n')
+}
+
+/** Czy tresc ma juz naglowek metadanych (zaczyna sie od bloku "---"). */
+export function maNaglowekMeta(tresc: string): boolean {
+  const t = (tresc ?? '').trimStart()
+  if (!t.startsWith('---')) return false
+  // Blok musi sie domykac druga linia "---" w pierwszych ~20 liniach.
+  const linie = t.split('\n').slice(1, 21)
+  return linie.some((l) => l.trim() === '---')
+}
+
+/** Zdejmuje naglowek metadanych z tresci (gdy model dokleil swoj wlasny). */
+export function usunNaglowekMeta(tresc: string): string {
+  const t = (tresc ?? '').trimStart()
+  if (!maNaglowekMeta(t)) return (tresc ?? '').trim()
+  const linie = t.split('\n')
+  for (let i = 1; i < Math.min(linie.length, 21); i++) {
+    if (linie[i].trim() === '---') return linie.slice(i + 1).join('\n').trim()
+  }
+  return t.trim()
+}
+
+/**
+ * Gwarantuje naglowek metadanych: gdy tresc juz go ma, zwraca ja bez zmian
+ * (idempotentne), w przeciwnym razie dokleja naglowek na poczatku.
+ */
+export function zapewnijNaglowekMeta(tresc: string, p: PolaMeta): string {
+  const t = (tresc ?? '').trim()
+  if (maNaglowekMeta(t)) return t
+  return `${naglowekMeta(p)}\n\n${t}\n`
+}
+
+/** Buduje plik: naglowek metadanych (zawsze nasz) + znormalizowana tresc. */
+export function zbudujPlikZeStandardem(tresc: string, p: PolaMeta): string {
+  return `${naglowekMeta(p)}\n\n${usunNaglowekMeta(tresc)}\n`
+}
+
+/**
+ * Wykrywa osoby wymienione w tekscie: imiona person z zespolu oraz wlascicieli
+ * (Pawel, Marcin). Porownanie bez polskich znakow i wielkosci liter. Sluzy do
+ * pola "osoby" w naglowku metadanych (zapis deterministyczny, bez modelu).
+ */
+export function wykryjOsoby(tekst: string): string[] {
+  const znane = [
+    'Pawel',
+    'Marcin',
+    ...agents.map((a) => a.personImie ?? a.name),
+  ]
+  const norm = (s: string): string =>
+    s
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/ł/g, 'l')
+  const wTekscie = norm(tekst ?? '')
+  const out: string[] = []
+  for (const imie of znane) {
+    const igla = norm(imie)
+    if (!igla) continue
+    // Granica slowa na znakach nie-alfanumerycznych (dziala dla polskich form).
+    const re = new RegExp(`(^|[^a-z0-9])${igla}([^a-z0-9]|$)`)
+    if (re.test(wTekscie) && !out.includes(imie)) out.push(imie)
+  }
+  return out
 }
 
 // --- Sesja logowania i profil (localStorage sf_sesja) ----------------------
@@ -441,25 +574,34 @@ export function zapiszPamiecAgenta(
   tytul: string,
   tresc: string,
 ): void {
-  const data = new Date().toISOString().slice(0, 10)
+  const data = dzisiaj()
   const id = nowyId()
   const agent = getAgent(slug)
   const imie = agent?.personImie ?? agent?.name ?? slug
   const uczestnik = imieUczestnika()
   const tytulCzysty = (tytul || `Rozmowa z ${imie} ${data}`).trim()
-  const naglowek = [
+  const czysta = usunNaglowekMeta(tresc)
+  // STANDARD ZAPISU: naglowek metadanych budujemy my (mamy pewne dane), a od
+  // modelu bierzemy sama tresc z sekcjami H2 i atomowymi liniami faktow.
+  const plik = [
+    naglowekMeta({
+      typ: 'pamiec',
+      agent: slug,
+      imie,
+      uczestnik,
+      data,
+      osoby: wykryjOsoby(`${tytulCzysty}\n${czysta}`),
+      tagi: ['rozmowa', slug],
+    }),
+    '',
     `# ${tytulCzysty}`,
     '',
-    `- Data: ${data}`,
-    `- Agent: ${imie}`,
-    `- Uczestnik: ${uczestnik}`,
-    '',
-    tresc.trim(),
+    czysta,
     '',
   ].join('\n')
   zapiszWlasnyPlikMozgu({
     sciezka: `pamiec/${slug}/${data}-${id}.md`,
-    tresc: naglowek,
+    tresc: plik,
     grupa: `pamiec-${slug}`,
     updatedAt: new Date().toISOString(),
   })
@@ -520,18 +662,31 @@ export function ustawTranskrypcjeAuto(wl: boolean): void {
  * Sciezka: transkrypcje/<data>-<slug persony>-<uczestnik>-<id>.md (id chroni przed
  * nadpisaniem kolejnych rozmow tego samego dnia). Naglowek: data, agent, uczestnik.
  */
-export function zapiszTranskrypcje(agentImie: string, pelnaTresc: string): void {
-  const data = new Date().toISOString().slice(0, 10)
+export function zapiszTranskrypcje(
+  agentImie: string,
+  pelnaTresc: string,
+  agentSlug?: string,
+): void {
+  const data = dzisiaj()
   const uczestnik = imieUczestnika()
   const id = nowyId()
+  const czysta = usunNaglowekMeta(pelnaTresc)
+  // STANDARD ZAPISU: naglowek metadanych + czytelny zapis czatu (**Ty:** /
+  // **<Imie>:**) skladany przez wolajacego (RozmowaWMiejscu).
   const naglowek = [
+    naglowekMeta({
+      typ: 'transkrypcja',
+      agent: agentSlug || slugProsty(agentImie),
+      imie: agentImie,
+      uczestnik,
+      data,
+      osoby: wykryjOsoby(czysta),
+      tagi: ['transkrypcja', 'rozmowa-glosowa'],
+    }),
+    '',
     `# Transkrypcja rozmowy z ${agentImie} ${data}`,
     '',
-    `- Data: ${data}`,
-    `- Agent: ${agentImie}`,
-    `- Uczestnik: ${uczestnik}`,
-    '',
-    pelnaTresc.trim(),
+    czysta,
     '',
   ].join('\n')
   zapiszWlasnyPlikMozgu({
@@ -575,12 +730,94 @@ export function wczytajFaktyAgenta(slug: string): string | null {
 
 /** Zapisuje/nadpisuje plik twardych faktow agentki (grupa 'fakty'). */
 export function zapiszFaktyAgenta(slug: string, tresc: string): void {
+  const agent = getAgent(slug)
+  const imie = agent?.personImie ?? agent?.name ?? slug
+  // Model ma zwrocic plik ze standardowym naglowkiem; gdy go pominie, dokladamy.
+  const zeStandardem = zapewnijNaglowekMeta(tresc, {
+    typ: 'fakty',
+    agent: slug,
+    imie,
+    uczestnik: imieUczestnika(),
+    data: dzisiaj(),
+    osoby: wykryjOsoby(tresc),
+    tagi: ['fakty', slug],
+  })
   zapiszWlasnyPlikMozgu({
     sciezka: sciezkaFaktow(slug),
-    tresc: tresc.trim(),
+    tresc: zeStandardem,
     grupa: 'fakty',
     updatedAt: new Date().toISOString(),
   })
+}
+
+// --- GLOBALNA PAMIEC FIRMY (JEDEN zywy plik wspolny, grupa 'pamiec-firmy') --
+
+/**
+ * GLOBALNA PAMIEC FIRMY: jeden zywy plik markdown WSPOLNY dla calego zespolu.
+ * Wszystko, co wlasciciele ustala z DOWOLNA agentka, trafia tutaj, a plik jest
+ * wstrzykiwany do promptu KAZDEJ agentki (czat i glos). Dzieki temu rozmowa
+ * z Lea o Klaudiuszu jest znana takze Rae.
+ *
+ * Sciezka 'pamiec-firmy/fakty-firmy.md', grupa 'pamiec-firmy', limit ~10000
+ * znakow. Zapis idzie do sf_mozg_wlasne, wiec plik od razu widzi getFullBrain()
+ * (czat), szukajWMozgu() (glos) i Baza wiedzy.
+ */
+export const SCIEZKA_PAMIEC_FIRMY = 'pamiec-firmy/fakty-firmy.md'
+export const GRUPA_PAMIEC_FIRMY = 'pamiec-firmy'
+/** Twardy limit dlugosci pliku pamieci firmy (znaki). */
+export const LIMIT_PAMIEC_FIRMY = 10000
+
+/** Wczytuje globalna pamiec firmy (tresc MD) albo null, gdy jeszcze jej nie ma. */
+export function wczytajPamiecFirmy(): string | null {
+  const p = wczytajWlasnePlikiMozgu().find(
+    (x) => x.sciezka === SCIEZKA_PAMIEC_FIRMY,
+  )
+  return p ? p.tresc : null
+}
+
+/**
+ * Zapisuje/nadpisuje globalna pamiec firmy (jeden plik). Tresc przycinana do
+ * LIMIT_PAMIEC_FIRMY znakow; naglowek metadanych dokladany, gdy model go pominie.
+ */
+export function zapiszPamiecFirmy(tresc: string): void {
+  const surowa = (tresc ?? '').trim()
+  if (!surowa) return
+  const zeStandardem = zapewnijNaglowekMeta(surowa, {
+    typ: 'pamiec',
+    agent: 'firma',
+    imie: 'Zespol',
+    uczestnik: imieUczestnika(),
+    data: dzisiaj(),
+    osoby: wykryjOsoby(surowa),
+    tagi: ['pamiec-firmy', 'wspolna'],
+  })
+  const przyciety =
+    zeStandardem.length > LIMIT_PAMIEC_FIRMY
+      ? zeStandardem.slice(0, LIMIT_PAMIEC_FIRMY)
+      : zeStandardem
+  zapiszWlasnyPlikMozgu({
+    sciezka: SCIEZKA_PAMIEC_FIRMY,
+    tresc: przyciety,
+    grupa: GRUPA_PAMIEC_FIRMY,
+    updatedAt: new Date().toISOString(),
+  })
+}
+
+/**
+ * ZRODLA do przebudowy GLOBALNEJ PAMIECI FIRMY od zera: ostatnie pliki pamieci,
+ * transkrypcji i briefingow ze WSZYSTKICH agentek (nie tylko jednej), najnowsze
+ * pierwsze. Sam plik pamieci firmy jest pomijany (buduje sie od zera).
+ */
+export function zrodlaPamieciFirmy(limit = 15): PlikWlasnyMozgu[] {
+  return wczytajWlasnePlikiMozgu()
+    .filter(
+      (p) =>
+        p.grupa === 'transkrypcje' ||
+        p.grupa === 'briefingi' ||
+        (p.grupa.startsWith('pamiec-') && p.grupa !== GRUPA_PAMIEC_FIRMY),
+    )
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, Math.max(1, limit))
 }
 
 // --- Centrum Dowodzenia: trwalosc biezacej rozmowy -------------------------
@@ -622,5 +859,95 @@ export function wyczyscCentrum(): void {
     safeStorage()?.removeItem(KEY_CENTRUM)
   } catch {
     // Ignorujemy, brak dostepu do storage nie moze zablokowac UI.
+  }
+}
+
+// --- MIGRACJA starych zapisow do STANDARDU ZAPISU (sf_migracja_v34) --------
+
+/** Typ zapisu wywodzony z grupy pliku wlasnego. */
+function typZGrupy(grupa: string): TypZapisu {
+  if (grupa === 'fakty') return 'fakty'
+  if (grupa === 'transkrypcje') return 'transkrypcja'
+  if (grupa === 'briefingi') return 'briefing'
+  if (grupa === GRUPA_PAMIEC_FIRMY) return 'pamiec'
+  if (grupa.startsWith('pamiec-')) return 'pamiec'
+  return 'notatka'
+}
+
+/** Slug agentki wywodzony z grupy/sciezki ("firma" dla pamieci wspolnej). */
+function agentZPliku(plik: PlikWlasnyMozgu): string {
+  if (plik.grupa === GRUPA_PAMIEC_FIRMY) return 'firma'
+  if (plik.grupa.startsWith('pamiec-')) return plik.grupa.slice('pamiec-'.length)
+  if (plik.grupa === 'fakty') {
+    const m = plik.sciezka.match(/^fakty\/(.+)\.md$/)
+    if (m) return m[1]
+  }
+  if (plik.grupa === 'transkrypcje') {
+    // transkrypcje/<data>-<slug persony>-<uczestnik>-<id>.md
+    const m = plik.sciezka.match(/^transkrypcje\/\d{4}-\d{2}-\d{2}-([a-z0-9]+)-/)
+    if (m) {
+      const zn = agents.find(
+        (a) => slugProsty(a.personImie ?? a.name) === m[1],
+      )
+      if (zn) return zn.slug
+    }
+  }
+  return 'firma'
+}
+
+/** Data RRRR-MM-DD z nazwy pliku, inaczej z updatedAt. */
+function dataZPliku(plik: PlikWlasnyMozgu): string {
+  const m = plik.sciezka.match(/(\d{4}-\d{2}-\d{2})/)
+  if (m) return m[1]
+  const d = (plik.updatedAt ?? '').slice(0, 10)
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : dzisiaj()
+}
+
+/** Uczestnik wyciagniety ze starego naglowka ("- Uczestnik: X" / "> Uczestnik: X"). */
+function uczestnikZTresci(tresc: string): string {
+  const m = (tresc ?? '').match(/^[>-]\s*Uczestnik:\s*(.+)$/m)
+  return m ? m[1].trim() : 'nieznany'
+}
+
+/**
+ * MIGRACJA v3.4 (jednorazowa, flaga sf_migracja_v34): istniejacym plikom wlasnym
+ * BEZ naglowka metadanych dokleja naglowek wyliczony ze sciezki i grupy
+ * (typ, agent, imie, uczestnik, data, osoby). TRESCI NIE ZMIENIA.
+ *
+ * Bezpieczna i idempotentna: pomija pliki, ktore juz maja naglowek, a po
+ * przebiegu zapisuje flage, wiec drugie wywolanie (StrictMode) nic nie robi.
+ */
+export function migrujStareZapisy(): void {
+  try {
+    if (safeStorage()?.getItem(KEY_MIGRACJA_V34) === '1') return
+  } catch {
+    return
+  }
+  try {
+    const pliki = wczytajWlasnePlikiMozgu()
+    let zmienione = 0
+    const nowe = pliki.map((p) => {
+      if (maNaglowekMeta(p.tresc)) return p
+      const slug = agentZPliku(p)
+      const agent = getAgent(slug)
+      const imie =
+        slug === 'firma' ? 'Zespol' : agent?.personImie ?? agent?.name ?? slug
+      const naglowek = naglowekMeta({
+        typ: typZGrupy(p.grupa),
+        agent: slug,
+        imie,
+        uczestnik: uczestnikZTresci(p.tresc),
+        data: dataZPliku(p),
+        osoby: wykryjOsoby(p.tresc),
+        tagi: [p.grupa],
+      })
+      zmienione++
+      // Tresc zostaje bez zmian, doklejamy wylacznie naglowek metadanych.
+      return { ...p, tresc: `${naglowek}\n\n${p.tresc}` }
+    })
+    if (zmienione > 0) writeList(KEY_MOZG_WLASNE, nowe)
+    safeStorage()?.setItem(KEY_MIGRACJA_V34, '1')
+  } catch {
+    // Migracja nie moze zablokowac startu aplikacji.
   }
 }

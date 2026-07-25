@@ -33,7 +33,10 @@ import {
   ustawCzytajAuto,
 } from '../lib/voice'
 import {
+  imieUczestnika,
   nowyId,
+  wykryjOsoby,
+  zapewnijNaglowekMeta,
   zapiszNotatke,
   wczytajCentrum,
   zapiszCentrum,
@@ -1357,19 +1360,29 @@ export default function Command() {
     const tytulRaw = (pierwszy?.tekst ?? 'Praca zespolu').trim()
     const tytul =
       tytulRaw.length > 60 ? `${tytulRaw.slice(0, 60)}...` : tytulRaw
-    const tresc = wpisy
+    const rozmowa = wpisy
       .map((w) => {
         if (w.rodzaj === 'user') return `**Ty:** ${w.tekst}`
         if (w.rodzaj === 'final') return `**Odpowiedz zespolu:** ${w.tekst}`
         return `_${w.tekst}_`
       })
       .join('\n\n')
+    // STANDARD ZAPISU: naglowek metadanych + stala sekcja H2 z zapisem rozmowy.
+    const tresc = zapewnijNaglowekMeta(`## Rozmowa\n\n${rozmowa}`, {
+      typ: 'notatka',
+      agent: 'firma',
+      imie: 'Zespol',
+      uczestnik: imieUczestnika(),
+      osoby: wykryjOsoby(rozmowa),
+      tagi: ['centrum', 'narada'],
+    })
     zapiszNotatke({
       id: nowyId(),
       zrodlo: 'Centrum Dowodzenia',
       data: new Date().toISOString(),
       tytul,
       tresc,
+      uczestnik: imieUczestnika(),
     })
     pokazToast(
       'Zapisano notatkę. W kolejnej wersji trafi automatycznie do mózgu firmy.',

@@ -4,12 +4,61 @@ import remarkGfm from 'remark-gfm'
 interface MarkdownViewProps {
   children: string
   className?: string
+  /**
+   * Klik w link [[Nazwa]] (styl Obsidian). Gdy podany, linki renderuja sie jako
+   * klikalne pigulki; bez niego jako zwykle, nieklikalne pigulki.
+   */
+  onEncja?: (nazwa: string) => void
 }
+
+/** Prefiks href dla linkow [[...]]. Hash przechodzi domyslny sanitizer URL. */
+const PREFIKS_ENCJI = '#sfencja-'
+
+/**
+ * Zamienia linki [[Nazwa]] i [[Cel|tekst]] na zwykle linki markdown
+ * "[tekst](#sfencja-<Cel>)", zeby ReactMarkdown wyrenderowal je jako element,
+ * ktory mozemy przechwycic w komponencie "a". Fragmenty kodu (``` i `...`)
+ * zostaja nietkniete, zeby nie psuc przykladow skladni w tresci.
+ */
+function zamienLinkiWiki(tresc: string): string {
+  const czesci = (tresc ?? '').split(/(```[\s\S]*?```|`[^`\n]*`)/g)
+  return czesci
+    .map((czesc, i) => {
+      // Nieparzyste indeksy to zlapane fragmenty kodu: zostawiamy bez zmian.
+      if (i % 2 === 1) return czesc
+      return czesc.replace(
+        /\[\[([^[\]|]+?)(?:\|([^[\]]*))?\]\]/g,
+        (dopasowanie, cel: string, alias?: string) => {
+          const nazwa = cel.trim()
+          if (!nazwa) return dopasowanie
+          const etykieta = (alias ?? '').trim() || nazwa
+          // Nawiasy w etykiecie zepsulyby skladnie linku markdown.
+          const bezpieczna = etykieta.replace(/[[\]]/g, '')
+          return `[${bezpieczna}](${PREFIKS_ENCJI}${encodeURIComponent(nazwa)})`
+        },
+      )
+    })
+    .join('')
+}
+
+/** Nazwa encji z href "#sfencja-..." albo null, gdy to zwykly link. */
+function nazwaZHref(href: string | undefined): string | null {
+  if (!href || !href.startsWith(PREFIKS_ENCJI)) return null
+  try {
+    return decodeURIComponent(href.slice(PREFIKS_ENCJI.length))
+  } catch {
+    return href.slice(PREFIKS_ENCJI.length)
+  }
+}
+
+const pigulkaEncji =
+  'mx-0.5 inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-px align-baseline text-[0.85em] font-medium text-amber-200'
 
 /** Renderuje markdown ostylowany dla ciemnego tla (GFM: tabele, listy zadan). */
 export default function MarkdownView({
   children,
   className = '',
+  onEncja,
 }: MarkdownViewProps) {
   return (
     <div className={`md-view text-zinc-200 leading-relaxed ${className}`}>
@@ -39,16 +88,34 @@ export default function MarkdownView({
           p: ({ children }) => (
             <p className="my-3 text-[0.95rem] text-zinc-300">{children}</p>
           ),
-          a: ({ children, href }) => (
-            <a
-              href={href}
-              target="_blank"
-              rel="noreferrer"
-              className="text-brand underline decoration-brand/40 underline-offset-2 hover:decoration-brand"
-            >
-              {children}
-            </a>
-          ),
+          a: ({ children, href }) => {
+            const encja = nazwaZHref(href)
+            if (encja !== null) {
+              if (!onEncja) {
+                return <span className={pigulkaEncji}>{children}</span>
+              }
+              return (
+                <button
+                  type="button"
+                  onClick={() => onEncja(encja)}
+                  title={`Pokaz powiazania: ${encja}`}
+                  className={`${pigulkaEncji} transition-colors hover:border-amber-400/70 hover:bg-amber-500/20 hover:text-amber-100`}
+                >
+                  {children}
+                </button>
+              )
+            }
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                className="text-brand underline decoration-brand/40 underline-offset-2 hover:decoration-brand"
+              >
+                {children}
+              </a>
+            )
+          },
           strong: ({ children }) => (
             <strong className="font-semibold text-zinc-100">{children}</strong>
           ),
@@ -109,7 +176,7 @@ export default function MarkdownView({
           ),
         }}
       >
-        {children}
+        {zamienLinkiWiki(children)}
       </ReactMarkdown>
     </div>
   )

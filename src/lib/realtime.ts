@@ -17,7 +17,14 @@
 import { type Agent, agents, getAgent } from '../data/agents'
 import { buildVoicePrompt, getVoiceModel, sendMessage } from './ai'
 import { szukajWMozgu } from './content'
-import { authNaglowek, dodajPlikMozgu, imieUczestnika, nowyId } from './storage'
+import {
+  authNaglowek,
+  dodajPlikMozgu,
+  imieUczestnika,
+  nowyId,
+  wykryjOsoby,
+  zapewnijNaglowekMeta,
+} from './storage'
 
 /** Stan rozmowy glosowej (wspolny dla realtime i toru podstawowego). */
 export type StanRozmowy =
@@ -215,7 +222,7 @@ export async function startRozmowa(
           tresc: {
             type: 'string',
             description:
-              'Tresc notatki w markdown: zwiezle, punktami, tylko potwierdzone fakty i liczby. Bez em-dash.',
+              'Tresc notatki w markdown wg STANDARDU ZAPISU: ATOMOWE linie (jeden fakt = jedna linia) w formacie "- **[[Nazwa]]** | pole: wartosc | pole: wartosc". Linkuj [[...]] osoby, firmy i projekty. Tylko potwierdzone fakty i liczby, bez em-dash, bez prozy i wstepow. Nie dodawaj naglowka metadanych ani tytulu, dopisze je aplikacja.',
           },
         },
         required: ['tytul', 'tresc'],
@@ -656,11 +663,21 @@ export async function startRozmowa(
 
     const sciezka = `z-rozmow/${sciezkaSlug(tytulOk)}.md`
     const dataDnia = new Date().toISOString().slice(0, 10)
-    const naglowek = `# ${tytulOk}\n\n> Zrodlo: rozmowa glosowa, ${dataDnia}\n> Uczestnik: ${imieUczestnika()}\n\n`
+    // STANDARD ZAPISU: naglowek metadanych budujemy my (mamy pewne dane),
+    // pod nim tytul H1 i stala sekcja H2 z trescia od modelu.
+    const cialo = [`# ${tytulOk}`, '', '## Do zapamietania', '', tresc.trim(), ''].join('\n')
     dodajPlikMozgu({
       sciezka,
       grupa: 'z-rozmow',
-      tresc: naglowek + tresc.trim() + '\n',
+      tresc: zapewnijNaglowekMeta(cialo, {
+        typ: 'notatka',
+        agent: agent.slug,
+        imie: agent.personImie ?? agent.name,
+        uczestnik: imieUczestnika(),
+        data: dataDnia,
+        osoby: wykryjOsoby(`${tytulOk}\n${tresc}`),
+        tagi: ['z-rozmow', 'glos', agent.slug],
+      }),
     })
 
     if (!odeslijFunctionOutput(callId, JSON.stringify({ ok: true, sciezka }))) return

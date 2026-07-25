@@ -19,6 +19,8 @@ import {
   RotateCcw,
   Plus,
   Search,
+  RefreshCw,
+  Tag,
 } from 'lucide-react'
 import {
   getBrainFiles,
@@ -32,13 +34,24 @@ import {
   usunNadpisMozgu,
   zapiszWlasnyPlikMozgu,
   usunWlasnyPlikMozgu,
+  wczytajPamiecFirmy,
+  zapiszPamiecFirmy,
+  zrodlaPamieciFirmy,
+  SCIEZKA_PAMIEC_FIRMY,
+  LIMIT_PAMIEC_FIRMY,
   type Notatka,
 } from '../lib/storage'
 import MarkdownView from '../components/MarkdownView'
 import BrainGraph from '../components/BrainGraph'
 import GrafPanel from '../components/GrafPanel'
 import Toast, { useToast } from '../components/Toast'
-import { buildBrainGraph, type GraphNode } from '../lib/brainGraph'
+import {
+  buildBrainGraph,
+  plikiZLinkiem,
+  znajdzPlikLinku,
+  type GraphNode,
+} from '../lib/brainGraph'
+import { getMode, przebudujPamiecFirmyOdZera } from '../lib/ai'
 import { getAgent } from '../data/agents'
 
 /** Ladniejsza nazwa pliku do listy. */
@@ -122,7 +135,8 @@ function etykietaGrupy(key: string): string {
   if (key === 'z-rozmow') return 'Z rozmow'
   if (key === 'briefingi') return 'Briefingi z narad'
   if (key === 'transkrypcje') return 'Transkrypcje rozmow'
-  if (key === 'fakty') return 'Twarde fakty'
+  if (key === 'fakty') return 'Twarde fakty (agentki)'
+  if (key === 'pamiec-firmy') return 'Pamiec firmy'
   if (key.startsWith('pamiec-')) {
     const slug = key.slice('pamiec-'.length)
     const a = getAgent(slug)
@@ -166,7 +180,7 @@ const przyciskSm =
 const poleTekstowe =
   'w-full rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-brand/50 focus:ring-1 focus:ring-brand/40'
 
-type Widok = 'baza' | 'notatki' | 'graf'
+type Widok = 'pamiec-firmy' | 'baza' | 'notatki' | 'graf'
 
 export default function Brain() {
   const [widok, setWidok] = useState<Widok>('baza')
@@ -200,6 +214,17 @@ export default function Brain() {
   // Most Obsidian: eksport calego mozgu do jednego .md i import notatek .md.
   const [grupaImportu, setGrupaImportu] = useState('notatki')
   const importInputRef = useRef<HTMLInputElement>(null)
+
+  // GLOBALNA PAMIEC FIRMY: podglad, edycja reczna i przebudowa z ostatnich rozmow.
+  const [pamiecFirmy, setPamiecFirmy] = useState<string>(
+    () => wczytajPamiecFirmy() ?? '',
+  )
+  const [edycjaPamieci, setEdycjaPamieci] = useState(false)
+  const [draftPamieci, setDraftPamieci] = useState('')
+  const [przebudowa, setPrzebudowa] = useState(false)
+
+  // Podglad ENCJI z linku [[Nazwa]], ktora nie ma wlasnego pliku.
+  const [encja, setEncja] = useState<string | null>(null)
 
   const { toast, pokazToast } = useToast()
 
@@ -251,6 +276,14 @@ export default function Brain() {
     setPotwierdzUsun(false)
   }, [activePath])
 
+  // Pamiec firmy to zwykly plik wlasny, wiec da sie ja zmienic takze z Bazy
+  // wiedzy. Po kazdej zmianie mozgu odswiezamy podglad (poza trybem edycji,
+  // zeby nie skasowac tego, co wlasnie piszesz).
+  useEffect(() => {
+    if (edycjaPamieci) return
+    setPamiecFirmy(wczytajPamiecFirmy() ?? '')
+  }, [wersja, edycjaPamieci])
+
   // Gdy aktywny plik zniknal (usuniety plik wlasny), przejdz na pierwszy z listy.
   useEffect(() => {
     if (activePath && !pliki.some((f) => f.path === activePath)) {
@@ -263,6 +296,84 @@ export default function Brain() {
     setDodawanie(false)
     setWidok('baza')
   }
+
+  // --- GLOBALNA PAMIEC FIRMY ----------------------------------------------
+
+  /** Ile plikow rozmow realnie zasili przebudowe (podglad przed kliknieciem). */
+  const zrodlaPrzebudowy = useMemo(
+    () => zrodlaPamieciFirmy(15).length,
+    // Kazda edycja mozgu podbija wersje, wiec licznik nadaza za nowymi zapisami.
+    [wersja],
+  )
+
+  function zacznijEdycjePamieci() {
+    setDraftPamieci(pamiecFirmy)
+    setEdycjaPamieci(true)
+  }
+
+  function zapiszPamiecRecznie() {
+    const t = draftPamieci.trim()
+    if (!t) {
+      pokazToast('Pusta tresc: pamiec firmy zostala bez zmian.')
+      return
+    }
+    zapiszPamiecFirmy(t)
+    setPamiecFirmy(wczytajPamiecFirmy() ?? t)
+    setEdycjaPamieci(false)
+    setWersja((w) => w + 1)
+    pokazToast('Zapisano pamiec firmy. Zna ja od teraz kazda agentka.')
+  }
+
+  async function przebudujPamiec() {
+    if (przebudowa) return
+    if (getMode() === 'demo') {
+      pokazToast('Przebudowa wymaga klucza API (dodaj w Ustawieniach).')
+      return
+    }
+    setPrzebudowa(true)
+    try {
+      const nowa = await przebudujPamiecFirmyOdZera(15)
+      if (nowa) {
+        setPamiecFirmy(wczytajPamiecFirmy() ?? nowa)
+        setDraftPamieci('')
+        setEdycjaPamieci(false)
+        setWersja((w) => w + 1)
+        pokazToast('Przebudowano pamiec firmy z ostatnich rozmow zespolu.')
+      } else {
+        pokazToast(
+          'Brak materialu do przebudowy. Najpierw porozmawiaj z agentkami.',
+        )
+      }
+    } catch {
+      pokazToast('Nie udalo sie przebudowac pamieci firmy. Sprobuj ponownie.')
+    } finally {
+      setPrzebudowa(false)
+    }
+  }
+
+  // --- Linki [[Nazwa]] -----------------------------------------------------
+
+  /**
+   * Klik w link [[Nazwa]]: gdy pasuje do pliku, otwieramy go w Bazie wiedzy.
+   * Gdy to encja bez pliku (np. osoba), pokazujemy liste plikow, ktore o niej mowia.
+   */
+  function otworzEncje(nazwa: string) {
+    const plik = znajdzPlikLinku(nazwa, pliki)
+    if (plik) {
+      setEncja(null)
+      setActivePath(plik.path)
+      setDodawanie(false)
+      setEdycja(false)
+      setWidok('baza')
+      return
+    }
+    setEncja(nazwa)
+  }
+
+  const plikiEncji = useMemo(
+    () => (encja ? plikiZLinkiem(encja, pliki) : []),
+    [encja, pliki],
+  )
 
   const active = pliki.find((f) => f.path === activePath)
   const aktywnaNotatka =
@@ -422,8 +533,21 @@ export default function Brain() {
           podlaczeniu bazy przejda na serwer.
         </p>
 
-        {/* Zakladki: baza wiedzy / notatki */}
-        <div className="mt-4 flex items-center gap-2">
+        {/* Zakladki: pamiec firmy (wyrozniona) / baza wiedzy / notatki / graf */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setWidok('pamiec-firmy')}
+            className={[
+              'inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-colors',
+              widok === 'pamiec-firmy'
+                ? 'bg-brand text-zinc-950 shadow-glow'
+                : 'border border-brand/40 bg-brand/10 text-brand-soft hover:bg-brand/20',
+            ].join(' ')}
+          >
+            <BrainIcon size={15} aria-hidden />
+            Pamiec firmy
+          </button>
           <button
             type="button"
             onClick={() => setWidok('baza')}
@@ -454,7 +578,98 @@ export default function Brain() {
         </div>
       </header>
 
-      {widok === 'baza' ? (
+      {widok === 'pamiec-firmy' ? (
+        <div className="min-h-0 flex-1 px-5 pb-10 sm:px-8 lg:overflow-y-auto">
+          <article className="overflow-hidden rounded-2xl border border-brand/30 bg-zinc-900/40 ring-1 ring-brand/10">
+            <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800 bg-zinc-900/80 px-6 py-3.5 sm:px-8">
+              <BrainIcon size={16} className="flex-shrink-0 text-brand-soft" />
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-100">
+                Pamiec firmy (wspolna dla calego zespolu)
+              </span>
+              <span className="rounded-full border border-zinc-800 bg-zinc-950/60 px-2 py-0.5 text-[0.65rem] font-medium tabular-nums text-zinc-400">
+                {pamiecFirmy.length} / {LIMIT_PAMIEC_FIRMY} znakow
+              </span>
+              <button
+                type="button"
+                onClick={przebudujPamiec}
+                disabled={przebudowa}
+                title="Zbuduj pamiec firmy od zera z ostatnich rozmow, transkrypcji i briefingow wszystkich agentek"
+                className={`${przyciskSm} disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                <RefreshCw
+                  size={14}
+                  aria-hidden
+                  className={przebudowa ? 'animate-spin' : ''}
+                />
+                {przebudowa
+                  ? 'Przebudowuje...'
+                  : 'Przebuduj z ostatnich rozmow'}
+              </button>
+              {edycjaPamieci ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={zapiszPamiecRecznie}
+                    className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-brand px-2.5 py-1.5 text-xs font-semibold text-zinc-950 transition-colors hover:bg-brand-soft"
+                  >
+                    <Save size={14} aria-hidden />
+                    Zapisz
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEdycjaPamieci(false)}
+                    className={przyciskSm}
+                  >
+                    <X size={14} aria-hidden />
+                    Anuluj
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={zacznijEdycjePamieci}
+                  className={przyciskSm}
+                >
+                  <Pencil size={14} aria-hidden />
+                  Edytuj
+                </button>
+              )}
+            </div>
+
+            <div className="p-6 sm:p-8">
+              <p className="mb-5 max-w-3xl text-sm leading-relaxed text-zinc-400">
+                Jeden wspolny plik pamieci ({SCIEZKA_PAMIEC_FIRMY}). To, co
+                ustalisz z dowolna agentka, laduje tutaj, a stad trafia do glowy
+                kazdej z nich, w czacie i w rozmowie glosem. Przebudowa czyta{' '}
+                <span className="font-semibold tabular-nums text-zinc-300">
+                  {zrodlaPrzebudowy}
+                </span>{' '}
+                ostatnich plikow rozmow, transkrypcji i briefingow calego
+                zespolu i sklada pamiec od zera.
+              </p>
+
+              {edycjaPamieci ? (
+                <textarea
+                  value={draftPamieci}
+                  onChange={(e) => setDraftPamieci(e.target.value)}
+                  spellCheck={false}
+                  aria-label="Edycja pamieci firmy"
+                  placeholder="## Osoby&#10;- **[[Imie]]** | kto: ... | temat: ...&#10;&#10;## Firmy i projekty&#10;- ...&#10;&#10;## Preferencje wlascicieli&#10;- ...&#10;&#10;## Trwale ustalenia i decyzje&#10;- ...&#10;&#10;## Skojarzenia i wnioski&#10;- ..."
+                  className="min-h-[460px] w-full resize-y rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 font-mono text-[0.85rem] leading-relaxed text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-brand/50 focus:ring-1 focus:ring-brand/40"
+                />
+              ) : pamiecFirmy.trim() ? (
+                <MarkdownView onEncja={otworzEncje}>{pamiecFirmy}</MarkdownView>
+              ) : (
+                <p className="text-sm leading-relaxed text-zinc-500">
+                  Pamiec firmy jest jeszcze pusta. Porozmawiaj z dowolna
+                  agentka albo kliknij "Przebuduj z ostatnich rozmow", a fakty
+                  o ludziach, firmach i decyzjach pojawia sie tutaj.
+                </p>
+              )}
+            </div>
+          </article>
+        </div>
+      ) : widok === 'baza' ? (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 px-5 pb-10 sm:px-8 lg:grid-cols-[280px_1fr]">
           {/* Lista plikow */}
           <nav className="lg:overflow-y-auto lg:pr-1">
@@ -818,7 +1033,9 @@ export default function Brain() {
                       className="min-h-[420px] w-full resize-y rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 font-mono text-[0.85rem] leading-relaxed text-zinc-200 outline-none focus:border-brand/50 focus:ring-1 focus:ring-brand/40"
                     />
                   ) : (
-                    <MarkdownView>{active.content}</MarkdownView>
+                    <MarkdownView onEncja={otworzEncje}>
+                      {active.content}
+                    </MarkdownView>
                   )}
                 </div>
               </>
@@ -902,7 +1119,9 @@ export default function Brain() {
                     {aktywnaNotatka.zrodlo}, zapisano{' '}
                     {formatujDate(aktywnaNotatka.data)}
                   </p>
-                  <MarkdownView>{aktywnaNotatka.tresc}</MarkdownView>
+                  <MarkdownView onEncja={otworzEncje}>
+                    {aktywnaNotatka.tresc}
+                  </MarkdownView>
                 </div>
               </>
             ) : (
@@ -921,7 +1140,8 @@ export default function Brain() {
                 {grafStats.files +
                   grafStats.personas +
                   grafStats.notes +
-                  grafStats.hubs}
+                  grafStats.hubs +
+                  grafStats.encje}
               </span>{' '}
               wezlow
             </span>
@@ -933,8 +1153,9 @@ export default function Brain() {
             </span>
             <span className="text-zinc-600">
               {grafStats.files} plikow, {grafStats.personas} person,{' '}
-              {grafStats.notes} notatek, {grafStats.readsLinks} relacji "czyta",{' '}
-              {grafStats.refLinks} odwolan miedzy plikami
+              {grafStats.notes} notatek, {grafStats.encje} encji z linkow [[...]]
+              , {grafStats.readsLinks} relacji "czyta", {grafStats.refLinks}{' '}
+              odwolan miedzy plikami, {grafStats.encjaLinks} powiazan z encjami
             </span>
             <span className="ml-auto hidden text-zinc-600 sm:inline">
               Kliknij wezel, aby zobaczyc szczegoly w panelu obok. Najedz, aby
@@ -959,7 +1180,79 @@ export default function Brain() {
                 onClose={() => setWybrany(null)}
                 onOpenFile={otworzPlikZGrafu}
                 onDownloadNote={pobierzNotatke}
+                onEncja={otworzEncje}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Podglad ENCJI z linku [[Nazwa]] bez wlasnego pliku: kto o niej mowi */}
+      {encja && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-zinc-950/70 p-4 backdrop-blur-sm sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Powiazania encji ${encja}`}
+          onClick={() => setEncja(null)}
+        >
+          <div
+            className="w-full max-w-lg overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2.5 border-b border-zinc-800 px-5 py-3.5">
+              <Tag size={15} className="flex-shrink-0 text-amber-300" aria-hidden />
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold text-zinc-100">
+                {encja}
+              </span>
+              <button
+                type="button"
+                onClick={() => setEncja(null)}
+                aria-label="Zamknij podglad encji"
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+              >
+                <X size={16} aria-hidden />
+              </button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto p-5">
+              <p className="mb-4 text-sm leading-relaxed text-zinc-400">
+                Nie ma osobnego pliku o tej nazwie. Ponizej pliki pamieci, w
+                ktorych pojawia sie link [[{encja}]].
+              </p>
+              {plikiEncji.length === 0 ? (
+                <p className="text-sm text-zinc-500">
+                  Zaden plik nie zawiera juz tego linku.
+                </p>
+              ) : (
+                <div className="space-y-0.5">
+                  {plikiEncji.map((f) => (
+                    <button
+                      key={f.path}
+                      type="button"
+                      onClick={() => {
+                        setEncja(null)
+                        setActivePath(f.path)
+                        setDodawanie(false)
+                        setEdycja(false)
+                        setWidok('baza')
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-zinc-300 transition-colors hover:bg-zinc-800/70 hover:text-zinc-100"
+                    >
+                      <FileText
+                        size={14}
+                        className="flex-shrink-0 text-zinc-600"
+                        aria-hidden
+                      />
+                      <span className="min-w-0 flex-1 truncate capitalize">
+                        {prettyName(f.name)}
+                      </span>
+                      <span className="flex-shrink-0 text-[0.65rem] text-zinc-500">
+                        {etykietaGrupy(f.group)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

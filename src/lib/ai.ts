@@ -10,8 +10,11 @@ import {
   wczytajPersonaNadpis,
   wczytajFaktyAgenta,
   zapiszFaktyAgenta,
+  wczytajPamiecFirmy,
+  zapiszPamiecFirmy,
   pamiecAgenta,
   transkrypcjeAgenta,
+  zrodlaPamieciFirmy,
   pamiecAutoWlaczona,
 } from './storage'
 
@@ -191,8 +194,62 @@ function personaNadpisBlok(agentSlug: string): string {
   return linie.join('\n')
 }
 
-/** Twardy limit dlugosci wstrzykiwanych faktow (znaki), zeby zmiescic budzet promptu. */
-const FAKTY_LIMIT = 6000
+/**
+ * BUDZET PROMPTU GLOSOWEGO (OpenAI Realtime, twardy sufit 40000 znakow w
+ * buildVoicePrompt; ~14,8k tokenow przy ~2,7 znaku na token, czyli pod limitem
+ * 16384 tokenow instrukcji). Najgorszy przypadek (COO + wszystkie bloki pelne),
+ * liczby zmierzone na realnych plikach (2026-07):
+ *
+ *   blok tozsamosci: baza 1354 + dodatki COO 1677   ~ 3 031
+ *   ustawienia od wlasciciela (nadpis, szacunek)    ~   800
+ *   PAMIEC FIRMY (8000 + naglowek sekcji)           ~ 8 400
+ *   twarde fakty agentki (4000 + naglowek sekcji)   ~ 4 400
+ *   Karta Mozgu (_KARTA-MOZGU.md = 4540)            ~ 4 600
+ *   persona (PERSONA_LIMIT 10000 + nota o cieciu)   ~10 100
+ *   umiejetnosci od wlasciciela (szacunek)          ~ 1 000
+ *   lista kolezanek (9 pozycji + instrukcja)        ~   660
+ *   preambula przed narzedziem                      ~   314
+ *   zasady rozmowy 658 + ton persony 1245 + ton os. ~ 2 103
+ *   nota o rozmowie glosowej                        ~   200
+ *   ------------------------------------------------------
+ *   RAZEM                                           ~35 608
+ *   ZAPAS do sufitu 40 000                          ~ 4 392
+ *
+ * Gdyby cokolwiek uroslo, twardy slice(0, 40000) na koncu i tak chroni limit,
+ * ale kolejnosc blokow jest tak ulozona, ze najpierw idzie tozsamosc, pamiec
+ * firmy i fakty (najwazniejsze), a persona jest przycinana jako pierwsza.
+ */
+/** Limit wstrzykiwanej GLOBALNEJ PAMIECI FIRMY (znaki). */
+const PAMIEC_FIRMY_LIMIT = 8000
+/** Twardy limit dlugosci wstrzykiwanych faktow agentki (znaki). */
+const FAKTY_LIMIT = 4000
+
+/**
+ * Zdanie o WSPOLNOCIE pamieci firmy: kazda agentka zna ustalenia z rozmow
+ * z innymi personami i ma sie do nich odwolywac naturalnie.
+ */
+const WSPOLNA_PAMIEC_INFO =
+  'Pamiec firmy jest WSPOLNA: to, co wlasciciel ustalil z kazda z nas, znasz. Gdy odwolujesz sie do czegos z innej rozmowy, powiedz naturalnie ("pamietam, ze ustaliliscie z Rae...").'
+
+/**
+ * Blok GLOBALNEJ PAMIECI FIRMY (wspolna wiedza calego zespolu): jeden zywy plik
+ * pamiec-firmy/fakty-firmy.md wstrzykiwany do promptu KAZDEJ agentki (czat i glos)
+ * PRZED jej wlasnymi faktami. Pusty string, gdy pamiec firmy jeszcze nie istnieje.
+ */
+function pamiecFirmyBlok(): string {
+  const surowe = (wczytajPamiecFirmy() ?? '').trim()
+  if (!surowe) return ''
+  const tresc =
+    surowe.length > PAMIEC_FIRMY_LIMIT
+      ? surowe.slice(0, PAMIEC_FIRMY_LIMIT)
+      : surowe
+  return [
+    '=== PAMIEC FIRMY (wspolna wiedza calego zespolu, znasz to na pewno) ===',
+    'To WSPOLNA pamiec dlugotrwala calego zespolu: osoby, firmy, decyzje, ustalenia i preferencje wlascicieli (Pawel, Marcin), zebrane ze WSZYSTKICH rozmow, takze tych prowadzonych przez inne kolezanki. Traktuj te fakty jako pewne i aktualne, odpowiadaj z nich wprost, nie zgaduj.',
+    WSPOLNA_PAMIEC_INFO,
+    tresc,
+  ].join('\n')
+}
 
 /**
  * Blok TWARDYCH FAKTOW agentki (jej dlugotrwala pamiec): caly plik fakty/<slug>.md
@@ -266,6 +323,8 @@ export function buildSystemPrompt(agentSlug: string): string {
   // Edytowalna persona od wlasciciela (nadrzedna) + lista kolezanek do odsylania.
   const nadpis = personaNadpisBlok(agentSlug)
   const zespol = listaKolezanek(agentSlug)
+  // GLOBALNA PAMIEC FIRMY (wspolna dla calego zespolu) PRZED faktami wlasnymi.
+  const pamiecFirmy = pamiecFirmyBlok()
   // Twarde fakty agentki (pamiec dlugotrwala) tuz po bloku tozsamosci (persona).
   const fakty = faktyBlok(agentSlug)
 
@@ -276,6 +335,7 @@ export function buildSystemPrompt(agentSlug: string): string {
     '=== TWOJA PERSONA ===',
     persona,
     ...(nadpis ? ['', nadpis] : []),
+    ...(pamiecFirmy ? ['', pamiecFirmy] : []),
     ...(fakty ? ['', fakty] : []),
     ...(sekcjaSkilli ? ['', sekcjaSkilli] : []),
     '',
@@ -295,16 +355,80 @@ function maWebSearch(agentSlug: string | undefined): boolean {
 }
 
 /**
- * System prompt do KROTKIEGO streszczenia pamieciowego rozmowy (3-6 punktow).
+ * STANDARD ZAPISU (obowiazuje KAZDY nowy plik pamieci, faktow, briefingu,
+ * transkrypcji i notatki). Doklejany do wszystkich promptow ekstrakcji, zeby
+ * cala pamiec firmy miala jeden, przeszukiwalny format:
+ *  - naglowek metadanych miedzy "---",
+ *  - stale naglowki H2 (per typ pliku, zawsze w tej samej kolejnosci),
+ *  - ATOMOWE fakty: jeden fakt = jedna linia,
+ *  - linki [[...]] do osob, firm i innych plikow (styl Obsidian).
+ */
+export const STANDARD_ZAPISU = [
+  'STANDARD ZAPISU (obowiazkowy dla tego pliku):',
+  'Zacznij plik od naglowka metadanych miedzy liniami "---":',
+  '---',
+  'typ: fakty | pamiec | briefing | transkrypcja | notatka',
+  'agent: <slug agentki albo "firma">',
+  'imie: <Imie persony albo "Zespol">',
+  'uczestnik: <Pawel | Marcin>',
+  'data: RRRR-MM-DD',
+  'osoby: [lista osob wymienionych]',
+  'tagi: [krotkie tagi tematyczne]',
+  '---',
+  'Pod naglowkiem uzyj STALYCH naglowkow H2 (##) podanych nizej, zawsze w tej samej kolejnosci, nawet gdy sekcja jest pusta.',
+  'ATOMOWE fakty: jeden fakt = jedna linia w formacie:',
+  '- **[[Nazwa]]** | pole: wartosc | pole: wartosc | zrodlo: [[sciezka-pliku]]',
+  'Linkuj [[...]] osoby, firmy i inne pliki (styl Obsidian). Bez em-dash, bez prozy, bez dlugich zdan. Sama tresc pliku, bez wstepow i komentarzy, bez bloku kodu.',
+].join('\n')
+
+/**
+ * System prompt do KROTKIEGO streszczenia pamieciowego rozmowy.
  * Uzywany przez auto-zapis pamieci agenta (rozmowa glosowa i czat tekstowy).
- * Bez tytulu, bo plik pamieci dostaje wlasny naglowek w zapiszPamiecAgenta.
+ * Naglowek metadanych i tytul dokleja zapiszPamiecAgenta (normalizuje duplikat).
  */
 export function buildPamiecPrompt(imiePersony: string): string {
   return [
-    `Jestes ${imiePersony}. Zapisujesz do WLASNEJ pamieci krotkie streszczenie tej rozmowy z wlascicielem firmy.`,
-    'Wypisz 3-6 punktow listy (kazdy zaczyna sie od "- "): co ustalono, jakie decyzje zapadly, wazne fakty i liczby.',
-    'Zasady: prosty polski, bez em-dash, tylko potwierdzone fakty. Nie zmyslaj liczb ani ustalen.',
-    'Bez tytulu, bez wstepu i bez zakonczenia. Sama lista. Maksymalnie okolo 800 znakow.',
+    `Jestes ${imiePersony}. Zapisujesz do WLASNEJ pamieci zwiezle streszczenie tej rozmowy z wlascicielem firmy.`,
+    STANDARD_ZAPISU,
+    'Uzyj DOKLADNIE tych sekcji, w tej kolejnosci:',
+    '## Ustalenia',
+    '## Decyzje',
+    '## Fakty i liczby',
+    '## Nastepne kroki',
+    'Lacznie 3-8 atomowych linii. Zasady: prosty polski, bez em-dash, tylko potwierdzone fakty. Nie zmyslaj liczb ani ustalen.',
+    'Maksymalnie okolo 1200 znakow.',
+  ].join('\n')
+}
+
+/**
+ * System prompt do AKTUALIZACJI GLOBALNEJ PAMIECI FIRMY (jeden zywy plik
+ * wspolny dla calego zespolu). Model dostaje dotychczasowa pamiec firmy oraz
+ * transkrypcje nowej rozmowy i zwraca pelna, scalona tresc pliku MD.
+ */
+export function buildPamiecFirmyPrompt(
+  imieAgentki: string,
+  uczestnik: string,
+  odZera = false,
+): string {
+  return [
+    'Prowadzisz GLOBALNA PAMIEC FIRMY SimpleFast.ai: jeden wspolny plik, ktory zna CALY zespol (wszystkie persony).',
+    odZera
+      ? 'Dostajesz ZRODLA: ostatnie rozmowy, transkrypcje i briefingi CALEGO zespolu (roznych person, roznych uczestnikow).'
+      : `Oto GLOBALNA PAMIEC FIRMY i nowa rozmowa (z ${imieAgentki}, uczestnik: ${uczestnik}).`,
+    odZera
+      ? 'Zbuduj pamiec firmy OD ZERA: wyciagnij ze zrodel wszystkie TRWALE fakty (osoby, firmy, decyzje, ustalenia, preferencje wlascicieli, skojarzenia), scal powtorzenia w jedna linie, pomin dygresje i rzeczy ulotne.'
+      : 'Zaktualizuj pamiec firmy: dodaj nowe TRWALE fakty (osoby, firmy, decyzje, ustalenia, preferencje wlascicieli, skojarzenia), SCAL bez duplikatow, NIE usuwaj potwierdzonych, prostuj gdy rozmowa je zmienia.',
+    'Zwroc TYLKO pelna nowa tresc pliku MD wg standardu.',
+    STANDARD_ZAPISU,
+    'W naglowku metadanych ustaw: typ: pamiec, agent: firma, imie: Zespol.',
+    'Uzyj DOKLADNIE tych sekcji, w tej kolejnosci (nawet gdy sekcja pusta):',
+    '## Osoby',
+    '## Firmy i projekty',
+    '## Preferencje wlascicieli',
+    '## Trwale ustalenia i decyzje',
+    '## Skojarzenia i wnioski',
+    'Zasady: prosty polski, bez em-dash, tylko potwierdzone fakty. Nie zmyslaj liczb, osob ani ustalen. Przy osobach zapisuj kto to jest i czyj kontakt (np. "- **[[Klaudiusz]]** | kto: znajomy [[Pawel]]a | temat: ...").',
+    `Limit calosci: okolo ${PAMIEC_FIRMY_LIMIT} znakow. Gdy braknie miejsca, zostaw najwazniejsze i najswiezsze fakty.`,
   ].join('\n')
 }
 
@@ -317,16 +441,17 @@ export function buildFaktyPrompt(imiePersony: string): string {
     `Jestes ${imiePersony}. Prowadzisz WLASNY plik twardych faktow: Twoja pamiec dlugotrwala o firmie, ludziach i ustaleniach.`,
     'Dostajesz DOTYCHCZASOWY plik faktow oraz TRANSKRYPCJE nowej rozmowy (albo zrodla do zbudowania pliku od zera).',
     'ZAKTUALIZUJ plik: dodaj nowe twarde fakty (osoby, relacje, decyzje, preferencje), SCAL z istniejacymi (nie duplikuj), NIE usuwaj potwierdzonych faktow, popraw jesli nowa rozmowa je prostuje, utrzymaj strukture sekcji i limit.',
+    STANDARD_ZAPISU,
+    'W naglowku metadanych ustaw: typ: fakty oraz swoje imie persony.',
     'Uzyj DOKLADNIE tych sekcji, w tej kolejnosci (naglowek ## dla kazdej, nawet gdy sekcja pusta):',
     '## Osoby',
     '## Firmy i projekty',
-    '## Preferencje Pawla i Marcina',
-    '## Trwale ustalenia',
+    '## Preferencje wlascicieli',
+    '## Trwale ustalenia i decyzje',
     '## Skojarzenia i wnioski',
-    'Kazdy fakt to zwiezly punkt listy od "- ". Przy osobach podaj kim jest i od czego (np. "- Klaudiusz: ..."). Nie powtarzaj wielokrotnie "1.".',
+    'Kazdy fakt to JEDNA atomowa linia (np. "- **[[Klaudiusz]]** | kto: znajomy [[Pawel]]a | temat: wspolny projekt"). Nie powtarzaj wielokrotnie "1.".',
     'Zasady: prosty polski, bez em-dash, tylko potwierdzone fakty. Nie zmyslaj liczb, osob ani ustalen.',
-    'Limit calosci: okolo 6000 znakow. Gdy braknie miejsca, zostaw najwazniejsze i najswiezsze fakty.',
-    'Zwroc TYLKO pelna, nowa tresc pliku markdown. Bez wstepu, bez komentarzy, bez bloku kodu.',
+    `Limit calosci: okolo ${FAKTY_LIMIT} znakow. Gdy braknie miejsca, zostaw najwazniejsze i najswiezsze fakty.`,
   ].join('\n')
 }
 
@@ -375,6 +500,46 @@ export async function aktualizujFaktyPoRozmowie(
 }
 
 /**
+ * AKTUALIZACJA GLOBALNEJ PAMIECI FIRMY po KAZDEJ rozmowie (glos i czat), obok
+ * aktualizacji twardych faktow agentki. Bierze biezaca pamiec firmy + transkrypcje
+ * tej rozmowy, prosi model o scalona tresc i nadpisuje pamiec-firmy/fakty-firmy.md.
+ *
+ * To JEDEN zywy plik wspolny dla calego zespolu: wstrzykiwany do promptu KAZDEJ
+ * agentki, wiec ustalenie zrobione z Lea jest znane takze Rae.
+ *
+ * Sterowane tym samym przelacznikiem co pamiec (sf_pamiec_auto). Bez klucza
+ * (tryb demo) pomija: scalanie wymaga modelu. Nie rzuca wyjatkow.
+ */
+export async function aktualizujPamiecFirmy(
+  transkrypcja: string,
+  imieAgentki: string,
+  uczestnik: string,
+): Promise<void> {
+  if (!pamiecAutoWlaczona()) return
+  if (getMode() === 'demo') return
+  const t = (transkrypcja ?? '').trim()
+  if (!t) return
+  const dotychczas = (wczytajPamiecFirmy() ?? '').trim()
+  const user = [
+    '=== GLOBALNA PAMIEC FIRMY (moze byc pusta) ===',
+    dotychczas || '(brak - to pierwszy zapis, utworz plik od zera)',
+    '',
+    `=== NOWA ROZMOWA (z ${imieAgentki}, uczestnik: ${uczestnik}) ===`,
+    t,
+  ].join('\n')
+  try {
+    const nowa = (
+      await callModel(buildPamiecFirmyPrompt(imieAgentki, uczestnik), [
+        { role: 'user', content: user },
+      ])
+    ).trim()
+    if (nowa) zapiszPamiecFirmy(oczyscMd(nowa))
+  } catch {
+    // Blad modelu: zostawiamy dotychczasowa pamiec firmy bez zmian.
+  }
+}
+
+/**
  * PRZEBUDOWA twardych faktow OD ZERA z ostatnich ~10 plikow pamieci i transkrypcji
  * agentki. Uzywane przez przycisk w profilu agenta. Zwraca nowa tresc albo null
  * (tryb demo albo brak materialu). Zapisuje wynik do fakty/<slug>.md.
@@ -404,6 +569,39 @@ export async function przebudujFaktyOdZera(
   if (!nowa) return null
   const czysta = oczyscMd(nowa)
   zapiszFaktyAgenta(slug, czysta)
+  return czysta
+}
+
+/**
+ * PRZEBUDOWA GLOBALNEJ PAMIECI FIRMY OD ZERA z ostatnich ~15 plikow pamieci,
+ * transkrypcji i briefingow ze WSZYSTKICH agentek. Analogiczna do
+ * przebudujFaktyOdZera, ale globalna: material bierze z calego zespolu, a wynik
+ * nadpisuje jeden wspolny plik pamiec-firmy/fakty-firmy.md.
+ *
+ * Uzywane przez przycisk "Przebuduj z ostatnich rozmow" w Mozgu firmy.
+ * Zwraca nowa tresc albo null (tryb demo albo brak materialu).
+ */
+export async function przebudujPamiecFirmyOdZera(
+  limitZrodel = 15,
+): Promise<string | null> {
+  if (getMode() === 'demo') return null
+  const zrodla = zrodlaPamieciFirmy(limitZrodel)
+  if (zrodla.length === 0) return null
+  const material = zrodla
+    .map((z) => `--- ZRODLO: ${z.sciezka} ---\n${z.tresc.trim()}`)
+    .join('\n\n')
+  const user = [
+    '=== ZRODLA: OSTATNIE ROZMOWY, TRANSKRYPCJE I BRIEFINGI CALEGO ZESPOLU ===',
+    material,
+  ].join('\n')
+  const nowa = (
+    await callModel(buildPamiecFirmyPrompt('zespolu', 'Pawel i Marcin', true), [
+      { role: 'user', content: user },
+    ])
+  ).trim()
+  if (!nowa) return null
+  const czysta = oczyscMd(nowa)
+  zapiszPamiecFirmy(czysta)
   return czysta
 }
 
@@ -463,9 +661,10 @@ export function buildVoicePrompt(agentSlug: string): string {
       : ''
   }
   // Realtime ma twardy budzet ~16k tokenow na instrukcje. Gdy persona jest duza,
-  // TNIEMY persone (blok tozsamosci, twarde fakty i Karta Mozgu zostaja w calosci).
-  // Limit 14000: robimy miejsce na blok twardych faktow (do 6000 znakow) pod sufitem 40k.
-  const PERSONA_LIMIT = 14000
+  // TNIEMY persone (tozsamosc, pamiec firmy, twarde fakty i Karta zostaja w calosci).
+  // Limit 10000: robimy miejsce na PAMIEC FIRMY (do 8000) i fakty wlasne (do 4000)
+  // pod sufitem 40000 znakow. Pelna arytmetyka budzetu w komentarzu przy limitach.
+  const PERSONA_LIMIT = 10000
   if (persona.length > PERSONA_LIMIT) {
     persona =
       persona.slice(0, PERSONA_LIMIT) +
@@ -489,6 +688,8 @@ export function buildVoicePrompt(agentSlug: string): string {
   // Edytowalna persona od wlasciciela (nadrzedna) + lista kolezanek do odsylania.
   const nadpis = personaNadpisBlok(agentSlug)
   const zespol = listaKolezanek(agentSlug)
+  // GLOBALNA PAMIEC FIRMY (wspolna dla calego zespolu) PRZED faktami wlasnymi.
+  const pamiecFirmy = pamiecFirmyBlok()
   // Twarde fakty agentki (pamiec dlugotrwala) tuz po bloku tozsamosci.
   const fakty = faktyBlok(agentSlug)
 
@@ -496,6 +697,7 @@ export function buildVoicePrompt(agentSlug: string): string {
     '=== KIM JESTES (najwazniejsze, czytaj najpierw) ===',
     tozsamosc,
     ...(nadpis ? ['', nadpis] : []),
+    ...(pamiecFirmy ? ['', pamiecFirmy] : []),
     ...(fakty ? ['', fakty] : []),
     '',
     '=== RDZEN WIEDZY O FIRMIE (Karta Mozgu) ===',

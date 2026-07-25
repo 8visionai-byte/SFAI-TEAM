@@ -8,8 +8,19 @@ import { getBrainFiles, getAgentPrompt, type BrainFile } from './content'
 import { agents, getAgent } from '../data/agents'
 import type { Notatka } from './storage'
 
-export type NodeKind = 'file' | 'hub' | 'persona' | 'note'
-export type LinkKind = 'hub' | 'ref' | 'reads' | 'note' | 'backbone'
+export type NodeKind = 'file' | 'hub' | 'persona' | 'note' | 'encja'
+export type LinkKind =
+  | 'hub'
+  | 'ref'
+  | 'reads'
+  | 'note'
+  | 'backbone'
+  | 'encja'
+
+/** Klucz grupy globalnej pamieci firmy (spojny ze storage.GRUPA_PAMIEC_FIRMY). */
+export const GRUPA_PAMIEC_FIRMY = 'pamiec-firmy'
+/** Klucz grupy encji wyciagnietych z linkow [[...]] (osoby, firmy, tematy). */
+export const GRUPA_ENCJE = 'encje'
 
 export interface GraphNode {
   /** Unikalny identyfikator wezla. */
@@ -29,6 +40,8 @@ export interface GraphNode {
   zmieniony?: boolean
   /** Wlasny plik uzytkownika. */
   wlasny?: boolean
+  /** Pelna nazwa encji z linku [[...]] (label bywa skrocony do etykiety). */
+  pelnaNazwa?: string
 }
 
 export interface GraphLink {
@@ -58,6 +71,12 @@ export interface BrainGraphModel {
     links: number
     refLinks: number
     readsLinks: number
+    /** Wezly-encje wyciagniete z linkow [[...]] (osoby, firmy, tematy). */
+    encje: number
+    /** Krawedzie plik -> encja. */
+    encjaLinks: number
+    /** Krawedzie plik -> plik zbudowane z linkow [[...]]. */
+    wikiLinks: number
   }
 }
 
@@ -75,6 +94,8 @@ const GROUP_COLOR: Record<string, string> = {
   briefingi: '#C084FC', // briefingi z narad zespolu
   transkrypcje: '#22D3EE', // pelne transkrypcje rozmow glosowych
   fakty: '#EAB308', // twarde fakty agentow (pamiec dlugotrwala)
+  [GRUPA_PAMIEC_FIRMY]: '#5B8DEF', // wspolna pamiec calego zespolu (brand)
+  [GRUPA_ENCJE]: '#F59E0B', // encje z linkow [[...]]: osoby, firmy, tematy
 }
 
 /** Czytelne etykiety grup w legendzie. */
@@ -90,11 +111,14 @@ const GROUP_LABEL: Record<string, string> = {
   notatki: 'Twoje notatki',
   briefingi: 'Briefingi z narad',
   transkrypcje: 'Transkrypcje rozmow',
-  fakty: 'Twarde fakty',
+  fakty: 'Twarde fakty (agentki)',
+  [GRUPA_PAMIEC_FIRMY]: 'Pamiec firmy',
+  [GRUPA_ENCJE]: 'Osoby i encje',
 }
 
 /** Kolejnosc grup w legendzie. */
 const GROUP_RANK = [
+  GRUPA_PAMIEC_FIRMY,
   'root',
   'tozsamosc',
   'rynek-klient',
@@ -103,6 +127,7 @@ const GROUP_RANK = [
   'zespol-i-decyzje',
   'zespol',
   'fakty',
+  GRUPA_ENCJE,
   'wlasne',
   'notatki',
   'briefingi',
@@ -134,10 +159,17 @@ export const GROUP_OPIS: Record<string, string> = {
     'Pelne zapisy wypowiedzi z rozmow glosowych. Obok streszczen pamieci, do dokladnego odtworzenia, co padlo i z kim.',
   fakty:
     'Zywy plik twardych faktow kazdej agentki: osoby, firmy, projekty, preferencje wlascicieli i trwale ustalenia. Pamiec dlugotrwala, scalana po kazdej rozmowie.',
+  [GRUPA_PAMIEC_FIRMY]:
+    'Jeden wspolny plik pamieci calego zespolu. To, co ustalisz z dowolna agentka, trafia tutaj, a stad do glowy kazdej z nich. Serce pamieci firmy, dlatego stoi w srodku grafu.',
+  [GRUPA_ENCJE]:
+    'Osoby, firmy i tematy wyciagniete z linkow [[...]] w plikach. Jedna encja spina kilka plikow naraz, wiec widac realne sieci powiazan, a nie same foldery.',
 }
 
 /** Slug agenta z klucza grupy pamieci 'pamiec-<slug>' (albo null). */
 function slugZPamieci(key: string): string | null {
+  // UWAGA: 'pamiec-firmy' to grupa WSPOLNEJ pamieci firmy, nie agentki o slugu
+  // "firmy". Musi byc wykluczona, inaczej dostanie etykiete "Pamiec: firmy".
+  if (key === GRUPA_PAMIEC_FIRMY) return null
   return key.startsWith('pamiec-') ? key.slice('pamiec-'.length) : null
 }
 
@@ -155,6 +187,108 @@ export function groupLabel(key: string): string {
     return `Pamiec: ${a?.personImie ?? a?.name ?? slug}`
   }
   return GROUP_LABEL[key] ?? key
+}
+
+// --- Linki [[Nazwa]] (styl Obsidian): parsowanie i dopasowanie -------------
+
+/**
+ * Wyciaga nazwy z linkow [[Nazwa]] w tresci. Obsluguje alias [[Cel|tekst]]
+ * (bierzemy CEL) i pomija puste nawiasy. Zwraca nazwy w kolejnosci wystapien.
+ */
+export function parsujLinkiWiki(tresc: string): string[] {
+  const out: string[] = []
+  const re = /\[\[([^[\]|]+?)(?:\|[^[\]]*)?\]\]/g
+  let m: RegExpExecArray | null
+  while ((m = re.exec(tresc ?? '')) !== null) {
+    const nazwa = m[1].trim()
+    if (nazwa) out.push(nazwa)
+  }
+  return out
+}
+
+/**
+ * Klucz porownania nazwy linku: male litery, bez polskich znakow, bez ".md",
+ * separatory sciezki i spacje sprowadzone do "-". Dzieki temu [[Fakty firmy]],
+ * [[fakty-firmy]] i [[pamiec-firmy/fakty-firmy.md]] trafiaja w ten sam plik.
+ */
+export function kluczLinku(nazwa: string): string {
+  return (nazwa ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/ł/g, 'l')
+    .replace(/\.md$/, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+/** Tytul pliku z pierwszego naglowka "# ..." (albo null). */
+function tytulH1(tresc: string): string | null {
+  const m = (tresc ?? '').match(/^#\s+(.+)$/m)
+  return m ? m[1].trim() : null
+}
+
+/** Wszystkie klucze, pod ktorymi plik da sie trafic linkiem [[...]]. */
+function kluczePliku(f: BrainFile): string[] {
+  const klucze = [
+    kluczLinku(f.name),
+    kluczLinku(f.path),
+    kluczLinku(relativePathOf(f.group, f.name)),
+  ]
+  const t = tytulH1(f.content)
+  if (t) klucze.push(kluczLinku(t))
+  return Array.from(new Set(klucze.filter(Boolean)))
+}
+
+/** Mapa klucz linku -> plik (pierwszy wygrywa, zeby wynik byl stabilny). */
+function mapaPlikowPoKluczu(pliki: BrainFile[]): Map<string, BrainFile> {
+  const map = new Map<string, BrainFile>()
+  for (const f of pliki) {
+    for (const k of kluczePliku(f)) if (!map.has(k)) map.set(k, f)
+  }
+  return map
+}
+
+/**
+ * Dopasowanie linku do pliku: najpierw doslowne, potem (tylko dla linkow
+ * wygladajacych na SCIEZKE) jednoznaczne dopasowanie po prefiksie. Agentki
+ * pisza zrodla skrocone, np. [[transkrypcje/2026-07-20-lea-pawel]] przy pliku
+ * transkrypcje/2026-07-20-lea-pawel-<id>.md. Prefiks stosujemy tylko wtedy,
+ * gdy pasuje DOKLADNIE jeden plik, zeby nie sklejac przypadkowych par.
+ */
+function dopasujPlik(
+  nazwa: string,
+  mapa: Map<string, BrainFile>,
+): BrainFile | undefined {
+  const klucz = kluczLinku(nazwa)
+  if (!klucz) return undefined
+  const doslowne = mapa.get(klucz)
+  if (doslowne) return doslowne
+  const jakSciezka = nazwa.includes('/') || /\.md$/i.test(nazwa.trim())
+  if (!jakSciezka) return undefined
+  const kandydaci = new Set<BrainFile>()
+  for (const [k, f] of mapa) {
+    if (k.startsWith(`${klucz}-`)) kandydaci.add(f)
+  }
+  return kandydaci.size === 1 ? [...kandydaci][0] : undefined
+}
+
+/** Plik, na ktory wskazuje link [[Nazwa]], albo undefined (to encja). */
+export function znajdzPlikLinku(
+  nazwa: string,
+  pliki: BrainFile[],
+): BrainFile | undefined {
+  return dopasujPlik(nazwa, mapaPlikowPoKluczu(pliki))
+}
+
+/** Pliki, w ktorych wystepuje link [[Nazwa]] (dowolny wariant zapisu). */
+export function plikiZLinkiem(nazwa: string, pliki: BrainFile[]): BrainFile[] {
+  const szukany = kluczLinku(nazwa)
+  if (!szukany) return []
+  return pliki.filter((f) =>
+    parsujLinkiWiki(f.content).some((l) => kluczLinku(l) === szukany),
+  )
 }
 
 /** Sciezka wzgledna pliku mozgu (od katalogu mozg/), np. "rynek-klient/icp.md". */
@@ -199,8 +333,9 @@ export function buildBrainGraph(
       kind: 'hub',
       label: groupLabel(g),
       group: g,
+      // Pamiec firmy jest wspolna dla calego zespolu: wyrozniona wielkoscia.
       color: groupColor(g),
-      size: 12,
+      size: g === GRUPA_PAMIEC_FIRMY ? 17 : 12,
     })
   }
   // Backbone: kazdy hub folderu podpiety pod rdzen (root), zeby siec miala kregoslup.
@@ -221,7 +356,11 @@ export function buildBrainGraph(
       label: shortLabel(f.name),
       group: f.group,
       color: groupColor(f.group),
-      size: fileRadius(f.content.length),
+      // Plik pamieci firmy zawsze duzy: czyta go KAZDA agentka.
+      size:
+        f.group === GRUPA_PAMIEC_FIRMY
+          ? Math.max(15, fileRadius(f.content.length))
+          : fileRadius(f.content.length),
       path: f.path,
       zmieniony: f.zmieniony,
       wlasny: f.wlasny,
@@ -262,6 +401,13 @@ export function buildBrainGraph(
     links.push({ source: hubId('zespol'), target: hubId('root'), kind: 'backbone' })
   }
 
+  // Plik globalnej pamieci firmy: KAZDA persona ma go w swoim prompcie (ai.ts
+  // wstrzykuje go do buildSystemPrompt i buildVoicePrompt), wiec kazda dostaje
+  // realna krawedz "czyta". To ona ustawia pamiec firmy w centrum grafu.
+  const pamiecFirmyNode = nodes.find(
+    (n) => n.kind === 'file' && n.group === GRUPA_PAMIEC_FIRMY,
+  )
+
   let readsLinks = 0
   const personaIdByName = new Map<string, string>()
   for (const agent of agents) {
@@ -276,6 +422,11 @@ export function buildBrainGraph(
     })
     personaIdByName.set(agent.name, pid)
     links.push({ source: pid, target: hubId('zespol'), kind: 'hub' })
+
+    if (pamiecFirmyNode) {
+      links.push({ source: pid, target: pamiecFirmyNode.id, kind: 'reads' })
+      readsLinks++
+    }
 
     // Skan AGENT.md pod sciezki mozg-wspolny/<relative>
     const prompt = getAgentPrompt(agent.slug)
@@ -331,6 +482,72 @@ export function buildBrainGraph(
     }
   }
 
+  // --- 5b. Linki [[Nazwa]] w plikach wlasnych: plik->plik oraz plik->ENCJA ---
+  // Pliki pisane przez agentki (pamiec, fakty, briefingi) trzymaja standard
+  // zapisu z linkami [[...]]. Gdy nazwa trafia w inny plik, laczymy pliki.
+  // Gdy nie trafia (np. [[Klaudiusz]]), powstaje wezel-ENCJA, ktory spina
+  // wszystkie pliki mowiace o tej osobie, firmie albo temacie.
+  const wlasnePliki = pliki.filter((f) => f.wlasny)
+  const mapaKluczy = mapaPlikowPoKluczu(pliki)
+  /** klucz encji -> { etykieta, id plikow, ktore o niej mowia }. */
+  const encje = new Map<string, { label: string; pliki: Set<string> }>()
+  const wikiSeen = new Set<string>() // unikalne relacje plik->plik z [[...]]
+  const encjaSeen = new Set<string>() // dedup krawedzi plik->encja
+  let wikiLinks = 0 // ile RELACJI plik->plik daja linki [[...]]
+  let wikiNowe = 0 // ile z nich to NOWE krawedzie (reszta juz byla ze skanu tresci)
+  let encjaLinks = 0
+
+  for (const f of wlasnePliki) {
+    const zId = `file:${f.path}`
+    for (const nazwa of parsujLinkiWiki(f.content)) {
+      const klucz = kluczLinku(nazwa)
+      if (!klucz) continue
+      const cel = dopasujPlik(nazwa, mapaKluczy)
+      if (cel) {
+        // Link do innego pliku (nie do samego siebie).
+        if (cel.path === f.path) continue
+        const celId = `file:${cel.path}`
+        const para =
+          zId < celId ? `${zId}|${celId}` : `${celId}|${zId}`
+        if (!wikiSeen.has(para)) {
+          wikiSeen.add(para)
+          wikiLinks++
+        }
+        // Krawedz mogla juz powstac ze skanu tresci (krok 3): nie dublujemy.
+        if (refSeen.has(para)) continue
+        refSeen.add(para)
+        links.push({ source: zId, target: celId, kind: 'ref' })
+        wikiNowe++
+        continue
+      }
+      // Encja: osoba, firma albo temat bez wlasnego pliku.
+      const wpis = encje.get(klucz)
+      if (wpis) wpis.pliki.add(zId)
+      else encje.set(klucz, { label: nazwa, pliki: new Set([zId]) })
+    }
+  }
+
+  for (const [klucz, wpis] of encje) {
+    const eid = `encja:${klucz}`
+    nodes.push({
+      id: eid,
+      kind: 'encja',
+      label: shortLabel(wpis.label, 18),
+      group: GRUPA_ENCJE,
+      color: groupColor(GRUPA_ENCJE),
+      pelnaNazwa: wpis.label,
+      // Encja spinajaca wiecej plikow jest wieksza (widac wezly sieci).
+      size: Math.min(9, 4.5 + wpis.pliki.size * 0.9),
+    })
+    for (const zId of wpis.pliki) {
+      const para = `${zId}|${eid}`
+      if (encjaSeen.has(para)) continue
+      encjaSeen.add(para)
+      links.push({ source: zId, target: eid, kind: 'encja' })
+      encjaLinks++
+    }
+  }
+
   // --- 6. Grupy do legendy (tylko realnie obecne) ---
   const present = new Set(nodes.map((n) => n.group))
   const groups: GroupMeta[] = GROUP_RANK.filter((g) => present.has(g)).map(
@@ -356,8 +573,11 @@ export function buildBrainGraph(
       notes: noteCount,
       hubs,
       links: links.length,
-      refLinks,
+      refLinks: refLinks + wikiNowe,
       readsLinks,
+      encje: encje.size,
+      encjaLinks,
+      wikiLinks,
     },
   }
 }

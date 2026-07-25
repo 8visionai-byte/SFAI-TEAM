@@ -12,6 +12,7 @@ import {
   type GraphNode,
   type LinkKind,
   GROUP_OPIS,
+  GRUPA_PAMIEC_FIRMY,
 } from '../lib/brainGraph'
 import { getAgent, type Agent } from '../data/agents'
 import { getCharacter } from '../data/characters'
@@ -43,6 +44,7 @@ const REST_LEN: Record<LinkKind, number> = {
   ref: 118,
   reads: 128,
   note: 60,
+  encja: 78,
 }
 
 /** Grubosc i bazowa przezroczystosc krawedzi wg typu. */
@@ -52,6 +54,7 @@ const LINK_STYLE: Record<LinkKind, { w: number; o: number }> = {
   ref: { w: 1.0, o: 0.45 },
   reads: { w: 0.8, o: 0.22 },
   note: { w: 0.9, o: 0.4 },
+  encja: { w: 0.9, o: 0.5 },
 }
 
 const TAU = Math.PI * 2
@@ -260,6 +263,18 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
       const ang =
         (gi / Math.max(1, groups.length)) * Math.PI * 2 +
         seeded(i) * 0.9
+      // Pamiec firmy startuje w samym srodku: to wspolne serce mozgu, ktore
+      // czyta kazda agentka, wiec ma byc widoczne jako centrum sieci.
+      if (n.group === GRUPA_PAMIEC_FIRMY) {
+        return {
+          ...n,
+          x: n.kind === 'hub' ? 0 : (seeded(i * 3) - 0.5) * 30,
+          y: n.kind === 'hub' ? 0 : (seeded(i * 7) - 0.5) * 30,
+          vx: 0,
+          vy: 0,
+          fixed: false,
+        }
+      }
       return {
         ...n,
         x: Math.cos(ang) * ring + (seeded(i * 3) - 0.5) * 40,
@@ -773,6 +788,7 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
               s.kind === 'hub' ||
               s.kind === 'persona' ||
               s.kind === 'file' ||
+              s.kind === 'encja' ||
               s.id === highlight ||
               (hoverNeighbors?.has(s.id) ?? false)
             return (
@@ -870,7 +886,9 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
                           ? 0.9
                           : s.kind === 'note'
                             ? 0.7
-                            : 0.85
+                            : s.kind === 'encja'
+                              ? 0.5
+                              : 0.85
                   }
                   stroke={s.color}
                   strokeWidth={s.kind === 'hub' ? 2 : 1.5}
@@ -916,7 +934,7 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
                   <text
                     x={s.size + 5}
                     y={3.5}
-                    fontSize={s.kind === 'hub' ? 11 : 9.5}
+                    fontSize={s.kind === 'hub' ? 11 : s.kind === 'encja' ? 8.5 : 9.5}
                     fontWeight={s.kind === 'hub' ? 700 : 600}
                     fill={
                       s.kind === 'hub' ||
@@ -952,8 +970,11 @@ export default function BrainGraph({ model, selectedId, onSelect }: Props) {
               onPointerEnter={() => setActiveGroup(g.key)}
               onPointerLeave={() => setActiveGroup(null)}
               onClick={() => {
-                const hub = model.nodes.find((n) => n.id === `hub:${g.key}`)
-                if (hub) onSelect(hub)
+                // Grupa bez huba (np. encje) => pokaz jej pierwszy wezel.
+                const cel =
+                  model.nodes.find((n) => n.id === `hub:${g.key}`) ??
+                  model.nodes.find((n) => n.group === g.key)
+                if (cel) onSelect(cel)
               }}
               className={[
                 'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',

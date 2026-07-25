@@ -19,6 +19,7 @@ import {
   getMode,
   buildPamiecPrompt,
   aktualizujFaktyPoRozmowie,
+  aktualizujPamiecFirmy,
   type ChatMessage as Msg,
 } from '../lib/ai'
 import { isSttSupported, startListening, stopListening } from '../lib/voice'
@@ -32,6 +33,8 @@ import {
   zapiszPamiecAgenta,
   pamiecAutoWlaczona,
   imieUczestnika,
+  wykryjOsoby,
+  zapewnijNaglowekMeta,
   type Rozmowa,
 } from '../lib/storage'
 import ChatMessage from '../components/ChatMessage'
@@ -161,6 +164,9 @@ async function zapiszPamiecZRozmowy(id: string): Promise<void> {
   // Aktualizacja twardych faktow agentki (jeden zywy plik). Ten sam moment i
   // toggle co pamiec. Bez klucza pomija sama (fakty wymagaja modelu).
   void aktualizujFaktyPoRozmowie(a.slug, imie, tekst)
+  // GLOBALNA PAMIEC FIRMY (wspolna dla calego zespolu): ten sam moment.
+  // Rozmowa tekstowa zasila te sama pamiec co rozmowa glosowa.
+  void aktualizujPamiecFirmy(tekst, imie, rozmowa.uczestnik ?? imieUczestnika())
 }
 
 export default function Chat() {
@@ -323,11 +329,23 @@ export default function Chat() {
   /** Zapisuje biezaca rozmowe jako notatke (sf_notatki). */
   function zapiszDoPamieci() {
     if (!agent || messages.length === 0) return
-    const tresc = messages
+    const imiePersony = agent.personImie ?? agent.name
+    const rozmowa = messages
       .map((m) =>
-        m.role === 'user' ? `**Ty:** ${m.content}` : `**${agent.name}:** ${m.content}`,
+        m.role === 'user'
+          ? `**Ty:** ${m.content}`
+          : `**${imiePersony}:** ${m.content}`,
       )
       .join('\n\n')
+    // STANDARD ZAPISU: naglowek metadanych + stala sekcja H2 z zapisem czatu.
+    const tresc = zapewnijNaglowekMeta(`## Rozmowa\n\n${rozmowa}`, {
+      typ: 'notatka',
+      agent: agent.slug,
+      imie: imiePersony,
+      uczestnik: imieUczestnika(),
+      osoby: wykryjOsoby(rozmowa),
+      tagi: ['czat', agent.slug],
+    })
     zapiszNotatke({
       id: nowyId(),
       zrodlo: `Czat: ${agent.name}`,

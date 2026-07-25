@@ -3,12 +3,27 @@ import { Mic, Square, X } from 'lucide-react'
 import type { Agent } from '../data/agents'
 import {
   startRozmowa,
+  type KtoMowi,
   type StanRozmowy,
   type UchwytRozmowy,
 } from '../lib/realtime'
 import { mowPowitanie, mowTekstem, zatrzymajMowe } from '../lib/eleven'
-import { sendMessage, type ChatMessage } from '../lib/ai'
-import { imieUczestnika } from '../lib/storage'
+import {
+  aktualizujFaktyPoRozmowie,
+  aktualizujPamiecFirmy,
+  buildPamiecPrompt,
+  callModel,
+  getMode,
+  sendMessage,
+  type ChatMessage,
+} from '../lib/ai'
+import {
+  imieUczestnika,
+  pamiecAutoWlaczona,
+  transkrypcjeAutoWlaczone,
+  zapiszPamiecAgenta,
+  zapiszTranskrypcje,
+} from '../lib/storage'
 import { isSttSupported, startListening, stopListening } from '../lib/voice'
 import CharacterAvatar from './CharacterAvatar'
 import MarkdownView from './MarkdownView'
@@ -181,9 +196,82 @@ export default function RozmowaGlosowa({ agent, onClose }: Props) {
   const uchwytRef = useRef<UchwytRozmowy | null>(null)
   const historiaRef = useRef<ChatMessage[]>([])
   const aktywnyRef = useRef(true)
+  // Pelny transkrypt rozmowy (oba tory): finalne wypowiedzi wlasciciela i persony.
+  // Zrodlo dla auto-zapisu pamieci, twardych faktow, pamieci firmy i transkrypcji.
+  const transkryptRef = useRef<{ kto: KtoMowi; tekst: string }[]>([])
+  // Idempotencja: zamkniecie i odmontowanie moga wystrzelic blisko siebie.
+  const pamiecZapisanaRef = useRef(false)
+  const transkrypcjaZapisanaRef = useRef(false)
 
   const imie = agent.personImie ?? agent.name
   const mowaAgenta = stan === 'mowie'
+
+  // --- Zapis rozmowy do pamieci (ta sama logika co w RozmowaWMiejscu) --------
+
+  /** Sklada transkrypt do jednego tekstu (material dla modelu). */
+  function budujTranskrypt(): string {
+    return transkryptRef.current
+      .map((l) => (l.kto === 'user' ? `Wlasciciel: ${l.tekst}` : `${imie}: ${l.tekst}`))
+      .join('\n')
+  }
+
+  /** CZYTELNY zapis rozmowy do pliku transkrypcji (format czatu, sekcja H2). */
+  function budujTranskryptCzytelny(): string {
+    const rozmowa = transkryptRef.current.map((l) =>
+      l.kto === 'user' ? `**Ty:** ${l.tekst}` : `**${imie}:** ${l.tekst}`,
+    )
+    return ['## Rozmowa', '', rozmowa.join('\n\n')].join('\n')
+  }
+
+  /** Skraca transkrypt, gdy zapisujemy go zamiast streszczenia (tryb demo). */
+  function skroc(t: string, max = 1500): string {
+    return t.length > max ? `${t.slice(0, max)}\n...(skrocono)` : t
+  }
+
+  /**
+   * AUTO-ZAPIS PAMIECI na koniec rozmowy glosowej: streszczenie do pamieci agentki,
+   * aktualizacja jej twardych faktow ORAZ GLOBALNEJ PAMIECI FIRMY (wspolnej dla
+   * calego zespolu). Sterowane przelacznikiem sf_pamiec_auto. Idempotentne.
+   */
+  async function autoZapiszPamiec() {
+    if (pamiecZapisanaRef.current) return
+    if (!pamiecAutoWlaczona()) return
+    const bylUser = transkryptRef.current.some((l) => l.kto === 'user')
+    if (!bylUser) return
+    pamiecZapisanaRef.current = true
+    const rozmowaTekst = budujTranskrypt()
+    const dataDnia = new Date().toISOString().slice(0, 10)
+    const tytul = `Rozmowa z ${imie} ${dataDnia}`
+    let streszczenie = ''
+    try {
+      if (getMode() !== 'demo') {
+        streszczenie = (
+          await callModel(buildPamiecPrompt(imie), [
+            { role: 'user', content: rozmowaTekst },
+          ])
+        ).trim()
+      } else {
+        streszczenie = skroc(rozmowaTekst)
+      }
+    } catch {
+      streszczenie = skroc(rozmowaTekst)
+    }
+    if (!streszczenie) streszczenie = skroc(rozmowaTekst)
+    zapiszPamiecAgenta(agent.slug, tytul, streszczenie)
+    void aktualizujFaktyPoRozmowie(agent.slug, imie, rozmowaTekst)
+    // GLOBALNA PAMIEC FIRMY: ustalenie z tej rozmowy zna KAZDA agentka.
+    void aktualizujPamiecFirmy(rozmowaTekst, imie, imieUczestnika())
+  }
+
+  /** AUTO-ZAPIS PELNEJ TRANSKRYPCJI (sf_transkrypcje_auto). Idempotentny. */
+  function autoZapiszTranskrypcje() {
+    if (transkrypcjaZapisanaRef.current) return
+    if (!transkrypcjeAutoWlaczone()) return
+    const bylUser = transkryptRef.current.some((l) => l.kto === 'user')
+    if (!bylUser) return
+    transkrypcjaZapisanaRef.current = true
+    zapiszTranskrypcje(imie, budujTranskryptCzytelny(), agent.slug)
+  }
 
   // --- Sprzatanie ------------------------------------------------------------
 
@@ -197,12 +285,20 @@ export default function RozmowaGlosowa({ agent, onClose }: Props) {
 
   function zamknij() {
     sprzataj()
+    // Auto-zapis pamieci (agentka + fakty + pamiec firmy) i pelnej transkrypcji.
+    void autoZapiszPamiec()
+    autoZapiszTranskrypcje()
     onClose()
   }
 
   useEffect(() => {
     aktywnyRef.current = true
-    return () => sprzataj()
+    return () => {
+      // Odmontowanie (np. nawigacja): ten sam auto-zapis, chroniony flagami.
+      void autoZapiszPamiec()
+      autoZapiszTranskrypcje()
+      sprzataj()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -255,6 +351,10 @@ export default function RozmowaGlosowa({ agent, onClose }: Props) {
           } else {
             setTranskryptAgent(tekst)
             if (finalne) setOdpowiedz(tekst)
+          }
+          // Zbieramy tylko finalne, niepuste linie do zapisu pamieci.
+          if (finalne && tekst.trim()) {
+            transkryptRef.current.push({ kto, tekst: tekst.trim() })
           }
         },
         onPoziom: (p) => {
@@ -338,10 +438,12 @@ export default function RozmowaGlosowa({ agent, onClose }: Props) {
     setStan('mysle')
     setTranskryptAgent('')
     historiaRef.current.push({ role: 'user', content: t })
+    transkryptRef.current.push({ kto: 'user', tekst: t })
     try {
       const odp = await sendMessage(agent.slug, historiaRef.current)
       if (!aktywnyRef.current) return
       historiaRef.current.push({ role: 'assistant', content: odp })
+      transkryptRef.current.push({ kto: 'agent', tekst: odp })
       setOdpowiedz(odp)
       setTranskryptAgent(odp)
       setStan('mowie')
