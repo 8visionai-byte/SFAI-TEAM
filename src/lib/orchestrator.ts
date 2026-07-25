@@ -171,14 +171,16 @@ function systemPlanu(): string {
     'TEMATY, ktore SAME Z SIEBIE narady NIE odpalaja: "strategia na kwartal", "gdzie jestesmy", "jak rozwinac firme", "mam takiego klienta". To sa tematy do rozmowy, nie polecenia. Rzeczownik ("klient", "oferta", "research") to temat, poleceniem jest czasownik w trybie rozkazujacym albo "potrzebuje", "chce, zebyscie". Przy nich odpowiadasz sama albo bierzesz 1-2 osoby, chyba ze wlasciciel doda prosbe o zespol.',
     `Deleguj maksymalnie do ${LIMIT_DELEGACJI} agentow (caly dostepny zespol). Nie dodawaj osob, ktorych kompetencja nie dotyka pytania.`,
     'Przyklady mapowania tematu na agentow:',
-    '- "jak zwiekszyc sprzedaz": analityk (rynek, konkurencja), handlowiec (oferta, domykanie), copywriter (komunikaty), wiedza-produkt (materialy sprzedazowe), czesto drugi-glos (ryzyka strategii) i analityk-social (kanaly social).',
-    '- "wejscie na nowy rynek / nowa nisza": analityk (sizing, ICP), drugi-glos (ryzyka, pre-mortem), handlowiec (jak sprzedac), copywriter (przekaz), wiedza-produkt (czego brakuje w materialach).',
-    '- "kampania w social / marketing": copywriter (tresci), analityk-social (co skalowac, budzet), analityk (segment, ICP), czasem drugi-glos (spojnosc z marka).',
-    '- "poprawic obsluge / retencje klienta": opiekun-klienta (onboarding, retencja), operacje (procesy, SOP), wiedza-produkt (materialy), czasem analityk (dane o odejsciach).',
-    '- "uporzadkowac prace zespolu / procesy": operacje (SOP, rytm), pamiec-zespolu (kontekst, wersje wiedzy).',
+    '- "jak zwiekszyc sprzedaz": analityk (rynek, konkurencja), handlowiec (oferta, domykanie), copywriter (leady spoza social, partnerstwa), wiedza-produkt (opis oferty i argumenty), analityk-social (kanaly i tresci), czesto drugi-glos (ryzyka strategii) i pamiec-zespolu (marza, cena).',
+    '- "wejscie na nowy rynek / nowa nisza": analityk (sizing, ICP), operacje (kierunek i trend), drugi-glos (ryzyka, pre-mortem), handlowiec (jak sprzedac), wiedza-produkt (czego brakuje w materialach), pamiec-zespolu (czy nas stac).',
+    '- "kampania w social / marketing": analityk-social (tresci, kanaly, co skalowac), wiedza-produkt (obietnica i dowod), analityk (segment, ICP), czasem drugi-glos (spojnosc z marka).',
+    '- "poprawic obsluge / retencje klienta": opiekun-klienta (onboarding, retencja), wiedza-produkt (materialy), pamiec-zespolu (czy ryczalt jest rentowny), czasem analityk (dane o odejsciach).',
+    '- "ile mamy na tym marzy / jak to wycenic / czy nas na to stac": pamiec-zespolu (Vera, finanse i wyceny), czesto analityk (ceny rynkowe).',
+    '- "dokad idzie rynek / co rozwijac, co wygasic": operacje (Mia, rozwoj i trendy), analityk (fakty i dane), pamiec-zespolu (czy nas stac).',
+    '- "skad wziac leady poza social / partnerstwa / polecenia": copywriter (Mila, pozyskiwanie klientow), analityk (listy firm), handlowiec (domykanie).',
     '- "zrobmy narade jak rozwinac firme w tym kwartale": narada calego zespolu, deleguj do WSZYSTKICH agentow, ktorych kompetencja cokolwiek wnosi (analityk, handlowiec, copywriter, analityk-social, wiedza-produkt, opiekun-klienta, operacje, pamiec-zespolu, drugi-glos), kazdy ze swojej perspektywy.',
-    '- "popraw ten jeden naglowek": tryb "sam" albo jeden agent (copywriter), bez angazowania zespolu.',
-    '- waskie pytanie o jeden temat (np. "napisz jeden post na LinkedIn"): jeden agent (copywriter) albo tryb "sam".',
+    '- "popraw ten jeden naglowek": tryb "sam" albo jeden agent (analityk-social albo wiedza-produkt), bez angazowania zespolu.',
+    '- waskie pytanie o jeden temat (np. "napisz jeden post na LinkedIn"): jeden agent (analityk-social) albo tryb "sam".',
     '- "mam takiego klienta, ktory chce zeby AI odbieralo mu telefony": tryb "sam". To opowiesc, nie zlecenie. W polu odpowiedz dopytaj o konkret (branza, skala, budzet), nie rozdawaj zadan.',
     'Zadania musza byc konkretne i wykonalne, po polsku, kazde dopasowane do kompetencji danego agenta.',
   ].join('\n')
@@ -335,24 +337,26 @@ function losowaPauza(): number {
 const MAPA_SLOW: { slug: string; slowa: string[] }[] = [
   { slug: 'analityk', slowa: ['rynek', 'rynk', 'konkurenc', 'research', 'analiz', 'dane', 'trend', 'segment', 'icp', 'badani'] },
   { slug: 'handlowiec', slowa: ['sprzeda', 'oferta', 'ofert', 'cena', 'cen', 'pricing', 'klient', 'domkni', 'obiekcj', 'lead', 'deal', 'diagnoz'] },
-  { slug: 'copywriter', slowa: ['tresc', 'tekst', 'content', 'kampani', 'linkedin', 'social', 'post', 'marketing', 'seo', 'email', 'mail', 'reklam'] },
+  { slug: 'copywriter', slowa: ['outbound', 'zaczep', 'polecen', 'partner', 'partnerstw', 'lista firm', 'klub', 'wydarzen', 'networking', 'kontakt do'] },
   { slug: 'opiekun-klienta', slowa: ['obsluga', 'retencj', 'onboarding', 'relacj', 'utrzyman', 'opieka'] },
-  { slug: 'wiedza-produkt', slowa: ['material', 'ebook', 'skrypt', 'produkt', 'wiedza', 'szkoleni'] },
-  { slug: 'operacje', slowa: ['zadani', 'proces', 'sop', 'brief', 'organizac', 'ogarn', 'porzadek', 'rytm'] },
-  { slug: 'pamiec-zespolu', slowa: ['pamiec', 'mozg', 'kontekst', 'wersj', 'historia'] },
+  { slug: 'wiedza-produkt', slowa: ['material', 'ebook', 'skrypt', 'produkt', 'usluga', 'uslug', 'oferta nasz', 'wiedza', 'szkoleni', 'obiekcj'] },
+  { slug: 'operacje', slowa: ['trend', 'kierunek', 'rozwoj firmy', 'nisza', 'nisz', 'przyszlosc', 'ksef', 'ai act', 'regulac'] },
+  { slug: 'pamiec-zespolu', slowa: ['marz', 'wycen', 'koszt', 'budzet', 'rentown', 'oplacal', 'rabat', 'gotowk', 'finans'] },
   { slug: 'drugi-glos', slowa: ['decyzj', 'strategi', 'ryzyko', 'marka', 'red team', 'kontr', 'pomysl', 'watpliw'] },
+  { slug: 'analityk-social', slowa: ['tresc', 'tekst', 'content', 'kampani', 'linkedin', 'social', 'post', 'marketing', 'seo', 'reklam'] },
 ]
 
 /** Gotowe, generyczne zadania demo dla poszczegolnych specjalistow. */
 const ZADANIA_DEMO: Record<string, string> = {
   analityk: 'Zbadaj kontekst rynkowy i konkurencje pod to pytanie.',
   handlowiec: 'Ujmij to od strony sprzedazy i wartosci dla klienta.',
-  copywriter: 'Zaproponuj tresci i komunikaty do tego celu.',
+  copywriter: 'Wskaz, skad wziac na to leady poza social: kogo zaczepiamy i przez kogo.',
   'opiekun-klienta': 'Sprawdz watek relacji i utrzymania klienta.',
-  'wiedza-produkt': 'Wskaz materialy i wiedze potrzebne do tego zadania.',
-  operacje: 'Rozpisz to na konkretne kroki i zadania.',
-  'pamiec-zespolu': 'Podaj kontekst z mozgu firmy do tego tematu.',
+  'wiedza-produkt': 'Opisz, ktora nasza usluga to rozwiazuje, dla kogo i z jakim dowodem.',
+  operacje: 'Powiedz, co to znaczy dla kierunku firmy na 6-24 miesiace.',
+  'pamiec-zespolu': 'Policz, ile to kosztuje, jaka jest marza i czy sie oplaca.',
   'drugi-glos': 'Zakwestionuj plan i wskaz ryzyka.',
+  'analityk-social': 'Zaproponuj tresci i kanaly do tego celu.',
 }
 
 /** Dobiera 2-3 agentow po slowach kluczowych; domyslnie analityk plus handlowiec. */

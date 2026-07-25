@@ -257,7 +257,12 @@ export async function startRozmowa(
                 agent: {
                   type: 'string',
                   description:
-                    'slug agenta: wiedza-produkt|operacje|analityk|pamiec-zespolu|copywriter|handlowiec|opiekun-klienta|drugi-glos|analityk-social',
+                    // Slugi zostaly ze starych rol (adresy i awatary), wiec same z siebie
+                    // myla: pamiec-zespolu to dzis finanse, copywriter to pozyskiwanie
+                    // klientow, operacje to rozwoj firmy. Dopisane imie i realna rola,
+                    // zeby model nie zlecal zadania po nazwie sluga. Opis narzedzia idzie
+                    // poza pole instructions, wiec nie zjada budzetu 40000 znakow promptu.
+                    'slug agenta (imie i realna rola): wiedza-produkt (Sam, nasze produkty i uslugi) | operacje (Mia, rozwoj firmy i trendy) | analityk (Rae, research i internet) | pamiec-zespolu (Vera, finanse i wyceny) | copywriter (Mila, pozyskiwanie klientow i partnerstwa) | handlowiec (Jade, sprzedaz i oferta) | opiekun-klienta (Ella, obsluga klienta i relacje) | drugi-glos (Nora, drugi glos przy decyzjach i marka) | analityk-social (Zoe, marketing i social media)',
                 },
                 zadanie: {
                   type: 'string',

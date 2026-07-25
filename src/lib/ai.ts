@@ -166,16 +166,49 @@ function regulyZTonem(): string {
 }
 
 /**
- * Lista kolezanek z zespolu (imie -> kompetencja/rola) BEZ biezacej persony.
+ * Z KIM KAZDA AGENTKA WSPOLPRACUJE NAJCZESCIEJ (jedna linia na persone).
+ * Zrodlo: .planning/v3/ANALIZA-HIERARCHII.md (sekcja 2 mapowanie rol, 3.2 duplikaty
+ * i 5 lancuchy wspolpracy). Dzieki temu agentka wie, kogo ZAPROPONOWAC wlascicielowi
+ * ("to pytanie o cene, warto zeby Vera to policzyla"), zamiast wchodzic w cudza dzialke.
+ * Sama nikogo nie uruchamia: prace zespolu odpala wylacznie Lea (COO).
+ */
+const WSPOLPRACA: Record<string, string> = {
+  coo: 'Ty spinasz caly zespol: kazde zadanie wchodzi i wychodzi przez Ciebie, a Ty sklejasz wyniki w jedna rekomendacje.',
+  analityk:
+    'Najczesciej pracujesz z: Mia (z Twoich faktow robi kierunek na 6-24 miesiace), Vera (Twoje ceny rynkowe wchodza do wyceny), Sam (dowody i liczby do materialow), Mila (listy firm i sygnaly do zaczepki), Zoe (fakty do kampanii). Jestes jedynym dostawca faktow z zewnatrz, wiec kazda liczba ma link i date.',
+  operacje:
+    'Najczesciej pracujesz z: Rae (fakty i dane rynkowe, wlasnego researchu nie robisz), Vera (czy nas na to stac i czy sie spina marza), Zoe (co realnie dowozi leady), Ella (czego chca obecni klienci), Nora (czy kierunek to nadal my). Twoja rekomendacja konczy sie zmiana w katalogu uslug, cenniku albo kalendarzu.',
+  'pamiec-zespolu':
+    'Najczesciej pracujesz z: Rae (ile bierze rynek), Jade (cennik i progi rabatow ustalasz Ty, Jade je stosuje), Mia (wyceniasz jej kierunek), Ella (rentownosc ryczaltu Opieki AI), Mila (koszt pozyskania klienta). Ksiegowosci i podatkow nie ruszasz.',
+  'wiedza-produkt':
+    'Najczesciej pracujesz z: Zoe (Ty dajesz obietnice i dowod, ona robi z tego kampanie), Jade (materialy pod konkretna branze i obiekcje), Rae (fakty i liczby, ktore wolno uzyc), Nora (weto marki przed publikacja), Vera (gdy w materiale sa ceny), Ella (wynik klienta na case study).',
+  copywriter:
+    'Najczesciej pracujesz z: Rae (listy firm i sygnaly), Sam (argument i materialy pod branze), Jade (Ty umawiasz, Jade domyka), Ella (program polecen u zadowolonych klientow), Vera (prowizje partnerow i koszt pozyskania), Nora (czy zaczepka nie brzmi jak spam), Zoe (co juz dziala w kanale).',
+  handlowiec:
+    'Najczesciej pracujesz z: Mila (przynosi umowione diagnozy), Sam (materialy i argumenty pod branze), Vera (cennik, progi rabatow, nietypowy zakres), Ella (przejmuje klienta po podpisie), Pawel (termin i podpis). Cennika nie ustalasz, stosujesz go.',
+  'opiekun-klienta':
+    'Najczesciej pracujesz z: Vera (czy ryczalt jest rentowny i czy zakres urosl), Jade (sygnal na rozszerzenie, oferte robi Jade), Sam (case study z wyniku), Nora (czy liczby ida publicznie uczciwie), Pawel i Marcin (naprawa techniczna). Granica z Jade to podpis: przed nim Jade, po nim Ty.',
+  'drugi-glos':
+    'Najczesciej pracujesz z: Zoe, Mila i Sam (weto marki przed kazda publikacja), Vera (czy cena i rabat nie psuja premium), Mia (czy kierunek to nadal my). Masz weto i uzasadnienie, nie przepisujesz cudzych tekstow. Prawo, RODO i AI Act oznaczasz jako [INPUT PAWLA / prawnik], nie interpretujesz przepisow.',
+  'analityk-social':
+    'Najczesciej pracujesz z: Sam (daje obietnice, problem i dowod), Mila (wersja bezposrednia i partnerzy, ktorzy poniosa temat dalej), Nora (weto marki przed publikacja), Rae (fakty i liczby do tresci), Jade (co robic ze zgloszeniami z kampanii), Vera (budzet platny).',
+}
+
+/**
+ * Lista kolezanek z zespolu (imie -> kompetencja/rola) BEZ biezacej persony,
+ * plus jedna linia o tym, z kim ta agentka wspolpracuje najczesciej.
  * Zrodlo prawdy = agents.ts. Doklejana do promptu KAZDEJ persony, zeby wiedziala,
- * do kogo odeslac pytanie spoza swojej dzialki.
+ * do kogo odeslac pytanie spoza swojej dzialki i kogo zaproponowac wlascicielowi.
  */
 function listaKolezanek(agentSlug: string): string {
   const inne = agents.filter((a) => a.slug !== agentSlug)
+  const wspolpraca = WSPOLPRACA[agentSlug]
   return [
     '=== TWOJ ZESPOL (kolezanki, do kogo odeslac temat spoza Twojej dzialki) ===',
     ...inne.map((a) => `- ${a.personImie ?? a.name} (${a.role})`),
+    ...(wspolpraca ? [`TWOJE STALE UKLADY: ${wspolpraca}`] : []),
     'Gdy pytanie jest wyraznie nie z Twojej roli, krotko to powiedz i odeslij do wlasciwej kolezanki po imieniu. Mozesz dolozyc swoja perspektywe.',
+    'Gdy temat naturalnie wymaga kogos jeszcze, ZAPROPONUJ ta osobe po imieniu (np. "to pytanie o cene, warto zeby Vera to policzyla"). Propozycja to nie uruchomienie: zespol uruchamia Lea (COO) i tylko po zgodzie wlasciciela.',
   ].join('\n')
 }
 
@@ -208,6 +241,7 @@ function personaNadpisBlok(agentSlug: string): string {
  *   HIERARCHIA INTENCJI (wariant COO)                 3 209
  *   naglowek === KIM JESTES ===                          18
  *   blok tozsamosci: baza 1632 + dodatki COO 1564     3 197
+ *   zdanie o internecie (INTERNET_INFO, kazda persona)  245
  *   ustawienia od wlasciciela (nadpis, szacunek)      ~ 800
  *   PAMIEC FIRMY (8000 + naglowek sekcji 528)         8 528
  *   twarde fakty agentki (4000 + naglowek sekcji 280) 4 280
@@ -216,19 +250,38 @@ function personaNadpisBlok(agentSlug: string): string {
  *   naglowek === TWOJA PERSONA ===                       21
  *   persona (PERSONA_LIMIT 8000 + nota o cieciu 96)   8 096
  *   umiejetnosci od wlasciciela (szacunek)           ~1 000
- *   lista kolezanek (9 pozycji + instrukcja)            499
+ *   TYPOWE LANCUCHY ZADAN (tylko COO) + separator     2 563
+ *   lista kolezanek (9 pozycji + uklady + instrukcje)   864
  *   preambula przed narzedziem                          482
  *   zasady rozmowy 826 + ton persony 2432             3 258
  *   ton osobisty (Pawel/Marcin)                         166
  *   nota o rozmowie glosowej                            299
  *   separatory (puste linie)                             22
  *   --------------------------------------------------------
- *   RAZEM (najgorszy przypadek, COO)                 38 458
- *   ZAPAS do sufitu 40 000                            1 542
+ *   RAZEM (COO + oba pola wlasciciela wypelnione)     41 631
+ *   PONAD sufit 40 000                                1 631
  *
- * Liczby zmierzone skryptem na realnych plikach (2026-07-25), nie oszacowane.
+ * Liczby pozycji zmierzone skryptem na realnych plikach (2026-07-25), nie oszacowane.
  * Dwie pozycje sa szacunkiem, bo wpisuje je wlasciciel i nie maja limitu:
- * nadpis persony i wlasne umiejetnosci. Karta Mozgu tez jest edytowalna.
+ * nadpis persony (~800) i wlasne umiejetnosci (~1 000). Karta Mozgu tez jest edytowalna.
+ *
+ * POMIAR KONCOWY (2026-07-25, v5.0, po dodaniu internetu dla wszystkich i lancuchow
+ * zadan): wywolane REALNE buildVoicePrompt dla wszystkich 10 person, przy pelnej
+ * pamieci firmy (8 000) i pelnych faktach (4 000), realnej Karcie Mozgu i bez pol
+ * wlasciciela (stan domyslny aplikacji):
+ *   coo (Lea)                39 834   zapas   166
+ *   pozostale 9 person       35 5xx   zapas ~4 400
+ * Czyli budzet MIESCI SIE pod sufitem 40 000 takze po dolozeniu lancuchow.
+ * Dopiero gdy wlasciciel wpisze nadpis persony i wlasne umiejetnosci (te ~1 800
+ * znakow z tabelki wyzej), prompt Lei dobija do sufitu i wlacza sie mechanizm
+ * ciecia: persona Lei jedzie z 8 000 w dol, reszta promptu zostaje nietknieta.
+ * To swiadomy wybor: lancuchy zadan i hierarchia intencji steruja decyzjami Lei,
+ * a poczatek jej persony (szablony raportowe z coo.md) i tak jest nadpisany przez
+ * CHAT_RULES. Pozostale 9 person ma zapas ~4 400 znakow: nie dostaja bloku
+ * lancuchow (2 563) ani dodatkow COO w tozsamosci (1 565), a ich wariant
+ * hierarchii jest krotszy (2 932 zamiast 3 209).
+ * UWAGA przy kazdej kolejnej zmianie: zapas Lei to tylko 166 znakow, wiec KAZDY
+ * nowy blok w prompcie glosowym COO trzeba przemierzyc, a nie oszacowac.
  *
  * PERSONA_LIMIT zjechal z 10000 na 8000, zeby zrobic miejsce na HIERARCHIE
  * INTENCJI (architektura decyzyjna rozmowy) bez ruszania pamieci firmy ani
@@ -289,6 +342,40 @@ function faktyBlok(agentSlug: string): string {
     '=== TWOJA PAMIEC TWARDYCH FAKTOW (znasz to na pewno) ===',
     'To Twoja pamiec dlugotrwala: osoby, firmy, projekty, preferencje wlascicieli (Pawel, Marcin) i trwale ustalenia. Traktuj te fakty jako pewne i aktualne. Gdy pytanie ich dotyczy, odpowiadaj wprost z tej pamieci, nie zgaduj.',
     fakty,
+  ].join('\n')
+}
+
+/**
+ * INTERNET (wbudowane narzedzie web_search Anthropic) dla KAZDEJ agentki.
+ * Jedno zdanie zasady doklejane do promptu czatu i glosu. Limit wyszukiwan na
+ * odpowiedz rozni sie wg roli (patrz LIMITY_WEB / limitWebSearch nizej).
+ */
+const INTERNET_INFO = [
+  'Masz dostep do internetu (wyszukiwarka w tle).',
+  'Uzywaj internetu, gdy pytanie dotyczy aktualnych danych spoza naszego mozgu (rynek, konkurencja, ceny rynkowe, trendy, regulacje). Cytuj zrodlo i date. Nie szukaj, gdy odpowiedz masz w mozgu firmy.',
+].join(' ')
+
+/**
+ * TYPOWE LANCUCHY ZADAN (tylko prompt COO, czat i glos).
+ * Zrodlo: .planning/v3/ANALIZA-HIERARCHII.md, sekcja 5 lancuchy wspolpracy.
+ * Lea planuje kolejnosc i uruchamia wlasciwe osoby po kolei, a wynik skleja
+ * w jedna rekomendacje. Blok NIE zmienia hierarchii intencji: bez jawnej prosby
+ * o prace (albo zgody na propozycje) Lea nadal tylko slucha i rozmawia.
+ */
+function lancuchyZadan(): string {
+  return [
+    '=== TYPOWE LANCUCHY ZADAN (kolejnosc krokow, nie wszystkie naraz) ===',
+    'Gdy wlasciciel PROSI o cos, co wymaga kilku krokow, ZAPLANUJ lancuch: kto, w jakiej kolejnosci i po co. Uruchamiaj etapami (wynik poprzedniej osoby jest wsadem dla nastepnej), nie wszystkie na raz. Na koncu skladasz JEDNA rekomendacje i mowisz, co wymaga decyzji wlasciciela.',
+    'To NIE zmienia hierarchii intencji: gdy on tylko opowiada albo pyta o wiedze, zaden lancuch sie nie odpala.',
+    '- Wycena uslugi albo produktu: Rae (ceny rynku, z linkiem i data) -> Vera (koszt, marza, widelki) -> Nora (czy cena nie psuje premium) -> Sam (jak to nazwac i komu) -> Ty skladasz, decyduje wlasciciel. Wynik: Vera. Jade ceny nie ustala.',
+    '- Nowy lead: Mila (lista i zaczepka, umowiona diagnoza) -> Jade (kwalifikacja pod ICP, diagnoza, oferta z cennika) -> Sam (materialy pod branze) -> Vera (tylko rabat albo nietypowy zakres) -> wlasciciel (termin i podpis) -> Ella (po podpisie). Wynik: Jade.',
+    '- Kierunek na kwartal: Rae (rynek), Zoe (co dowozi leady), Vera (co dowozi marze), Ella (czego chca klienci) -> Mia sklada kierunek -> Nora (czy to nadal my) -> Vera (czy nas stac) -> Ty dajesz jedna kartke, decyduja wlasciciele. Wynik: Mia.',
+    '- Kampania nowej uslugi: Sam (obietnica, problem, dowod) -> Zoe (kanaly, kalendarz, tresci) -> Mila (wersja bezposrednia i partnerzy) -> Nora (weto marki przed publikacja) -> Jade (co robic ze zgloszeniami) -> Zoe mierzy wynik. Wynik: Zoe.',
+    '- Klient po wdrozeniu: Ella (raport i sygnaly) -> Vera (czy ryczalt rentowny) -> Jade (oferta rozszerzenia) -> Sam (case study) -> Nora (czy liczby uczciwe) -> wlasciciel (zgoda na nazwe klienta). Wynik: Ella.',
+    '- Duzy rabat albo nietypowa umowa: Jade (czego klient chce) -> Vera (co to robi z marza) -> Nora (czy to precedens psujacy premium) -> Ty streszczasz w trzech zdaniach, decyduje wlasciciel. Wynik: Vera, bez zgody nic nie idzie do klienta.',
+    '- Nowy material sprzedazowy: Rae (fakty i liczby do uzycia) -> Sam (struktura i tresc) -> Zoe (wersja pod kanal) -> Nora (ton, zero zmyslonych liczb) -> Vera (gdy sa ceny). Wynik: Sam.',
+    '- Partnerstwo albo polecenie: Mila (kogo bierzemy i na jakich zasadach) -> Rae (czy partner wiarygodny) -> Vera (model wynagrodzenia) -> Nora (czy nie psuje pozycjonowania) -> decyduje wlasciciel, leady ida do Jade. Wynik: Mila.',
+    'ZASADY LANCUCHA: bierzesz tylko realnie potrzebne osoby (waskie pytanie to jedna osoba). Kazdy krok to jeden akapit wniosku, nie raport. Brak danych oznaczasz [INPUT PAWLA], nigdy liczba z glowy. Dlugi lancuch powiedz najpierw jednym zdaniem i zapytaj, czy tak lecimy.',
   ].join('\n')
 }
 
@@ -393,10 +480,11 @@ export function buildSystemPrompt(agentSlug: string): string {
   const pamiecInfo =
     'Masz pamiec wczesniejszych rozmow: w mozgu powyzej pliki z grupy "pamiec-..." to zapisane streszczenia Twoich rozmow z wlascicielem. Gdy pyta o wczesniejsze ustalenia ("o czym rozmawialismy", "co ustalilismy"), znajdz je w tych plikach i odpowiedz na ich podstawie.'
 
-  // Internet (web search) tylko dla analitykow (Rae, Zoe): tools doklejane w ai.ts.
-  const webInfo = maWebSearch(agentSlug)
-    ? 'Masz dostep do internetu (web search). Gdy pytanie dotyczy aktualnych danych rynkowych, konkurencji, trendow, cen zewnetrznych: NAJPIERW poszukaj w internecie i cytuj zrodla z data.'
-    : ''
+  // Internet (web search) dla KAZDEJ agentki: narzedzie doklejane w callDirect,
+  // callProxy i po stronie /api/chat. Rozny jest tylko limit wyszukiwan (limitWebSearch).
+  const webInfo = maWebSearch(agentSlug) ? INTERNET_INFO : ''
+  // Lancuchy zadan: tylko COO (Lea planuje kolejnosc i skleja wynik).
+  const lancuchy = agentSlug === 'coo' ? lancuchyZadan() : ''
 
   // Edytowalna persona od wlasciciela (nadrzedna) + lista kolezanek do odsylania.
   const nadpis = personaNadpisBlok(agentSlug)
@@ -416,6 +504,7 @@ export function buildSystemPrompt(agentSlug: string): string {
     ...(pamiecFirmy ? ['', pamiecFirmy] : []),
     ...(fakty ? ['', fakty] : []),
     ...(sekcjaSkilli ? ['', sekcjaSkilli] : []),
+    ...(lancuchy ? ['', lancuchy] : []),
     '',
     zespol,
     '',
@@ -427,9 +516,46 @@ export function buildSystemPrompt(agentSlug: string): string {
   ].join('\n')
 }
 
-/** Czy agent ma dostep do internetu (web search): analityk rynku i analityk social. */
+/**
+ * Czy do wywolania doklejamy internet (web_search). Ma go KAZDA agentka z zespolu.
+ * Falsz zostaje tylko dla wywolan bez persony (ekstrakcja pamieci firmy, twardych
+ * faktow, streszczen): tam internet jest zbedny i tylko kosztuje.
+ */
 function maWebSearch(agentSlug: string | undefined): boolean {
-  return agentSlug === 'analityk' || agentSlug === 'analityk-social'
+  return !!agentSlug && getAgent(agentSlug) !== undefined
+}
+
+/**
+ * LIMIT WYSZUKIWAN w internecie na jedna odpowiedz, wg roli (max_uses w narzedziu
+ * web_search_20250305). Wiecej dostaja te, ktore z researchu zyja:
+ *  - Rae (analityk)              8  research rynku i konkurencji, dostawca faktow
+ *  - Mia (operacje)              6  trendy i rozwoj firmy, horyzont 6-24 miesiace
+ *  - Zoe (analityk-social)       5  co dziala w kanalach, tematy, kampanie
+ *  - reszta zespolu              3  doraznie sprawdzenie faktu spoza mozgu
+ * UWAGA: te same limity sa zduplikowane w webapp/api/chat.ts (funkcje Vercela nie
+ * moga importowac miedzy soba, wiec zmieniaj w OBU miejscach).
+ */
+const LIMITY_WEB: Record<string, number> = {
+  analityk: 8,
+  operacje: 6,
+  'analityk-social': 5,
+}
+const LIMIT_WEB_DOMYSLNY = 3
+
+/** Limit wyszukiwan (max_uses) dla danej agentki. */
+function limitWebSearch(agentSlug: string | undefined): number {
+  return (agentSlug && LIMITY_WEB[agentSlug]) || LIMIT_WEB_DOMYSLNY
+}
+
+/** Definicja wbudowanego narzedzia web_search Anthropic z limitem wg roli. */
+function narzedzieWeb(agentSlug: string | undefined) {
+  return [
+    {
+      type: 'web_search_20250305',
+      name: 'web_search',
+      max_uses: limitWebSearch(agentSlug),
+    },
+  ]
 }
 
 /**
@@ -715,18 +841,17 @@ export function buildVoicePrompt(agentSlug: string): string {
   // w orkiestracji tekstowej (patrz orchestrator.ts).
   if (agent?.slug === 'coo') {
     tozsamoscBaza.push(
-      'Jestes szefowa zespolu i masz narzedzie uruchom_zespol: mozesz REALNIE odpalic specjalistki do pracy. Twoje kolezanki: Sam (wiedza-produkt), Mia (operacje), Rae (analityk), Vera (pamiec-zespolu, kuratorka mozgu firmy), Mila (copywriter), Jade (handlowiec), Ella (opiekun-klienta), Nora (drugi-glos), Zoe (analityk-social). Twoja DOMYSLNA praca to rozmowa z wlascicielem, nie odpalanie zespolu.',
+      'Jestes szefowa zespolu i masz narzedzie uruchom_zespol: mozesz REALNIE odpalic specjalistki do pracy. Twoje kolezanki: Sam (wiedza-produkt), Mia (operacje), Rae (analityk), Vera (pamiec-zespolu, finanse i wyceny), Mila (copywriter), Jade (handlowiec), Ella (opiekun-klienta), Nora (drugi-glos), Zoe (analityk-social). Twoja DOMYSLNA praca to rozmowa z wlascicielem, nie odpalanie zespolu.',
       'CZTERY WARSTWY NARAZ: mowisz, sluchasz, siegasz po wiedze i (po zgodzie) trzymasz prace w tle. To nie sa tryby, ktore sie wykluczaja. Gdy kolezanki pracuja, NIE zawieszaj rozmowy: mow o pracy w tle naturalnie ("Rae juz to sprawdza, dam znac jak wroci", "Jade jeszcze pisze, w miedzyczasie powiedz mi jaki maja budzet") i rozmawiaj dalej. Wlasciciel moze Ci przerwac w kazdej chwili.',
       'Gdy zdecydujesz sie kogos uruchomic, POWIEDZ to najpierw na glos, po imieniu i po co (np. "biore Rae do rynku i Zoe do social"), potem wywolaj uruchom_zespol z konkretnymi zadaniami dla kazdej. Nie mow, ze cos zlecilas, jesli tego nie zrobilas.',
       'SKALA: domyslnie nie uruchamiasz nikogo. Waskie pytanie odpowiadasz sama albo bierzesz jedna osobe. Dwie do trzech osob tylko wtedy, gdy on sam prosi o kilka perspektyw. Cala dziewiatka WYLACZNIE wtedy, gdy prosi wprost o narade albo o caly zespol. Nie angazuj nikogo, czyja kompetencja nie dotyka sprawy.',
       'Gdy raporty wroca (dostaniesz je jako wynik narzedzia), ZREFERUJ je zwiezle glosem: powiedz kto co ustalil, po imieniu, i podaj swoja rekomendacje. Nie czytaj raportow po kolei slowo w slowo, zloz z nich jeden wniosek i konkretne kroki.',
     )
   }
-  // Internet (web search) dla analitykow (Rae, Zoe): tools doklejane w callDirect/callProxy.
+  // Internet (web search) dla KAZDEJ agentki: tools doklejane w callDirect/callProxy
+  // i po stronie /api/chat. Limit wyszukiwan zalezy od roli (limitWebSearch).
   if (maWebSearch(agent?.slug)) {
-    tozsamoscBaza.push(
-      'Masz dostep do internetu (web search). Gdy pytanie dotyczy aktualnych danych rynkowych, konkurencji, trendow, cen zewnetrznych: NAJPIERW poszukaj w internecie i cytuj zrodla z data.',
-    )
+    tozsamoscBaza.push(INTERNET_INFO)
   }
   const tozsamosc = tozsamoscBaza.join(' ')
 
@@ -770,6 +895,9 @@ export function buildVoicePrompt(agentSlug: string): string {
   // Twarde fakty agentki (pamiec dlugotrwala) tuz po bloku tozsamosci.
   const fakty = faktyBlok(agentSlug)
 
+  // Lancuchy zadan: tylko COO (Lea planuje kolejnosc krokow i skleja wynik).
+  const lancuchy = agent?.slug === 'coo' ? lancuchyZadan() : ''
+
   const zloz = (personaTekst: string, kartaTekst: string): string =>
     [
       hierarchiaIntencji(agent?.slug === 'coo'),
@@ -786,6 +914,7 @@ export function buildVoicePrompt(agentSlug: string): string {
       '=== TWOJA PERSONA ===',
       personaTekst,
       ...(sekcjaSkilli ? ['', sekcjaSkilli] : []),
+      ...(lancuchy ? ['', lancuchy] : []),
       '',
       zespol,
       '',
@@ -886,7 +1015,7 @@ const BRAK_KLUCZA_SERWERA = '__brak-klucza-serwera__'
 /**
  * Tryb GLOWNY (produkcja): wywolanie przez /api/chat. Globalny klucz Anthropic
  * zyje na serwerze (ANTHROPIC_API_KEY), a token sesji idzie w naglowku Authorization.
- * Serwer sam dokleja web_search dla analitykow i sklada bloki tekstu do pola text.
+ * Serwer sam dokleja web_search dla kazdej agentki i sklada bloki tekstu do pola text.
  * 503 brak-klucza -> rzucamy BRAK_KLUCZA_SERWERA (callModel spada na kolejny tryb).
  */
 async function callServerChat(
@@ -896,7 +1025,12 @@ async function callServerChat(
   agentSlug?: string,
 ): Promise<string> {
   const body: Record<string, unknown> = { system, messages, model, maxTokens: 4000 }
-  if (agentSlug) body.agentSlug = agentSlug
+  // agentSlug: serwer po nim rozpoznaje, ze doklada internet (web_search).
+  // webMaxUses: limit wyszukiwan wg roli, zeby klient i serwer liczyly tak samo.
+  if (agentSlug) {
+    body.agentSlug = agentSlug
+    body.webMaxUses = limitWebSearch(agentSlug)
+  }
 
   let res: Response
   try {
@@ -946,10 +1080,10 @@ async function callProxy(
   agentSlug?: string,
 ): Promise<string> {
   const body: Record<string, unknown> = { system, messages, model, max_tokens: 4000 }
-  // Internet dla analitykow (Rae, Zoe): dokladamy serwerowe narzedzie web_search.
-  // Odpowiedz z proxy nadal wraca w polu data.text; proxy sklada bloki tekstu.
+  // Internet dla KAZDEJ agentki: dokladamy serwerowe narzedzie web_search z limitem
+  // wg roli. Odpowiedz z proxy nadal wraca w polu data.text; proxy sklada bloki tekstu.
   if (maWebSearch(agentSlug)) {
-    body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }]
+    body.tools = narzedzieWeb(agentSlug)
   }
   const res = await fetch(proxyUrl, {
     method: 'POST',
@@ -988,9 +1122,10 @@ async function callDirect(
   agentSlug?: string,
 ): Promise<string> {
   const body: Record<string, unknown> = { model, max_tokens: 4000, system, messages }
-  // Internet dla analitykow (Rae, Zoe): serwerowe narzedzie web_search Anthropic.
+  // Internet dla KAZDEJ agentki: wbudowane narzedzie web_search Anthropic,
+  // limit wyszukiwan wg roli (Rae 8, Mia 6, Zoe 5, reszta 3).
   if (maWebSearch(agentSlug)) {
-    body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }]
+    body.tools = narzedzieWeb(agentSlug)
   }
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -1127,7 +1262,7 @@ export async function sendMessage(
 
   try {
     const system = buildSystemPrompt(agentSlug)
-    // agentSlug przekazany dalej: analitycy (Rae, Zoe) dostaja web_search.
+    // agentSlug przekazany dalej: kazda agentka dostaje web_search z limitem wg roli.
     return await callModel(system, history, agentSlug)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)

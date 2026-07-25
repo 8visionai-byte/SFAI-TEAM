@@ -58,8 +58,8 @@ function starterPrompts(slug: string): string[] {
       ]
     case 'copywriter':
       return [
-        'Napisz naglowek na strone, ktory buduje zaufanie.',
-        'Przerob ten tekst na jezyk korzysci dla klienta.',
+        'Napisz zaczepke do biura rachunkowego, ktore tonie w fakturach.',
+        'Jak poprosic zadowolonego klienta o polecenie?',
       ]
     case 'analityk':
       return [
@@ -68,8 +68,8 @@ function starterPrompts(slug: string): string[] {
       ]
     case 'pamiec-zespolu':
       return [
-        'Co wiemy o pozycjonowaniu marki SimpleFast.ai?',
-        'Jakie mamy twarde dowody (proof) do uzycia w sprzedazy?',
+        'Wycen wdrozenie voicebota dla warsztatu: podaj widelki.',
+        'Czy ryczalt Opieka AI 10 h nam sie oplaca?',
       ]
     case 'wiedza-produkt':
       return [
@@ -83,13 +83,18 @@ function starterPrompts(slug: string): string[] {
       ]
     case 'operacje':
       return [
-        'Uporzadkuj moje zadania na ten tydzien.',
-        'Przygotuj brief dla zespolu z tego celu.',
+        'Ktora usluge z katalogu wzmocnic, a ktora wygasic?',
+        'Co KSeF i AI Act zmieniaja w naszej ofercie na 12 miesiecy?',
       ]
     case 'opiekun-klienta':
       return [
         'Jak zaplanowac onboarding nowego klienta?',
         'Co zrobic, zeby utrzymac klienta po projekcie?',
+      ]
+    case 'analityk-social':
+      return [
+        'Zaproponuj tematy postow na najblizsze dwa tygodnie.',
+        'Co z ostatniego cyklu skalowac, a co wygasic?',
       ]
     default:
       return []

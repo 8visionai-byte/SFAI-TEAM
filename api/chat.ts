@@ -5,14 +5,14 @@
 //   ANTHROPIC_API_KEY = sk-ant-...   (globalny, NIE trafia do klienta)
 // Opcjonalnie: ANTHROPIC_MODEL (domyslny model, gdy klient nie poda).
 //
-// Kontrakt: POST /api/chat  { system, messages, model?, maxTokens?, agentSlug? }
+// Kontrakt: POST /api/chat  { system, messages, model?, maxTokens?, agentSlug?, webMaxUses? }
 //   -> 200 { text }                          (sklejone bloki tekstu odpowiedzi)
 //   -> 401 { error: 'wymagane-logowanie' }   (brak/zly token, gdy AUTH_SECRET ustawiony)
 //   -> 503 { error: 'brak-klucza' }          (brak ANTHROPIC_API_KEY -> klient robi fallback)
 //   -> 400/502 { error }                     (zle wejscie / blad Anthropic)
 //
-// Dla agentSlug 'analityk'/'analityk-social' dokladamy narzedzie web_search
-// (jak w kliencie callDirect) i sklejamy WSZYSTKIE bloki typu text.
+// Dla KAZDEJ agentki z zespolu dokladamy narzedzie web_search (jak w kliencie
+// callDirect) i sklejamy WSZYSTKIE bloki typu text. Limit wyszukiwan zalezy od roli.
 //
 // Luzne typy (bez @vercel/node). Poza tsconfig include:["src"], wiec `npm run build`
 // go nie kompiluje.
@@ -62,7 +62,39 @@ function weryfikacjaTokenu(req: any): { ok: boolean; otwarty?: boolean; uzytkown
 
 const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6'
 const DEFAULT_MAX_TOKENS = 4000
-const AGENCI_Z_WEBEM = new Set(['analityk', 'analityk-social'])
+
+// --- Internet (web_search) dla CALEGO zespolu -------------------------------
+// Kazda agentka ma internet; rozny jest tylko limit wyszukiwan na odpowiedz.
+// Lista slugow i limity sa CELOWO skopiowane z webapp/src/lib/ai.ts (LIMITY_WEB):
+// funkcje Vercela nie moga importowac wspolnych plikow (kazdy taki import konczyl
+// sie FUNCTION_INVOCATION_FAILED), wiec przy zmianie ruszaj OBA pliki.
+const AGENCI_Z_WEBEM = new Set([
+  'coo',
+  'wiedza-produkt',
+  'operacje',
+  'analityk',
+  'pamiec-zespolu',
+  'copywriter',
+  'handlowiec',
+  'opiekun-klienta',
+  'drugi-glos',
+  'analityk-social',
+])
+const LIMITY_WEB: Record<string, number> = {
+  analityk: 8,
+  operacje: 6,
+  'analityk-social': 5,
+}
+const LIMIT_WEB_DOMYSLNY = 3
+const LIMIT_WEB_MAX = 10
+
+/** Limit wyszukiwan: z zadania klienta (przyciety), inaczej wg roli agentki. */
+function limitWeb(agentSlug: string, zadany: unknown): number {
+  if (typeof zadany === 'number' && Number.isFinite(zadany) && zadany > 0) {
+    return Math.min(Math.floor(zadany), LIMIT_WEB_MAX)
+  }
+  return LIMITY_WEB[agentSlug] || LIMIT_WEB_DOMYSLNY
+}
 
 function czytajBody(req: any): Promise<any> {
   if (req.body && typeof req.body === 'object') return Promise.resolve(req.body)
@@ -145,10 +177,15 @@ export default async function handler(req: any, res: any) {
     messages,
   }
   if (system) zadanie.system = system
-  // Internet dla analitykow (Rae, Zoe): serwerowe narzedzie web_search Anthropic.
+  // Internet dla KAZDEJ agentki: wbudowane narzedzie web_search Anthropic,
+  // limit wyszukiwan wg roli (Rae 8, Mia 6, Zoe 5, reszta 3).
   if (AGENCI_Z_WEBEM.has(agentSlug)) {
     zadanie.tools = [
-      { type: 'web_search_20250305', name: 'web_search', max_uses: 5 },
+      {
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: limitWeb(agentSlug, body?.webMaxUses),
+      },
     ]
   }
 
