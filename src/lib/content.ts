@@ -106,6 +106,7 @@ export const brainGroupOrder: { key: string; label: string }[] = [
   { key: 'tozsamosc', label: 'Tozsamosc' },
   { key: 'rynek-klient', label: 'Rynek i klient' },
   { key: 'oferta-komercja', label: 'Oferta i komercja' },
+  { key: 'finanse', label: 'Finanse firmy' },
   { key: 'proof', label: 'Dowody' },
   { key: 'zespol-i-decyzje', label: 'Zespol i decyzje' },
 ]

@@ -5,7 +5,7 @@ export interface Agent {
   name: string
   /** Rola pokazywana na kafelku */
   role: string
-  /** Numer kafelka ("COO" dla orkiestratora, "1".."10" dla reszty) */
+  /** Numer kafelka ("COO" dla orkiestratora, "1".."12" dla reszty) */
   tileNo: string
   /** Kolor akcentu (hex) */
   accent: string
@@ -34,8 +34,13 @@ export interface Agent {
 }
 
 /**
- * Zespol 10 agentow AI SimpleFast.ai.
- * COO jest orkiestratorem nad pozostala dziewiatka.
+ * Zespol 12 agentek AI SimpleFast.ai (COO + 11 specjalistek).
+ * COO jest orkiestratorka nad pozostala jedenastka.
+ *
+ * KOLORY AKCENTU: kazdy hex jest ZMIERZONY z awatara PNG (dominujaca poswiata
+ * neonowa wokol portretu, histogram odcieni po obwodce obrazu, potem zmiekczony
+ * do czytelnosci na ciemnym tle). Kazdy accent jest UNIKALNY, patrz tabela na
+ * koncu pliku.
  */
 export const agents: Agent[] = [
   {
@@ -185,29 +190,30 @@ export const agents: Agent[] = [
   },
   {
     slug: 'copywriter',
-    name: 'Szefowa pozyskiwania klientow',
-    role: 'Pozyskiwanie klientow i partnerstwa',
+    // Slug 'copywriter' zostaje (adresy, awatar, subagent), choc od 2026-07-26
+    // Mila robi dostawe. Prawdziwa copywriterka to Iga (slug 'copywriter-marki').
+    name: 'Szefowa dostawy i jakosci wdrozen',
+    role: 'Dostawa i jakosc wdrozen',
     tileNo: '5',
     accent: '#EB4B80', // rozowo-magenta poswiata awatara Mila (v2, 2026-07-23)
     claudeName: 'sf-copywriter',
     hasPrompt: true,
     mission:
-      'Przynosi umowione diagnozy spoza social: zaczepki do firm, polecenia, partnerstwa, kluby biznesu.',
+      'Pilnuje, zeby sprzedane wdrozenia byly zrobione wedlug standardu, mierzy realne godziny i buduje biblioteke wielokrotnego uzytku.',
     subagents: [
-      'Budowniczy list docelowych',
-      'Autorka zaczepek',
-      'Prowadzacy kadencje',
-      'Lowczyni polecen',
-      'Budowniczy partnerstw',
-      'Organizator wejsc na wydarzenia',
+      'Autorka standardow uslug',
+      'Kontrolerka odbioru',
+      'Rachmistrz godzin',
+      'Kurator biblioteki',
+      'Analityk wpadek',
     ],
     skills: [
-      'Listy firm ICP z sygnalem "dlaczego teraz"',
-      'Zaczepki mail i LinkedIn bez spamu',
-      'Kadencja wielokanalowa',
-      'Program polecen',
-      'Partnerstwa: co dostaje, co daje, jak mierzymy',
-      'Test kanalu z progiem decyzji',
+      'Definicja "gotowe" i lista kontrolna',
+      'Standard wdrozenia per usluga',
+      'Planowane kontra realne godziny',
+      'Wykorzystanie pojemnosci (prog 85%)',
+      'Rozrost zakresu jako zdarzenie',
+      'Biblioteka wielokrotnego uzytku',
     ],
     personImie: 'Mila',
     elevenVoiceId: 'ErXwobaYiN019PkySvjV',
@@ -318,12 +324,98 @@ export const agents: Agent[] = [
     elevenVoiceId: '21m00Tcm4TlvDq8ikWAM',
     realtimeVoice: 'shimmer', // zenski (zespol kobiecy, awatary 2026-07-23)
   },
+  {
+    slug: 'copywriter-marki',
+    name: 'Copywriterka marki',
+    role: 'Copywriting marki',
+    tileNo: '11',
+    // Zmierzone z avatars/copywriter-marki.png: dominujaca poswiata H=69 (limonka),
+    // S=0.99 V=0.90 przy krawedzi kadru. Zmiekczone do UI: H 69, S 0.76, V 0.94.
+    accent: '#D4F03A',
+    claudeName: 'sf-copywriter-marki',
+    hasPrompt: true,
+    mission:
+      'Pisze wszystko, co czyta klient: naglowki, hasla, strony, posty, e-booki i sekwencje, tak zeby dalo sie tego sluchac.',
+    subagents: [
+      'Kowalka naglowkow',
+      'Gorniczka jezyka klienta',
+      'Autorka stron i dlugich form',
+      'Autorka maili i sekwencji',
+      'Scenarzystka wideo i rolek',
+      'Redaktorka i korektorka marki',
+    ],
+    skills: [
+      '5 poziomow swiadomosci (Schwartz)',
+      'Jezyk klienta (VoC) zamiast naszego',
+      'Struktury: PAS, AIDA, BAB, PASTOR',
+      '4U dla naglowkow i test glosu',
+      'StoryBrand SB7: klient bohaterem',
+      'Kontrola marki: zero em-dash, zero liczb bez zrodla',
+    ],
+    personImie: 'Iga',
+    // elevenVoiceId: [INPUT PAWLA] premium glos ElevenLabs jeszcze nie wybrany.
+    realtimeVoice: 'coral', // zenski, cieply (pula: marin/coral/sage/alloy/shimmer)
+  },
+  {
+    slug: 'prawnik-ai',
+    name: 'Prawniczka AI',
+    role: 'Prawo i zgodnosc AI',
+    tileNo: '12',
+    // Zmierzone z avatars/prawnik-ai.png: dominujaca poswiata H=242 (indygo),
+    // S=0.64 V=0.92 przy krawedzi kadru. Zmiekczone do UI: H 243, S 0.61, V 1.00.
+    accent: '#6C63FF',
+    claudeName: 'sf-prawnik-ai',
+    hasPrompt: true,
+    mission:
+      'Pilnuje umow, RODO, AI Act i praw autorskich i mowi, co musi byc w aplikacji, zanim ja oddamy.',
+    subagents: [
+      'Klasyfikator ryzyka AI Act',
+      'Audytor zgodnosci aplikacji',
+      'Redaktorka umow i klauzul',
+      'Mapa danych i dostawcow',
+      'Strazniczka obietnic w tresciach',
+      'Obserwatorka zmian w przepisach',
+    ],
+    skills: [
+      'Ocena ryzyka w 7 krokach',
+      'AI Act: kategorie ryzyka i obowiazki',
+      'RODO w systemach AI (powierzenie, transfery)',
+      'Karta zgodnosci uslugi',
+      'Lista "co musi byc w aplikacji" przed oddaniem',
+      'Prawa autorskie do tresci i kodu z AI',
+      'Czerwona flaga bez pytania',
+    ],
+    personImie: 'Ada',
+    // elevenVoiceId: [INPUT PAWLA] premium glos ElevenLabs jeszcze nie wybrany.
+    realtimeVoice: 'sage', // zenski, rzeczowy (pula: marin/coral/sage/alloy/shimmer)
+  },
 ]
+
+/**
+ * ROZKLAD GLOSOW REALTIME (pula zenska OpenAI), rowny na 12 person:
+ *   marin   2  (Lea, Ella)
+ *   coral   3  (Mia, Mila, Iga)
+ *   sage    3  (Sam, Vera, Ada)
+ *   alloy   2  (Rae, Nora)
+ *   shimmer 2  (Jade, Zoe)
+ *
+ * UNIKALNOSC AKCENTOW (12 na 12, kazdy inny hex; H = odcien HSV):
+ *   coo              #3584F2  H 214    handlowiec       #F29624  H  31
+ *   wiedza-produkt   #E02D39  H 357    opiekun-klienta  #46DB91  H 152
+ *   operacje         #2AC0D1  H 187    drugi-glos       #EB4B60  H 354
+ *   analityk         #A156CC  H 281    analityk-social  #E6911C  H  35
+ *   pamiec-zespolu   #E6E8F0  H 228 (S 0.06, srebrny)
+ *   copywriter       #EB4B80  H 340    copywriter-marki #D4F03A  H  69 (nowy)
+ *                                      prawnik-ai       #6C63FF  H 243 (nowy)
+ * Nowe odcienie (69 limonka, 243 indygo) sa wolne: najblizszy sasiad indygo to
+ * niebieski COO (214), czyli 29 stopni, wiecej niz istniejace pary
+ * handlowiec/analityk-social (4) i drugi-glos/wiedza-produkt (3).
+ */
 
 /** COO, wyrozniony orkiestrator */
 export const coo: Agent = agents.find((a) => a.slug === 'coo')!
 
-/** Pozostali specjalisci (kafelki 1..10, bez COO) */
+/** Pozostale specjalistki (kafelki 1..12, bez COO; numer 9 pozostaje wolny) */
 export const teamAgents: Agent[] = agents.filter((a) => a.slug !== 'coo')
 
 /** Szybki dostep po slugu */

@@ -6,7 +6,7 @@
  * dokladany jest recznie. Ten skrypt NIE odtwarza skladania promptu z komentarza:
  * bunduje realne `src/lib/ai.ts` przez esbuild z podmienionymi modulami
  * `./content` (czyta pliki .md z dysku) i `./storage` (kontrolowane stany pamieci),
- * po czym wola PRAWDZIWA funkcje `buildVoicePrompt` dla wszystkich 10 person.
+ * po czym wola PRAWDZIWA funkcje `buildVoicePrompt` dla wszystkich person z agents.ts.
  *
  * Domyslny scenariusz = najgorszy realny stan aplikacji: pamiec firmy pelna (8 000),
  * twarde fakty pelne (4 000), realna Karta Mozgu, bez pol wpisywanych przez
@@ -24,7 +24,7 @@
  *   zasady   = w prompcie sa zasady jezykowe (ZAKAZANE ZWROTY z TON_PERSONY),
  *   notaGlos = prompt konczy sie nota o rozmowie glosowej.
  */
-import { writeFileSync, mkdtempSync, existsSync } from 'node:fs'
+import { writeFileSync, mkdtempSync, existsSync, readFileSync } from 'node:fs'
 import { resolve, join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
@@ -110,18 +110,13 @@ writeFileSync(plik, wynik.outputFiles[0].text)
 globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
 const mod = await import('file://' + plik.replace(/\\/g, '/'))
 
+// Slugi czytane wprost z agents.ts (jedyne zrodlo prawdy), zeby kazda nowa
+// persona byla mierzona automatycznie, bez edycji tego pliku.
 const SLUGI = [
-  'coo',
-  'wiedza-produkt',
-  'operacje',
-  'analityk',
-  'pamiec-zespolu',
-  'copywriter',
-  'handlowiec',
-  'opiekun-klienta',
-  'drugi-glos',
-  'analityk-social',
-]
+  ...readFileSync(resolve(WEBAPP, 'src/data/agents.ts'), 'utf8').matchAll(
+    /^\s*slug: '([a-z-]+)'/gm,
+  ),
+].map((m) => m[1])
 const LIMIT = 40000
 
 console.log(

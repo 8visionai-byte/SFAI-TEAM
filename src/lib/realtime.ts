@@ -244,7 +244,7 @@ export async function startRozmowa(
         'NIE UZYWAJ, gdy wlasciciel: opowiada o kliencie, spotkaniu, sytuacji albo pomysle i o nic nie poprosil ("mam takiego klienta, ktory...", "bylem dzis na spotkaniu"); mysli na glos ("zastanawiam sie", "nie wiem, moze", "z jednej strony"); pyta CIEBIE o zdanie w liczbie pojedynczej ("co myslisz", "jak to widzisz", "co bys zrobila"); pyta o fakt z bazy (od tego jest przeszukaj_wiedze); narzeka, zartuje albo zmienia temat. ' +
         'W tych przypadkach SLUCHAJ i odpowiedz glosem, najwyzej ZAPROPONUJ prace zespolu jednym zdaniem i poczekaj na odpowiedz. ' +
         'NIE MASZ PEWNOSCI, czy to prosba = NIE WYWOLUJ. Zapytaj krotko ("chcesz, zebym to rozdala dziewczynom?") i czekaj. Milczaca zgoda nie istnieje. ' +
-        'LICZBA OSOB: domyslnie 1-3 najlepiej pasujace role. Cala dziewiatka WYLACZNIE wtedy, gdy padlo wprost "caly zespol", "narada" albo "zbierz wszystkich". ' +
+        'LICZBA OSOB: domyslnie 1-3 najlepiej pasujace role. Cala jedenastka WYLACZNIE wtedy, gdy padlo wprost "caly zespol", "narada" albo "zbierz wszystkich". ' +
         'Przykladowe zdania przed uzyciem narzedzia (inspiracja, NIE cytuj doslownie, mow to za kazdym razem inaczej): Dobra, biore Rae i Jade. / Rozdaje zadania, daj mi chwile. / Poczekaj, odpalam Zoe.',
       parameters: {
         type: 'object',
@@ -258,11 +258,11 @@ export async function startRozmowa(
                   type: 'string',
                   description:
                     // Slugi zostaly ze starych rol (adresy i awatary), wiec same z siebie
-                    // myla: pamiec-zespolu to dzis finanse, copywriter to pozyskiwanie
-                    // klientow, operacje to rozwoj firmy. Dopisane imie i realna rola,
+                    // myla: pamiec-zespolu to dzis finanse, copywriter to dostawa i
+                    // jakosc wdrozen, operacje to rozwoj firmy. Dopisane imie i realna rola,
                     // zeby model nie zlecal zadania po nazwie sluga. Opis narzedzia idzie
                     // poza pole instructions, wiec nie zjada budzetu 40000 znakow promptu.
-                    'slug agenta (imie i realna rola): wiedza-produkt (Sam, nasze produkty i uslugi) | operacje (Mia, rozwoj firmy i trendy) | analityk (Rae, research i internet) | pamiec-zespolu (Vera, finanse i wyceny) | copywriter (Mila, pozyskiwanie klientow i partnerstwa) | handlowiec (Jade, sprzedaz i oferta) | opiekun-klienta (Ella, obsluga klienta i relacje) | drugi-glos (Nora, drugi glos przy decyzjach i marka) | analityk-social (Zoe, marketing i social media)',
+                    'slug agenta (imie i realna rola): wiedza-produkt (Sam, nasze produkty i uslugi) | operacje (Mia, rozwoj firmy i trendy) | analityk (Rae, research i internet) | pamiec-zespolu (Vera, finanse i wyceny) | copywriter (Mila, dostawa i jakosc wdrozen) | handlowiec (Jade, sprzedaz, oferta i lejek) | opiekun-klienta (Ella, obsluga klienta i relacje) | drugi-glos (Nora, drugi glos przy decyzjach i marka) | analityk-social (Zoe, marketing, kanaly i GEO) | copywriter-marki (Iga, pisze teksty, ktore czyta klient) | prawnik-ai (Ada, prawo, RODO, AI Act i zgodnosc)',
                 },
                 zadanie: {
                   type: 'string',
@@ -785,7 +785,7 @@ export async function startRozmowa(
 
     // Waliduj slugi: tylko realni specjalisci (bez COO), bez pustych zadan,
     // bez duplikatow. Limit rowny liczbie WSZYSTKICH specjalistow (dozwolone.size),
-    // zeby narada mogla objac cala dziewiatke, a nie tylko 6 pierwszych.
+    // zeby narada mogla objac caly zespol, a nie tylko 6 pierwszych.
     const dozwolone = new Set(
       agents.filter((a) => a.slug !== 'coo').map((a) => a.slug),
     )

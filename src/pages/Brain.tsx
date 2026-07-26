@@ -130,6 +130,7 @@ const GRUPY_IMPORTU: { key: string; label: string }[] = [
 
 /** Etykieta grupy w liscie plikow (grupy spoza brainGroupOrder). */
 function etykietaGrupy(key: string): string {
+  if (key === 'finanse') return 'Finanse firmy'
   if (key === 'wlasne') return 'Wlasne pliki'
   if (key === 'notatki') return 'Notatki'
   if (key === 'z-rozmow') return 'Z rozmow'

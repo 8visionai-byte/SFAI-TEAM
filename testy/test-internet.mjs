@@ -114,8 +114,11 @@ function wczytajFunkcje(zrodlo, nazwa, zmienne = {}) {
 // --- Dane wejsciowe ----------------------------------------------------------
 
 const SLUGI = [...zrodloAgenci.matchAll(/^\s*slug: '([a-z-]+)'/gm)].map((m) => m[1])
-const OCZEKIWANE = { analityk: 8, operacje: 6, 'analityk-social': 5 }
+// Rae 8 (research), Mia 6 (trendy), Zoe 5 (kanaly), Ada 5 (przepisy zyja), reszta 3.
+const OCZEKIWANE = { analityk: 8, operacje: 6, 'analityk-social': 5, 'prawnik-ai': 5 }
 const DOMYSLNY = 3
+/** Liczba person w zespole (COO + specjalistki). Zrodlo prawdy: agents.ts. */
+const LICZBA_PERSON = 12
 
 // Klient (ai.ts)
 const LIMITY_KLIENT = wczytajLiteral(
@@ -152,7 +155,14 @@ const LIMIT_MAX_SERWER = Number(zrodloApi.match(/const LIMIT_WEB_MAX = (\d+)/)?.
 
 console.log('=== TEST 1: internet dla kazdej agentki ===\n')
 
-sprawdz('agents.ts: znalezione slugi (10)', SLUGI.length === 10, `jest ${SLUGI.length}`)
+sprawdz(
+  `agents.ts: znalezione slugi (${LICZBA_PERSON})`,
+  SLUGI.length === LICZBA_PERSON,
+  `jest ${SLUGI.length}`,
+)
+for (const nowy of ['copywriter-marki', 'prawnik-ai']) {
+  sprawdz(`agents.ts: nowa persona "${nowy}" jest w zespole`, SLUGI.includes(nowy))
+}
 for (const slug of SLUGI) {
   sprawdz(`serwer: "${slug}" ma internet`, AGENCI_Z_WEBEM.has(slug))
 }
@@ -263,9 +273,20 @@ const przeplywy = lancuchy.split('\n').filter((l) => l.startsWith('- '))
 
 sprawdz('blok ma naglowek TYPOWE LANCUCHY ZADAN', lancuchy.includes('TYPOWE LANCUCHY ZADAN'))
 sprawdz(
-  'blok ma 6-8 przeplywow',
-  przeplywy.length >= 6 && przeplywy.length <= 8,
+  'blok ma 6-10 przeplywow',
+  przeplywy.length >= 6 && przeplywy.length <= 10,
   `jest ${przeplywy.length}`,
+)
+// Nowe persony musza realnie wystapic w lancuchach, inaczej Lea ich nie uzyje.
+sprawdz('lancuchy uwzgledniaja Ige (tresci dla klienta)', lancuchy.includes('Iga'))
+sprawdz('lancuchy uwzgledniaja Ade (ryzyko prawne)', lancuchy.includes('Ada'))
+sprawdz(
+  'lancuchy maja osobny przeplyw ryzyka prawnego',
+  przeplywy.some((l) => l.includes('Ryzyko prawne')),
+)
+sprawdz(
+  'lancuchy maja przeplyw dostawy po podpisie (nowa rola Mili)',
+  przeplywy.some((l) => l.includes('Wdrozenie po podpisie')),
 )
 sprawdz(
   'kazdy przeplyw ma kolejnosc krokow (strzalka)',

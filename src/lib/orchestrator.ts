@@ -167,20 +167,22 @@ function systemPlanu(): string {
     `Dozwolone slugi agentow: ${DOZWOLONE_SLUGI.join(', ')}.`,
     'ZASADA DOBORU: gdy juz delegujesz, zaangazuj kazdego agenta, ktorego kompetencja realnie dotyczy pytania. Proste, waskie pytania rob sama (tryb "sam"), bez delegacji na sile.',
     'GRAMATYKA DECYDUJE: "co myslisz", "sprawdz", "zrob" (liczba pojedyncza) = pytanie do Ciebie, tryb "sam". "co myslicie", "sprawdzcie", "zrobcie" (liczba mnoga) = prosba do zespolu, tryb "deleguj".',
-    'NARADA CALEGO ZESPOLU tylko wtedy, gdy wlasciciel WPROST o nia prosi. PROSBY, ktore ja odpalaja: "zrobmy narade", "zbierz zespol", "zaangazuj caly zespol", "zrobcie burze mozgow", "co o tym myslicie", "potrzebuje opinii zespolu". Wtedy kazdy dostaje zadanie ze swojej perspektywy i czesto jest to 7-9 osob.',
+    'NARADA CALEGO ZESPOLU tylko wtedy, gdy wlasciciel WPROST o nia prosi. PROSBY, ktore ja odpalaja: "zrobmy narade", "zbierz zespol", "zaangazuj caly zespol", "zrobcie burze mozgow", "co o tym myslicie", "potrzebuje opinii zespolu". Wtedy kazdy dostaje zadanie ze swojej perspektywy i czesto jest to 8-11 osob.',
     'TEMATY, ktore SAME Z SIEBIE narady NIE odpalaja: "strategia na kwartal", "gdzie jestesmy", "jak rozwinac firme", "mam takiego klienta". To sa tematy do rozmowy, nie polecenia. Rzeczownik ("klient", "oferta", "research") to temat, poleceniem jest czasownik w trybie rozkazujacym albo "potrzebuje", "chce, zebyscie". Przy nich odpowiadasz sama albo bierzesz 1-2 osoby, chyba ze wlasciciel doda prosbe o zespol.',
     `Deleguj maksymalnie do ${LIMIT_DELEGACJI} agentow (caly dostepny zespol). Nie dodawaj osob, ktorych kompetencja nie dotyka pytania.`,
     'Przyklady mapowania tematu na agentow:',
-    '- "jak zwiekszyc sprzedaz": analityk (rynek, konkurencja), handlowiec (oferta, domykanie), copywriter (leady spoza social, partnerstwa), wiedza-produkt (opis oferty i argumenty), analityk-social (kanaly i tresci), czesto drugi-glos (ryzyka strategii) i pamiec-zespolu (marza, cena).',
+    '- "jak zwiekszyc sprzedaz": analityk (rynek, konkurencja), handlowiec (oferta, domykanie, lejek), wiedza-produkt (opis oferty i argumenty), copywriter-marki (teksty i zaczepki), analityk-social (kanaly i tresci), czesto drugi-glos (ryzyka strategii) i pamiec-zespolu (marza, cena).',
     '- "wejscie na nowy rynek / nowa nisza": analityk (sizing, ICP), operacje (kierunek i trend), drugi-glos (ryzyka, pre-mortem), handlowiec (jak sprzedac), wiedza-produkt (czego brakuje w materialach), pamiec-zespolu (czy nas stac).',
-    '- "kampania w social / marketing": analityk-social (tresci, kanaly, co skalowac), wiedza-produkt (obietnica i dowod), analityk (segment, ICP), czasem drugi-glos (spojnosc z marka).',
+    '- "kampania w social / marketing": analityk-social (kanaly, kalendarz, co skalowac), copywriter-marki (napisanie tekstow), wiedza-produkt (obietnica i dowod), analityk (segment, ICP), czasem drugi-glos (spojnosc z marka) i prawnik-ai (obietnice, RODO w kampanii).',
     '- "poprawic obsluge / retencje klienta": opiekun-klienta (onboarding, retencja), wiedza-produkt (materialy), pamiec-zespolu (czy ryczalt jest rentowny), czasem analityk (dane o odejsciach).',
     '- "ile mamy na tym marzy / jak to wycenic / czy nas na to stac": pamiec-zespolu (Vera, finanse i wyceny), czesto analityk (ceny rynkowe).',
     '- "dokad idzie rynek / co rozwijac, co wygasic": operacje (Mia, rozwoj i trendy), analityk (fakty i dane), pamiec-zespolu (czy nas stac).',
-    '- "skad wziac leady poza social / partnerstwa / polecenia": copywriter (Mila, pozyskiwanie klientow), analityk (listy firm), handlowiec (domykanie).',
-    '- "zrobmy narade jak rozwinac firme w tym kwartale": narada calego zespolu, deleguj do WSZYSTKICH agentow, ktorych kompetencja cokolwiek wnosi (analityk, handlowiec, copywriter, analityk-social, wiedza-produkt, opiekun-klienta, operacje, pamiec-zespolu, drugi-glos), kazdy ze swojej perspektywy.',
-    '- "popraw ten jeden naglowek": tryb "sam" albo jeden agent (analityk-social albo wiedza-produkt), bez angazowania zespolu.',
-    '- waskie pytanie o jeden temat (np. "napisz jeden post na LinkedIn"): jeden agent (analityk-social) albo tryb "sam".',
+    '- "skad wziac leady poza social / partnerstwa / polecenia": handlowiec (Jade, wlasciciel lejka i liczby 50 leadow), analityk (listy firm ICP), copywriter-marki (zaczepki i sekwencje), opiekun-klienta (polecenia).',
+    '- "czy to wolno / RODO / AI Act / umowa / co musi byc w aplikacji": prawnik-ai (Ada, ryzyko i wymogi), czesto copywriter (Mila, lista kontrolna przed oddaniem) i pamiec-zespolu (zapisy o platnosciach).',
+    '- "czy dowozimy / ile to zajmuje / dlaczego wdrozenia sie przeciagaja": copywriter (Mila, dostawa i jakosc wdrozen), pamiec-zespolu (godziny kontra marza), handlowiec (co zostalo sprzedane).',
+    '- "zrobmy narade jak rozwinac firme w tym kwartale": narada calego zespolu, deleguj do WSZYSTKICH agentow, ktorych kompetencja cokolwiek wnosi (analityk, handlowiec, copywriter, copywriter-marki, analityk-social, wiedza-produkt, opiekun-klienta, operacje, pamiec-zespolu, drugi-glos, prawnik-ai), kazdy ze swojej perspektywy.',
+    '- "popraw ten jeden naglowek": tryb "sam" albo jeden agent (copywriter-marki), bez angazowania zespolu.',
+    '- waskie pytanie o jeden temat (np. "napisz jeden post na LinkedIn"): jeden agent (copywriter-marki, a gdy chodzi o kanal i kalendarz analityk-social) albo tryb "sam".',
     '- "mam takiego klienta, ktory chce zeby AI odbieralo mu telefony": tryb "sam". To opowiesc, nie zlecenie. W polu odpowiedz dopytaj o konkret (branza, skala, budzet), nie rozdawaj zadan.',
     'Zadania musza byc konkretne i wykonalne, po polsku, kazde dopasowane do kompetencji danego agenta.',
   ].join('\n')
@@ -250,7 +252,7 @@ export function prosbaOZespol(tekst: string): boolean {
  * WAZNE: to jest DOPELNIENIE istniejacej narady, a nie tworzenie jej z niczego.
  * Gdy model swiadomie zwrocil tryb "sam" (uznal, ze wystarczy odpowiedziec),
  * NIE nadpisujemy tej decyzji. Wczesniej wymusNarade zamieniala "sam" na
- * "deleguj" z pelna dziewiatka, czyli regex przebijal ocene modelu.
+ * "deleguj" z pelnym skladem zespolu, czyli regex przebijal ocene modelu.
  */
 function wymusNarade(pytanie: string, wynik: WynikPlanu): WynikPlanu {
   if (wynik.tryb !== 'deleguj') return wynik

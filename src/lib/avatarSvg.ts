@@ -9,7 +9,7 @@
 //  warstwa wieku (zmarszczki), objetosc wlosow per persona, znak roli w 40px.
 //
 // Kazdy <defs> ma id sufiksowane slugiem, bo na jednej stronie renderuje sie
-// do 10 awatarow naraz (kolizja id = bledne gradienty). To WYMOG.
+// do 12 awatarow naraz (kolizja id = bledne gradienty). To WYMOG.
 
 import {
   hairPal,
@@ -409,6 +409,21 @@ function renderHair(
         back: `<path d="M 21 78 C 19 40 22 22 48 18 C 74 22 77 40 75 78 C 73 52 68 33 48 32 C 28 33 23 52 21 78 Z" fill="${fill}"/>`,
         front: `<path d="M 28 35 Q 32 22 48 20 Q 64 22 68 35 Q 60 27 46 28 Q 38 28 33 34 Z" fill="${fill}"/>`,
       }
+    case 'dlugie-fale': {
+      const shd = hairPal[card.hairColor].shadow
+      return {
+        // Dluga MASA fal szersza niz 'do-ramion' (znak: objetosc), z falistym
+        // konturem po bokach; dwie linie pasm daja czytelna fale juz w 40px.
+        back:
+          `<path d="M 19 80 C 16 44 20 21 48 17 C 76 21 80 44 77 80 C 76 66 79 58 74 50 C 72 62 70 40 48 33 C 26 40 24 62 22 50 C 17 58 20 66 19 80 Z" fill="${fill}"/>` +
+          `<path d="M 27 44 Q 22 58 26 72" stroke="${shd}" stroke-width="1" fill="none" opacity="0.45"/>` +
+          `<path d="M 69 44 Q 74 58 70 72" stroke="${shd}" stroke-width="1" fill="none" opacity="0.45"/>`,
+        // Przedzialek z boku: grzywka wyzsza po lewej, opada luk nad prawa skronia.
+        front:
+          `<path d="M 27 36 Q 28 20 44 18 Q 62 19 68 34 Q 60 25 48 26 Q 37 26 32 35 Z" fill="${fill}"/>` +
+          `<path d="M 44 18 Q 39 24 33 34" stroke="${shd}" stroke-width="0.7" fill="none" opacity="0.5"/>`,
+      }
+    }
     case 'krotkie-siwiejace':
       return {
         // zakola w litere M + siwe skronie

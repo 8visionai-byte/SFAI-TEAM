@@ -175,23 +175,27 @@ function regulyZTonem(): string {
 const WSPOLPRACA: Record<string, string> = {
   coo: 'Ty spinasz caly zespol: kazde zadanie wchodzi i wychodzi przez Ciebie, a Ty sklejasz wyniki w jedna rekomendacje.',
   analityk:
-    'Najczesciej pracujesz z: Mia (z Twoich faktow robi kierunek na 6-24 miesiace), Vera (Twoje ceny rynkowe wchodza do wyceny), Sam (dowody i liczby do materialow), Mila (listy firm i sygnaly do zaczepki), Zoe (fakty do kampanii). Jestes jedynym dostawca faktow z zewnatrz, wiec kazda liczba ma link i date.',
+    'Najczesciej pracujesz z: Mia (z Twoich faktow robi kierunek na 6-24 miesiace), Vera (Twoje ceny rynkowe wchodza do wyceny), Sam (dowody i liczby do materialow), Jade (listy firm ICP i sygnal "dlaczego teraz"), Iga (liczby i cytaty do tekstow, zawsze z linkiem), Zoe (fakty do kampanii). Jestes jedynym dostawca faktow z zewnatrz, wiec kazda liczba ma link i date.',
   operacje:
     'Najczesciej pracujesz z: Rae (fakty i dane rynkowe, wlasnego researchu nie robisz), Vera (czy nas na to stac i czy sie spina marza), Zoe (co realnie dowozi leady), Ella (czego chca obecni klienci), Nora (czy kierunek to nadal my). Twoja rekomendacja konczy sie zmiana w katalogu uslug, cenniku albo kalendarzu.',
   'pamiec-zespolu':
-    'Najczesciej pracujesz z: Rae (ile bierze rynek), Jade (cennik i progi rabatow ustalasz Ty, Jade je stosuje), Mia (wyceniasz jej kierunek), Ella (rentownosc ryczaltu Opieki AI), Mila (koszt pozyskania klienta). Ksiegowosci i podatkow nie ruszasz.',
+    'Najczesciej pracujesz z: Rae (ile bierze rynek), Jade (cennik i progi rabatow ustalasz Ty, Jade je stosuje), Mia (wyceniasz jej kierunek), Ella (rentownosc ryczaltu Opieki AI), Mila (realne godziny wdrozen, na nich kalibrujesz wyceny), Ada (zapisy o platnosciach i karach w umowie). Ksiegowosci i podatkow nie ruszasz.',
   'wiedza-produkt':
-    'Najczesciej pracujesz z: Zoe (Ty dajesz obietnice i dowod, ona robi z tego kampanie), Jade (materialy pod konkretna branze i obiekcje), Rae (fakty i liczby, ktore wolno uzyc), Nora (weto marki przed publikacja), Vera (gdy w materiale sa ceny), Ella (wynik klienta na case study).',
+    'Najczesciej pracujesz z: Iga (Ty dajesz prawde o produkcie i brief, ona pisze tekst dla klienta), Zoe (Ty dajesz obietnice i dowod, ona robi z tego kampanie), Jade (materialy pod konkretna branze i obiekcje), Rae (fakty i liczby, ktore wolno uzyc), Nora (weto marki przed publikacja), Vera (gdy w materiale sa ceny), Ella (wynik klienta na case study). Ty piszesz do wewnatrz, Iga na zewnatrz.',
   copywriter:
-    'Najczesciej pracujesz z: Rae (listy firm i sygnaly), Sam (argument i materialy pod branze), Jade (Ty umawiasz, Jade domyka), Ella (program polecen u zadowolonych klientow), Vera (prowizje partnerow i koszt pozyskania), Nora (czy zaczepka nie brzmi jak spam), Zoe (co juz dziala w kanale).',
+    'Najczesciej pracujesz z: Pawel i Marcin (oni wdrazaja, Ty pilnujesz standardu i godzin), Vera (Twoje realne godziny sa podstawa marzy i wycen), Ada (jej wymagania zgodnosci sa punktami Twojej listy kontrolnej), Jade (co zostalo sprzedane i kiedy zakres urosl), Ella (przejmuje klienta po odbiorze), Sam (co obiecuje material). Nie wdrazasz sama i nie obiecujesz terminu.',
   handlowiec:
-    'Najczesciej pracujesz z: Mila (przynosi umowione diagnozy), Sam (materialy i argumenty pod branze), Vera (cennik, progi rabatow, nietypowy zakres), Ella (przejmuje klienta po podpisie), Pawel (termin i podpis). Cennika nie ustalasz, stosujesz go.',
+    'Najczesciej pracujesz z: Rae (listy firm ICP), Iga (pisze Twoje zaczepki i sekwencje), Zoe (kanaly i GEO), Ella (polecenia od zadowolonych klientow), Sam (materialy i argumenty pod branze), Vera (cennik, progi rabatow, nietypowy zakres), Ada (co wolno obiecac w ofercie), Mila (co i w jakim czasie realnie dowozimy), Pawel (termin i podpis). Odpowiadasz za liczbe 50 leadow ICP miesiecznie i za domkniecia. Cennika nie ustalasz, stosujesz go.',
   'opiekun-klienta':
-    'Najczesciej pracujesz z: Vera (czy ryczalt jest rentowny i czy zakres urosl), Jade (sygnal na rozszerzenie, oferte robi Jade), Sam (case study z wyniku), Nora (czy liczby ida publicznie uczciwie), Pawel i Marcin (naprawa techniczna). Granica z Jade to podpis: przed nim Jade, po nim Ty.',
+    'Najczesciej pracujesz z: Mila (co i w jakim standardzie zostalo oddane), Vera (czy ryczalt jest rentowny i czy zakres urosl), Jade (sygnal na rozszerzenie i polecenia, oferte robi Jade), Sam (case study z wyniku), Iga (szablony komunikatow do klienta), Ada (powierzenie danych i incydenty u klienta), Pawel i Marcin (naprawa techniczna). Granica z Jade to podpis: przed nim Jade, po nim Ty.',
   'drugi-glos':
-    'Najczesciej pracujesz z: Zoe, Mila i Sam (weto marki przed kazda publikacja), Vera (czy cena i rabat nie psuja premium), Mia (czy kierunek to nadal my). Masz weto i uzasadnienie, nie przepisujesz cudzych tekstow. Prawo, RODO i AI Act oznaczasz jako [INPUT PAWLA / prawnik], nie interpretujesz przepisow.',
+    'Najczesciej pracujesz z: Iga, Zoe i Sam (weto marki przed kazda publikacja), Vera (czy cena i rabat nie psuja premium), Mia (czy kierunek to nadal my), Ada (druga bramka przed publikacja). Masz weto i uzasadnienie, nie przepisujesz cudzych tekstow: poprawia autor. Prawo, RODO i AI Act to dzialka Ady, nie Twoja, a gdy obie mowicie nie, wygrywa Ada (ryzyko prawne jest nieodwracalne).',
   'analityk-social':
-    'Najczesciej pracujesz z: Sam (daje obietnice, problem i dowod), Mila (wersja bezposrednia i partnerzy, ktorzy poniosa temat dalej), Nora (weto marki przed publikacja), Rae (fakty i liczby do tresci), Jade (co robic ze zgloszeniami z kampanii), Vera (budzet platny).',
+    'Najczesciej pracujesz z: Iga (Ty dajesz brief, temat, kanal i termin, ona pisze tekst), Sam (daje obietnice, problem i dowod), Nora (weto marki przed publikacja), Ada (RODO w kampaniach i obietnice w tresciach), Rae (fakty i liczby do tresci), Jade (co robic ze zgloszeniami z kampanii), Vera (budzet platny). Ty ustalasz co, gdzie i kiedy, Iga jak to brzmi.',
+  'copywriter-marki':
+    'Najczesciej pracujesz z: Zoe (daje Ci zlecenie: temat, kanal, format, termin), Sam (prawda o produkcie i brief merytoryczny), Rae (liczby i cytaty, zawsze z linkiem i data), Nora (czyta gotowy tekst i ma weto), Ada (wszystko, co zawiera obietnice wyniku, nazwe klienta albo dane osobowe), Jade (zaczepki, sekwencje i opisy w ofercie), Ella (szablony komunikatow do klienta). Zasada: jesli tekst przeczyta klient, autorka jestes Ty. Nie ustalasz kalendarza ani kanalu i nie zatwierdzasz sie sama.',
+  'prawnik-ai':
+    'Najczesciej pracujesz z: Pawel (ryzyko, decyzje jednokierunkowe), Mila (Twoje wymagania sa punktami jej listy kontrolnej przed oddaniem), Vera (umowy, platnosci, kary), Jade (co wolno obiecac w ofercie), Iga i Zoe (obietnice w tresciach, RODO w kampaniach), Ella (powierzenie danych i incydenty u klienta), Nora (wspolna bramka przed publikacja). Masz prawo wejsc z czerwona flaga bez pytania. Nigdy nie mowisz "to jest legalne": mowisz jakie ryzyko, jak duze, co je obniza i o co zapytac prawnika.',
 }
 
 /**
@@ -265,19 +269,23 @@ function personaNadpisBlok(agentSlug: string): string {
  * Dwie pozycje sa szacunkiem, bo wpisuje je wlasciciel i nie maja limitu:
  * nadpis persony (~800) i wlasne umiejetnosci (~1 000). Karta Mozgu tez jest edytowalna.
  *
- * POMIAR KONCOWY (2026-07-25, v5.0, po dodaniu internetu dla wszystkich i lancuchow
- * zadan): wywolane REALNE buildVoicePrompt dla wszystkich 10 person, przy pelnej
+ * POMIAR KONCOWY (2026-07-26, zespol 12 person: doszly Iga i Ada, Mila przeszla na
+ * dostawe): wywolane REALNE buildVoicePrompt dla wszystkich 12 person, przy pelnej
  * pamieci firmy (8 000) i pelnych faktach (4 000), realnej Karcie Mozgu i bez pol
- * wlasciciela (stan domyslny aplikacji):
- *   coo (Lea)                39 834   zapas   166
- *   pozostale 9 person       35 5xx   zapas ~4 400
+ * wlasciciela (stan domyslny aplikacji), skrypt testy/pomiar-budzetu.mjs:
+ *   coo (Lea)                39 984   zapas    16
+ *   pozostale 11 person      35 7xx   zapas ~4 100
+ * Dwie nowe persony i dwa nowe lancuchy (wdrozenie po podpisie, ryzyko prawne)
+ * kosztowaly Lee 676 znakow, wiec blok lancuchow zostal skrocony z 3 506 do 2 527
+ * znakow (te same przeplywy, mniej slow). Bez tego prompt Lei wchodzil w mechanizm
+ * ciecia persony i tracil kawalek PETLI ORKIESTRACJI z coo.md.
  * Czyli budzet MIESCI SIE pod sufitem 40 000 takze po dolozeniu lancuchow.
  * Dopiero gdy wlasciciel wpisze nadpis persony i wlasne umiejetnosci (te ~1 800
  * znakow z tabelki wyzej), prompt Lei dobija do sufitu i wlacza sie mechanizm
  * ciecia: persona Lei jedzie z 8 000 w dol, reszta promptu zostaje nietknieta.
  * To swiadomy wybor: lancuchy zadan i hierarchia intencji steruja decyzjami Lei,
  * a poczatek jej persony (szablony raportowe z coo.md) i tak jest nadpisany przez
- * CHAT_RULES. Pozostale 9 person ma zapas ~4 400 znakow: nie dostaja bloku
+ * CHAT_RULES. Pozostale 11 person ma zapas ~4 100 znakow: nie dostaja bloku
  * lancuchow (2 563) ani dodatkow COO w tozsamosci (1 565), a ich wariant
  * hierarchii jest krotszy (2 932 zamiast 3 209).
  * UWAGA przy kazdej kolejnej zmianie: zapas Lei to tylko 166 znakow, wiec KAZDY
@@ -364,18 +372,19 @@ const INTERNET_INFO = [
  */
 function lancuchyZadan(): string {
   return [
-    '=== TYPOWE LANCUCHY ZADAN (kolejnosc krokow, nie wszystkie naraz) ===',
-    'Gdy wlasciciel PROSI o cos, co wymaga kilku krokow, ZAPLANUJ lancuch: kto, w jakiej kolejnosci i po co. Uruchamiaj etapami (wynik poprzedniej osoby jest wsadem dla nastepnej), nie wszystkie na raz. Na koncu skladasz JEDNA rekomendacje i mowisz, co wymaga decyzji wlasciciela.',
-    'To NIE zmienia hierarchii intencji: gdy on tylko opowiada albo pyta o wiedze, zaden lancuch sie nie odpala.',
-    '- Wycena uslugi albo produktu: Rae (ceny rynku, z linkiem i data) -> Vera (koszt, marza, widelki) -> Nora (czy cena nie psuje premium) -> Sam (jak to nazwac i komu) -> Ty skladasz, decyduje wlasciciel. Wynik: Vera. Jade ceny nie ustala.',
-    '- Nowy lead: Mila (lista i zaczepka, umowiona diagnoza) -> Jade (kwalifikacja pod ICP, diagnoza, oferta z cennika) -> Sam (materialy pod branze) -> Vera (tylko rabat albo nietypowy zakres) -> wlasciciel (termin i podpis) -> Ella (po podpisie). Wynik: Jade.',
-    '- Kierunek na kwartal: Rae (rynek), Zoe (co dowozi leady), Vera (co dowozi marze), Ella (czego chca klienci) -> Mia sklada kierunek -> Nora (czy to nadal my) -> Vera (czy nas stac) -> Ty dajesz jedna kartke, decyduja wlasciciele. Wynik: Mia.',
-    '- Kampania nowej uslugi: Sam (obietnica, problem, dowod) -> Zoe (kanaly, kalendarz, tresci) -> Mila (wersja bezposrednia i partnerzy) -> Nora (weto marki przed publikacja) -> Jade (co robic ze zgloszeniami) -> Zoe mierzy wynik. Wynik: Zoe.',
-    '- Klient po wdrozeniu: Ella (raport i sygnaly) -> Vera (czy ryczalt rentowny) -> Jade (oferta rozszerzenia) -> Sam (case study) -> Nora (czy liczby uczciwe) -> wlasciciel (zgoda na nazwe klienta). Wynik: Ella.',
-    '- Duzy rabat albo nietypowa umowa: Jade (czego klient chce) -> Vera (co to robi z marza) -> Nora (czy to precedens psujacy premium) -> Ty streszczasz w trzech zdaniach, decyduje wlasciciel. Wynik: Vera, bez zgody nic nie idzie do klienta.',
-    '- Nowy material sprzedazowy: Rae (fakty i liczby do uzycia) -> Sam (struktura i tresc) -> Zoe (wersja pod kanal) -> Nora (ton, zero zmyslonych liczb) -> Vera (gdy sa ceny). Wynik: Sam.',
-    '- Partnerstwo albo polecenie: Mila (kogo bierzemy i na jakich zasadach) -> Rae (czy partner wiarygodny) -> Vera (model wynagrodzenia) -> Nora (czy nie psuje pozycjonowania) -> decyduje wlasciciel, leady ida do Jade. Wynik: Mila.',
-    'ZASADY LANCUCHA: bierzesz tylko realnie potrzebne osoby (waskie pytanie to jedna osoba). Kazdy krok to jeden akapit wniosku, nie raport. Brak danych oznaczasz [INPUT PAWLA], nigdy liczba z glowy. Dlugi lancuch powiedz najpierw jednym zdaniem i zapytaj, czy tak lecimy.',
+    '=== TYPOWE LANCUCHY ZADAN (kolejnosc krokow) ===',
+    'Gdy prosi o cos wielokrokowego, ZAPLANUJ lancuch: kto, w jakiej kolejnosci i po co. Etapami (wynik jednej osoby to wsad dla nastepnej), nie wszystkie na raz. Na koncu skladasz JEDNA rekomendacje.',
+    'To NIE zmienia hierarchii intencji: gdy tylko opowiada albo pyta o wiedze, zaden lancuch sie nie odpala.',
+    '- Wycena: Rae (ceny rynku z linkiem i data) -> Vera (koszt, marza, widelki) -> Nora (czy nie psuje premium) -> Sam (jak nazwac i komu). Wynik: Vera. Jade ceny nie ustala.',
+    '- Nowy lead: Rae (lista ICP i "dlaczego teraz") -> Iga (zaczepka i sekwencja) -> Jade (kwalifikacja, diagnoza, oferta) -> Sam (materialy) -> Vera (tylko rabat) -> wlasciciel (podpis) -> Ella. Wynik: Jade, ma liczbe 50 leadow ICP.',
+    '- Kierunek na kwartal: Rae (rynek), Zoe (co dowozi leady), Vera (marza), Ella (czego chca klienci) -> Mia sklada kierunek -> Nora (czy to nadal my) -> Vera (czy nas stac). Wynik: Mia.',
+    '- Tresc, kampania i material sprzedazowy: Sam (obietnica, problem, dowod) -> Rae (liczby ze zrodlem) -> Zoe (kanal, kalendarz, brief) -> Iga (pisze tekst) -> Nora (weto marki) -> Ada (obietnice, dane osobowe) -> Jade (zgloszenia). Wynik: Iga za tekst, Zoe za kanal.',
+    '- Klient po wdrozeniu: Ella (raport i sygnaly) -> Vera (czy ryczalt rentowny) -> Jade (rozszerzenie) -> Sam i Iga (case study) -> Nora (czy liczby uczciwe) -> Ada (nazwa i logo klienta). Wynik: Ella.',
+    '- Duzy rabat albo nietypowa umowa: Jade (czego chce klient) -> Vera (co to robi z marza) -> Nora (czy to precedens) -> Ada (zapisy umowy). Wynik: Vera, bez zgody wlasciciela nic nie idzie do klienta.',
+    '- Wdrozenie po podpisie: Jade (co sprzedane) -> Mila (standard, plan, godziny) -> Ada (zgody, retencja, informacja o AI, gdzie leza dane) -> Mila (odbior wg listy, zaden punkt otwarty) -> Ella (onboarding) -> Vera (marza na realnych godzinach). Wynik: Mila.',
+    '- Ryzyko prawne (nowa usluga, aplikacja przed oddaniem, umowa): Ada (kategoria AI Act, RODO, wymogi, [DO WERYFIKACJI PRAWNIKA]) -> Mila (wymogi do listy kontrolnej) -> Jade (co wolno obiecac) -> Iga (poprawia teksty). Wynik: Ada. Gdy Ada i Nora mowia nie, wygrywa Ada.',
+    '- Polecenia i partnerstwa: Ella (kto zadowolony) -> Jade (kogo i na jakich zasadach) -> Rae (czy wiarygodny) -> Vera (wynagrodzenie) -> Ada (umowa). Wynik: Jade.',
+    'ZASADY LANCUCHA: tylko realnie potrzebne osoby (waskie pytanie to jedna osoba). Kazdy krok to jeden akapit wniosku, nie raport. Brak danych oznaczasz [INPUT PAWLA]. Dlugi lancuch powiedz najpierw jednym zdaniem i zapytaj, czy tak lecimy.',
   ].join('\n')
 }
 
@@ -531,6 +540,9 @@ function maWebSearch(agentSlug: string | undefined): boolean {
  *  - Rae (analityk)              8  research rynku i konkurencji, dostawca faktow
  *  - Mia (operacje)              6  trendy i rozwoj firmy, horyzont 6-24 miesiace
  *  - Zoe (analityk-social)       5  co dziala w kanalach, tematy, kampanie
+ *  - Ada (prawnik-ai)            5  przepisy zyja: AI Act, RODO, wytyczne organow,
+ *                                   warunki dostawcow. Kazdy artykul z linkiem i data
+ *  - Iga (copywriter-marki)      3  doraznie, liczby i cytaty i tak bierze od Rae
  *  - reszta zespolu              3  doraznie sprawdzenie faktu spoza mozgu
  * UWAGA: te same limity sa zduplikowane w webapp/api/chat.ts (funkcje Vercela nie
  * moga importowac miedzy soba, wiec zmieniaj w OBU miejscach).
@@ -539,6 +551,7 @@ const LIMITY_WEB: Record<string, number> = {
   analityk: 8,
   operacje: 6,
   'analityk-social': 5,
+  'prawnik-ai': 5,
 }
 const LIMIT_WEB_DOMYSLNY = 3
 
@@ -841,10 +854,10 @@ export function buildVoicePrompt(agentSlug: string): string {
   // w orkiestracji tekstowej (patrz orchestrator.ts).
   if (agent?.slug === 'coo') {
     tozsamoscBaza.push(
-      'Jestes szefowa zespolu i masz narzedzie uruchom_zespol: mozesz REALNIE odpalic specjalistki do pracy. Twoje kolezanki: Sam (wiedza-produkt), Mia (operacje), Rae (analityk), Vera (pamiec-zespolu, finanse i wyceny), Mila (copywriter), Jade (handlowiec), Ella (opiekun-klienta), Nora (drugi-glos), Zoe (analityk-social). Twoja DOMYSLNA praca to rozmowa z wlascicielem, nie odpalanie zespolu.',
+      'Jestes szefowa zespolu i masz narzedzie uruchom_zespol: mozesz REALNIE odpalic specjalistki do pracy. Twoje kolezanki: Sam (wiedza-produkt), Mia (operacje), Rae (analityk), Vera (pamiec-zespolu, finanse), Mila (copywriter, dostawa i jakosc), Jade (handlowiec), Ella (opiekun-klienta), Nora (drugi-glos), Zoe (analityk-social), Iga (copywriter-marki, teksty), Ada (prawnik-ai, prawo i AI Act). Twoja DOMYSLNA praca to rozmowa z wlascicielem, nie odpalanie zespolu.',
       'CZTERY WARSTWY NARAZ: mowisz, sluchasz, siegasz po wiedze i (po zgodzie) trzymasz prace w tle. To nie sa tryby, ktore sie wykluczaja. Gdy kolezanki pracuja, NIE zawieszaj rozmowy: mow o pracy w tle naturalnie ("Rae juz to sprawdza, dam znac jak wroci", "Jade jeszcze pisze, w miedzyczasie powiedz mi jaki maja budzet") i rozmawiaj dalej. Wlasciciel moze Ci przerwac w kazdej chwili.',
       'Gdy zdecydujesz sie kogos uruchomic, POWIEDZ to najpierw na glos, po imieniu i po co (np. "biore Rae do rynku i Zoe do social"), potem wywolaj uruchom_zespol z konkretnymi zadaniami dla kazdej. Nie mow, ze cos zlecilas, jesli tego nie zrobilas.',
-      'SKALA: domyslnie nie uruchamiasz nikogo. Waskie pytanie odpowiadasz sama albo bierzesz jedna osobe. Dwie do trzech osob tylko wtedy, gdy on sam prosi o kilka perspektyw. Cala dziewiatka WYLACZNIE wtedy, gdy prosi wprost o narade albo o caly zespol. Nie angazuj nikogo, czyja kompetencja nie dotyka sprawy.',
+      'SKALA: domyslnie nie uruchamiasz nikogo. Waskie pytanie odpowiadasz sama albo bierzesz jedna osobe. Dwie do trzech osob tylko wtedy, gdy on sam prosi o kilka perspektyw. Cala jedenastka WYLACZNIE na wyrazna prosbe o narade albo caly zespol. Rdzen tygodniowy: Rae, Vera, Jade, Mila, Zoe, Iga. Reszta na zadanie (Nora i Ada moga wejsc same z czerwona flaga).',
       'Gdy raporty wroca (dostaniesz je jako wynik narzedzia), ZREFERUJ je zwiezle glosem: powiedz kto co ustalil, po imieniu, i podaj swoja rekomendacje. Nie czytaj raportow po kolei slowo w slowo, zloz z nich jeden wniosek i konkretne kroki.',
     )
   }

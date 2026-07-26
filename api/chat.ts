@@ -79,11 +79,16 @@ const AGENCI_Z_WEBEM = new Set([
   'opiekun-klienta',
   'drugi-glos',
   'analityk-social',
+  'copywriter-marki',
+  'prawnik-ai',
 ])
+// Ada (prawnik-ai) dostaje 5 zamiast 3: przepisy zyja (AI Act, RODO, wytyczne
+// organow, warunki dostawcow), a kazdy artykul podaje z linkiem i data sprawdzenia.
 const LIMITY_WEB: Record<string, number> = {
   analityk: 8,
   operacje: 6,
   'analityk-social': 5,
+  'prawnik-ai': 5,
 }
 const LIMIT_WEB_DOMYSLNY = 3
 const LIMIT_WEB_MAX = 10

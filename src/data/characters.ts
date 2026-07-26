@@ -11,6 +11,10 @@ export type HairKey =
   | 'auburn'
   | 'srebrny'
   | 'siwiejacy'
+  /** cieply ciemny blond z rozjasnieniami (Iga, awatar copywriter-marki.png) */
+  | 'blond-cieply'
+  /** jasny blond (Ada, awatar prawnik-ai.png) */
+  | 'blond-jasny'
 export type HairStyle =
   | 'bob-krotki'
   | 'krotkie-siwe'
@@ -23,6 +27,8 @@ export type HairStyle =
   | 'krotkie-siwiejace'
   | 'bob-asymetryczny'
   | 'lysina-broda'
+  /** dlugie fale z przedzialkiem z boku, duza objetosc (Iga) */
+  | 'dlugie-fale'
 export type Brow = 'neutralne' | 'uniesiona' | 'skupione' | 'miekkie'
 export type Eyes = 'wprost' | 'skupione' | 'cieple'
 export type Mouth =
@@ -63,6 +69,10 @@ export type Signature =
   | 'lysina-broda'
   | 'bob'
   | 'pin'
+  /** dlugie fale (Iga): sylwetka wlosow czytelna juz w 40px */
+  | 'fale'
+  /** dluga jasna grzywa (Ada): najjasniejsze wlosy w zespole */
+  | 'dlugie-blond'
 
 /** Pelna karta jednej postaci. Kazde pole = dokladna wartosc rysowana w SVG. */
 export interface CharacterCard {
@@ -180,16 +190,20 @@ export const hairPal: Record<
   auburn: { base: '#6E3B26', shadow: '#4C2618' },
   srebrny: { base: '#C9C7C9', shadow: '#A6A4A7' },
   siwiejacy: { base: '#33261F', shadow: '#1C120E', temple: '#B7B4B6' },
+  // Odcienie zmierzone z awatarow PNG (probka pasma wlosow, zdjeta poswiata neonu).
+  'blond-cieply': { base: '#8B6438', shadow: '#5F4324' },
+  'blond-jasny': { base: '#C6A472', shadow: '#96774F' },
 }
 
 /** Miedziane pasmo (Analityk Social, tylko detail). */
 export const COPPER_STREAK = '#B5643C'
 
 /* -------------------------------------------------------------------------- */
-/* 10 kart postaci V2 (sekcja 1.8), kluczowane slugiem z agents.ts.           */
-/* Rozklad roznorodnosci: ksztalt twarzy owalna x3 / kanciasta x3 /           */
-/* okragla x2 / pociagla x2; budowa szerokie x2 / waskie x3 / pochylone x2 /  */
-/* normalne x3; wiek mlody x2 / dojrzaly x5 / starszy x3.                      */
+/* 12 kart postaci (sekcja 1.8), kluczowane slugiem z agents.ts.              */
+/* Rozklad roznorodnosci po dolozeniu Igi i Ady: ksztalt twarzy owalna x4 /   */
+/* kanciasta x3 / okragla x2 / pociagla x3; budowa szerokie x2 / waskie x3 /  */
+/* pochylone x2 / normalne x5; wiek mlody x3 / dojrzaly x6 / starszy x3.      */
+/* Zaden znak roli (signature) sie nie powtarza.                              */
 /* -------------------------------------------------------------------------- */
 
 export const characters: Record<string, CharacterCard> = {
@@ -390,6 +404,51 @@ export const characters: Record<string, CharacterCard> = {
     accessory: 'earbud',
     collar: 'otwarty',
     signature: 'earbud',
+  },
+  // 10. Iga, copywriterka marki: wyglad wg awatara copywriter-marki.png.
+  // Dlugie, mocno faliste wlosy w cieplym ciemnym blondzie z rozjasnieniami,
+  // opalona cera, szeroki usmiech z zebami, mala kolczyk-obreczka, czarna
+  // marynarka z klapa. Znak roli: objetosc fal (czytelna juz w 40px).
+  'copywriter-marki': {
+    faceShape: 'owalna',
+    build: 'normalne',
+    age: 'mlody',
+    jaw: 'soft',
+    skin: 'ciepla',
+    skinLight: true,
+    hairStyle: 'dlugie-fale',
+    hairColor: 'blond-cieply',
+    brow: 'miekkie',
+    eyes: 'cieple',
+    mouth: 'usmiech-otwarty',
+    eyeSet: 0,
+    glasses: 'brak',
+    facialHair: 'brak',
+    accessory: 'kolczyk',
+    collar: 'lapel',
+    signature: 'fale',
+  },
+  // 11. Ada, prawniczka AI: wyglad wg awatara prawnik-ai.png.
+  // Dlugie jasne wlosy opadajace ponizej barkow, pociagla twarz, spokojny
+  // usmiech i skupione spojrzenie, czarna marynarka z klapa. Znak roli:
+  // najjasniejsza grzywa w zespole (odroznia od auburn Elli przy tej samej dlugosci).
+  'prawnik-ai': {
+    faceShape: 'pociagla',
+    build: 'normalne',
+    age: 'dojrzaly',
+    jaw: 'soft',
+    skin: 'ciepla',
+    hairStyle: 'do-ramion',
+    hairColor: 'blond-jasny',
+    brow: 'neutralne',
+    eyes: 'skupione',
+    mouth: 'usmiech',
+    eyeSet: 0,
+    glasses: 'brak',
+    facialHair: 'brak',
+    accessory: 'kolczyk',
+    collar: 'lapel',
+    signature: 'dlugie-blond',
   },
 }
 

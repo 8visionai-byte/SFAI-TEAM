@@ -426,49 +426,77 @@ function MapaNeuronu({
   const specTarget = compact ? 74 : 130
 
   // Zapas przy krawedzi panelu na podpis (imie + rola) RADIALNIE NA ZEWNATRZ.
-  // Liczony dla NAJWIEKSZEGO portretu (rezerwa) -> gdy portret zmaleje, podpis i
-  // tak sie miesci, a plotno NIGDY nie przewija sie w poziomie. Poziomo > pionowo.
-  const margX = compact ? 100 : 176
+  // BAZOWY (pesymistyczny) zapas: liczony dla NAJWIEKSZEGO portretu i NAJSZERSZEGO
+  // podpisu. Sluzy do pierwszego przejscia; drugie przejscie oddaje mapie tyle
+  // miejsca, ile realnie zostaje, gdy portret i podpis sa mniejsze (duze N).
+  const margXbaza = compact ? 100 : 176
   const margY = compact ? 88 : 132
 
-  // Promienie owalu liczone OSOBNO z szerokosci i wysokosci. Podlogi to tylko
-  // zabezpieczenie na zdegenerowane wymiary; normalnie decyduje w/2 - marg.
-  const Rx = Math.max(compact ? 40 : 120, w / 2 - margX)
-  let Ry = Math.max(compact ? 100 : 150, h / 2 - margY)
-  // Na waskim mobile nie pozwalamy owalowi zrobic sie zbyt wysokim i chudym, bo
-  // wtedy wezly kumuluja sie przy biegunach (za maly odstep). Rundszy owal =
-  // rownomierne rozlozenie sasiadow.
-  if (compact) Ry = Math.min(Ry, Rx * 2.4)
-
-  // Dokladne odleglosci na owalu (nie z przyblizenia kolowego): najmniejszy odstep
-  // sasiadow (dobor rozmiaru specjalisty) i najmniejsza odleglosc wezla od srodka
-  // (dobor rozmiaru COO). Pozycje zaleza tylko od Rx/Ry/N, wiec licze je tutaj.
-  let minAdj = Infinity
-  let minDist = Infinity
-  for (let i = 0; i < N; i++) {
-    const th = -Math.PI / 2 + i * ((2 * Math.PI) / N)
-    const px1 = cx + Rx * Math.cos(th)
-    const py1 = cy + Ry * Math.sin(th)
-    const d = Math.hypot(px1 - cx, py1 - cy)
-    if (d < minDist) minDist = d
-    const th2 = -Math.PI / 2 + ((i + 1) % N) * ((2 * Math.PI) / N)
-    const px2 = cx + Rx * Math.cos(th2)
-    const py2 = cy + Ry * Math.sin(th2)
-    const ad = Math.hypot(px1 - px2, py1 - py2)
-    if (ad < minAdj) minAdj = ad
-  }
-  if (!Number.isFinite(minAdj)) minAdj = 2 * Rx
-  if (!Number.isFinite(minDist)) minDist = Math.min(Rx, Ry)
-
-  // Skala dla duzej liczby agentow (N>10): dodatkowo zmniejsza specjalistow.
+  // Skala dla duzej liczby agentek (N>10): dodatkowo zmniejsza specjalistki.
   const skalaN = N > 10 ? 10 / N : 1
-  // Bok portretu specjalisty: docelowy*skalaN, ale nie wiecej niz pozwala odstep
-  // sasiadow (brak nachodzenia), i nie mniej niz sensowne minimum.
   const odstep = compact ? 10 : 18
-  const specPx = Math.max(
-    compact ? 40 : 92,
-    Math.min(Math.round(specTarget * skalaN), Math.round(minAdj - odstep)),
+  const offDod = compact ? 28 : 44
+
+  /**
+   * Promienie owalu + najmniejszy odstep sasiadow (chord) i najmniejsza odleglosc
+   * wezla od srodka. Liczone DOKLADNIE z pozycji na owalu, nie z przyblizenia
+   * kolowego, bo owal bywa mocno splaszczony.
+   */
+  function owal(marg: number) {
+    const rx = Math.max(compact ? 40 : 120, w / 2 - marg)
+    let ry = Math.max(compact ? 100 : 150, h / 2 - margY)
+    // Na waskim mobile nie pozwalamy owalowi zrobic sie zbyt wysokim i chudym, bo
+    // wtedy wezly kumuluja sie przy biegunach (za maly odstep). Rundszy owal =
+    // rownomierne rozlozenie sasiadow.
+    if (compact) ry = Math.min(ry, rx * 2.4)
+    let adj = Infinity
+    let dist = Infinity
+    for (let i = 0; i < N; i++) {
+      const th = -Math.PI / 2 + i * ((2 * Math.PI) / N)
+      const px1 = cx + rx * Math.cos(th)
+      const py1 = cy + ry * Math.sin(th)
+      const d = Math.hypot(px1 - cx, py1 - cy)
+      if (d < dist) dist = d
+      const th2 = -Math.PI / 2 + ((i + 1) % N) * ((2 * Math.PI) / N)
+      const px2 = cx + rx * Math.cos(th2)
+      const py2 = cy + ry * Math.sin(th2)
+      const ad = Math.hypot(px1 - px2, py1 - py2)
+      if (ad < adj) adj = ad
+    }
+    if (!Number.isFinite(adj)) adj = 2 * rx
+    if (!Number.isFinite(dist)) dist = Math.min(rx, ry)
+    return { rx, ry, adj, dist }
+  }
+
+  /** Bok portretu specjalistki: docelowy*skalaN, ograniczony odstepem sasiadow. */
+  const bokSpec = (adj: number) =>
+    Math.max(
+      compact ? 40 : 92,
+      Math.min(Math.round(specTarget * skalaN), Math.round(adj - odstep)),
+    )
+  /**
+   * Szerokosc podpisu. Na mobile ADAPTACYJNA: przy 11-12 wezlach sasiedzi przy
+   * biegunach owalu stoja ~45 px od siebie, wiec sztywne 64 px kazalo podpisom
+   * na siebie nachodzic. Na desktopie zostaje 120 px (miejsca jest dosc).
+   */
+  const bokPodpisu = (adj: number) =>
+    compact ? Math.max(40, Math.min(64, Math.round(adj - 6))) : 120
+
+  // PRZEBIEG 1: zapas pesymistyczny, tylko po to, zeby poznac realny rozmiar
+  // portretu i podpisu przy tej liczbie wezlow.
+  const p1 = owal(margXbaza)
+  const spec1 = bokSpec(p1.adj)
+  const ety1 = bokPodpisu(p1.adj)
+
+  // PRZEBIEG 2: realny zapas = polowa podpisu + offset podpisu od srodka wezla
+  // + 6 px luzu. Nigdy wiekszy od bazowego, wiec dla malej liczby wezlow uklad
+  // zostaje taki jak dotad, a przy 11-12 owal dostaje kilkanascie px wiecej.
+  const margX = Math.min(
+    margXbaza,
+    Math.max(compact ? 56 : 120, spec1 / 2 + offDod + ety1 / 2 + 6),
   )
+  const { rx: Rx, ry: Ry, adj: minAdj, dist: minDist } = owal(margX)
+  const specPx = bokSpec(minAdj)
   // Bok portretu COO: docelowy, ale ograniczony tak, by najblizszy specjalista go
   // nie dotykal (2*(odleglosc - promien specjalisty - luz)). Podloga trzyma sensowny
   // rozmiar na bardzo waskich ekranach (dopuszczalne minimalne musniecie jak dawniej).
@@ -485,7 +513,14 @@ function MapaNeuronu({
 
   // Podpis (imie + rola) na zewnatrz: od srodka wezla o promien portretu + zapas,
   // by nie kolidowal z mikrofonem-nakladka przy dolnej krawedzi awatara.
-  const off = specPx / 2 + (compact ? 28 : 44)
+  const off = specPx / 2 + offDod
+
+  // Szerokosc podpisu po drugim przebiegu + TWARDY zacisk: podpis nie moze wyjsc
+  // poza plotno (poziome przewijanie mapy jest niedopuszczalne).
+  const etyPx = Math.min(
+    bokPodpisu(minAdj),
+    Math.max(36, Math.round(2 * (w / 2 - Rx - off))),
+  )
 
   // Bok przycisku-mikrofonu (nakladka przy dolnej krawedzi awatara).
   const micPx = compact ? 34 : 40
@@ -848,6 +883,14 @@ function MapaNeuronu({
         const tytulGlos = wRozmowie
           ? `Zakoncz rozmowe z ${imie}`
           : `Kliknij, aby porozmawiac glosem z ${imie}`
+        // Druga linia podpisu: rozmowa > stan pracy > rola (rola tylko na desktopie).
+        const stanKrotki =
+          stan === 'active' ? 'Pracuje...' : stan === 'done' ? 'Gotowe' : null
+        const drugaLinia = wRozmowie
+          ? etykietaRozmowy(rozmowaStan, imie)
+          : compact
+            ? stanKrotki
+            : a.role
 
         // Podpis (imie + rola) NA ZEWNATRZ wzdluz wektora (ox, oy) od srodka.
         const etyX = n.nx + n.ox * off
@@ -931,12 +974,15 @@ function MapaNeuronu({
               </div>
             </div>
 
-            {/* Imie (+ rola/status) RADIALNIE NA ZEWNATRZ. Klik w imie = profil. */}
+            {/* Imie (+ rola/status) RADIALNIE NA ZEWNATRZ. Klik w imie = profil.
+                Szerokosc jest wyliczona (etyPx), nie sztywna: przy 11-12 wezlach
+                na mobile podpisy sasiadow inaczej by na siebie wchodzily. */}
             <div
-              className={`absolute z-10 ${compact ? 'w-[64px]' : 'w-[120px]'} text-center leading-tight transition-opacity duration-300 ${opacityCls}`}
+              className={`absolute z-10 text-center leading-tight transition-opacity duration-300 ${opacityCls}`}
               style={{
                 left: etyX,
                 top: etyY,
+                width: etyPx,
                 transform: 'translate(-50%,-50%)',
               }}
             >
@@ -960,14 +1006,20 @@ function MapaNeuronu({
                   </span>
                 </Link>
               )}
-              <div
-                className="mt-0.5 text-[0.64rem] font-medium"
-                style={{ color: rolaKolor }}
-              >
-                <span className={rolaKolor ? undefined : 'text-zinc-400'}>
-                  {wRozmowie ? etykietaRozmowy(rozmowaStan, imie) : a.role}
-                </span>
-              </div>
+              {/* Druga linia podpisu. Na mobile NIE pokazujemy pelnej roli: przy
+                  11-12 wezlach podpis ma ~45 px szerokosci, wiec rola zawijala sie
+                  na 3-4 linie i wchodzila na sasiadow. Zostaje sam stan (krotki),
+                  a pelna rola jest na kafelku zespolu i w profilu. */}
+              {drugaLinia && (
+                <div
+                  className="mt-0.5 text-[0.64rem] font-medium"
+                  style={{ color: rolaKolor }}
+                >
+                  <span className={rolaKolor ? undefined : 'text-zinc-400'}>
+                    {drugaLinia}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         )

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, Mic, Sparkles } from 'lucide-react'
-import { coo, teamAgents, type Agent } from '../data/agents'
+import { agents, coo, teamAgents, type Agent } from '../data/agents'
 import AgentCard from '../components/AgentCard'
 import Avatar from '../components/Avatar'
 import RozmowaGlosowa from '../components/RozmowaGlosowa'
@@ -20,9 +20,9 @@ export default function Team() {
           Twoj zespol AI
         </h1>
         <p className="mt-3 max-w-2xl text-[0.975rem] leading-relaxed text-zinc-400">
-          Dziesieciu agentow SimpleFast.ai. Powiedz COO swoj cel, on rozlozy go
-          na zadania i deleguje do reszty zespolu. Albo wejdz wprost do
-          konkretnego specjalisty.
+          {agents.length} agentek SimpleFast.ai. Powiedz COO swoj cel, ona
+          rozlozy go na zadania i deleguje do reszty zespolu. Albo wejdz wprost
+          do konkretnej specjalistki.
         </p>
       </header>
 
@@ -79,10 +79,12 @@ export default function Team() {
 
       <div className="mb-4 flex items-center gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-400">
-          Specjalisci
+          Specjalistki
         </h2>
         <div className="h-px flex-1 bg-zinc-800" />
-        <span className="text-xs text-zinc-600">9 kafelkow</span>
+        <span className="text-xs text-zinc-600">
+          {teamAgents.length} kafelkow
+        </span>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">

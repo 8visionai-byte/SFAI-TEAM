@@ -4,7 +4,7 @@ import { buildAvatarInner } from '../lib/avatarSvg'
 
 /**
  * Parametryczny portret persony rysowany wektorowo w SVG (viewBox 0 0 96 96).
- * Jeden komponent rysuje wszystkie 10 postaci z tabeli `characters.ts`.
+ * Jeden komponent rysuje wszystkie 12 postaci z tabeli `characters.ts`.
  * Zero zewnetrznych assetow: postac jest kodem, ostra w kazdym rozmiarze.
  *
  * Cala geometria i cieniowanie zyje we WSPOLNYM rendererze `lib/avatarSvg.ts`
@@ -14,7 +14,7 @@ import { buildAvatarInner } from '../lib/avatarSvg'
  * -> rim (2 luki) -> brwi -> oczy (migdal) -> nos -> wiek -> zarost -> usta
  * -> wlosy front -> okulary -> akcesoria (znak roli zawsze).
  *
- * Kazdy <defs> ma id sufiksowane slugiem (do 10 awatarow na stronie: kolizja
+ * Kazdy <defs> ma id sufiksowane slugiem (do 12 awatarow na stronie: kolizja
  * id = bledne gradienty). To WYMOG.
  *
  * Gdy brak karty dla sluga -> zwraca null (Avatar pokazuje wtedy inicjaly).
