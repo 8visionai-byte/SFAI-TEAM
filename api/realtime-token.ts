@@ -131,11 +131,14 @@ export default async function handler(req: any, res: any) {
   const model = typeof body?.model === 'string' && MODELE_OK.includes(body.model)
     ? body.model
     : OPENAI_REALTIME_MODEL
-  // OpenAI Realtime ma twardy limit 16384 tokenow na instrukcje. Tniemy do
-  // bezpiecznej dlugosci znakowej (ok. 40000 znakow ~ 12-13k tokenow), zeby
-  // sesja nigdy nie padla na 400 za dlugie instrukcje. Klient i tak wysyla
-  // zwiezly prompt glosowy (buildVoicePrompt), to jest zabezpieczenie.
-  const MAX_INSTR = 40000
+  // OpenAI Realtime ma twardy limit 16384 TOKENOW na instrukcje (nie znakow).
+  // Nasz sufit jest znakowy, bo tokenow nie policzymy po stronie przegladarki.
+  // Wartosc dobrana POMIAREM na zywym API (patrz `testy/pomiar-limitu-instrukcji.mjs`),
+  // nie oszacowaniem: polski tekst promptow person wychodzi w okolicach 2,9-3,1
+  // znaku na token, wiec 40 000 znakow zostawialo kilka tysiecy tokenow
+  // niewykorzystanych. Zapas ponizej zmierzonej granicy zostaje celowo, bo
+  // wlasciciel edytuje Karte Mozgu i persony, a te rosna.
+  const MAX_INSTR = Number(process.env.MAX_INSTRUKCJE_ZNAKI ?? 46000)
   const raw = typeof body?.instructions === 'string' ? body.instructions : ''
   const instructions = raw.length > 0
     ? raw.slice(0, MAX_INSTR)

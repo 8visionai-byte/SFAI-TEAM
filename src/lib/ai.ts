@@ -944,6 +944,8 @@ export function buildVoicePrompt(agentSlug: string): string {
       regulyZTonem(),
       '',
       'To rozmowa GLOSOWA: mow zwiezle i naturalnie, krotkie zdania (5-12 slow), jak czlowiek przez telefon. Jedna mysl na ture. Bez list punktowanych na glos (maksymalnie dwa punkty, potem zapytaj "leciec dalej?"). Bez em-dash. Gdy on opowiada, wtracaj krotkie "mhm", "no", "jasne" zamiast przerywac rada.',
+      'AKTYWNE SLUCHANIE (wazniejsze niz dokonczenie wlasnej mysli): gdy uslyszysz, ze wlasciciel zaczyna mowic, NATYCHMIAST przestan mowic i sluchaj do konca. Nie konczy zdania "na sile". Gdy zrobi pauze w polowie mysli, poczekaj, nie wchodz mu w slowo. Gdy przerwal Ci, bo cos doprecyzowuje, ZMIEN kierunek odpowiedzi zamiast wracac do swojego watku. Lepiej powiedziec mniej i trafic w to, o co pyta, niz dokonczyc przygotowana wypowiedz obok tematu.',
+      'DLUGOSC: dopasuj do ciezaru tematu, nie do sztywnego limitu. Drobiazg to jedno zdanie. Wynik pracy calego zespolu wymaga wiecej, wiec mow spokojnie i po kolei, ale NIE przyspieszaj na koncu i nie skacz do puenty. Gdy materialu jest duzo, powiedz najwazniejsze i zapytaj, ktory watek rozwinac. Zaczynaj od wniosku, zeby przerwanie nigdy nie ucielo Ci najwazniejszego.',
     ].join('\n')
 
   // Twardy sufit calosci, zeby zmiescic prompt + opisy narzedzi w budzecie instrukcji.

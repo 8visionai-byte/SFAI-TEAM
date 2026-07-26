@@ -140,7 +140,13 @@ for (const slug of SLUGI) {
   const p = mod.buildVoicePrompt(slug)
   max = Math.max(max, p.length)
   const zasady = p.includes('ZAKAZANE ZWROTY')
-  const nota = p.trimEnd().endsWith('zamiast przerywac rada.')
+  // Koncowka promptu glosowego to od 2026-07-26 zasada o DLUGOSCI wypowiedzi
+  // (po niej nic juz nie ma), a tuz przed nia AKTYWNE SLUCHANIE. Obie musza
+  // przetrwac ciecie, bo to one pilnuja, zeby Lea nie wchodzila w slowo i nie
+  // urywala odpowiedzi w polowie.
+  const nota =
+    p.includes('AKTYWNE SLUCHANIE') &&
+    p.trimEnd().endsWith('zeby przerwanie nigdy nie ucielo Ci najwazniejszego.')
   if (p.length > LIMIT || !zasady || !nota) bledy++
   console.log(
     slug.padEnd(17),

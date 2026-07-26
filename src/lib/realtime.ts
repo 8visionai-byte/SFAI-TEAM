@@ -295,11 +295,21 @@ export async function startRozmowa(
         input: {
           // Bez 'format': przy WebRTC audio idzie jako Opus negocjowany w SDP.
           // Wymuszanie audio/pcm psulo dekodowanie wejscia -> brak speech_started.
+          // AKTYWNE SLUCHANIE (2026-07-26, raport wlasciciela: "nie sluchala
+          // mnie w polowie, tylko zaczela mowic"). Dwa osobne ustawienia:
+          //  - silence_duration_ms mowi, ile ciszy oznacza "skonczylem".
+          //    500 ms to za malo dla kogos, kto w srodku zdania sie zastanawia:
+          //    model wchodzil w slowo. 900 ms daje czas na oddech i namysl,
+          //    a nadal nie sprawia wrazenia opoznienia.
+          //  - threshold to czulosc na POCZATEK mowy. Nizszy prog = szybsze
+          //    wejscie w barge-in, czyli Lea milknie, gdy tylko zaczynasz mowic.
+          //    Echo wlasnego glosu odsiewa echoCancellation w getUserMedia plus
+          //    noise_reduction ponizej.
           turn_detection: {
             type: 'server_vad',
-            threshold: 0.5,
+            threshold: 0.42,
             prefix_padding_ms: 300,
-            silence_duration_ms: 500,
+            silence_duration_ms: 900,
             create_response: true, // KLUCZOWE: model sam odpowiada po mowie usera
             interrupt_response: true, // user moze przerwac mowiacy model (barge-in)
           },
@@ -954,7 +964,7 @@ export async function startRozmowa(
     const tresc = await zsyntetyzujDoGlosu(polaczone, wybrane.length)
     opcje.onZespol?.({ typ: 'gotowe', agent: '' })
 
-    odeslijRaportyZespolu(callId, true, tresc)
+    odeslijRaportyZespolu(callId, true, tresc, wybrane.length)
   }
 
   /**
@@ -1034,7 +1044,13 @@ export async function startRozmowa(
    * Odsyla wynik uruchom_zespol jako function_call_output i (bezpiecznie wzgledem
    * wspolbieznosci) prosi model o dokonczenie glosem. output MUSI byc stringiem.
    */
-  function odeslijRaportyZespolu(callId: string, ok: boolean, raporty: string) {
+  function odeslijRaportyZespolu(
+    callId: string,
+    ok: boolean,
+    raporty: string,
+    ile = 1,
+  ) {
+    const raportyDl = raporty.length
     // Odsyla wynik (podnosi licznik nieskonsumowanego outputu), potem bezpiecznie
     // wzgledem wspolbieznosci prosi model o dokonczenie glosem (kolejkuje, gdy user
     // ma teraz wlasna aktywna odpowiedz - odpali sie na response.done z guardem).
@@ -1042,16 +1058,36 @@ export async function startRozmowa(
     // Instrukcja + TWARDY limit dlugosci na te jedna odpowiedz. Bez limitu model
     // potrafil referowac narade kilka minut, co jest nie do sluchania i dobijalo
     // okno kontekstu sesji (raport wlasciciela 2026-07-26).
-    // Wynik narady dostajesz W CALOSCI (to Twoja wiedza), ale na glos idzie
-    // tylko esencja. Reszta zostaje w kontekscie na dopytania wlasciciela.
+    // DLUGOSC ODPOWIEDZI DOPASOWANA DO ZLOZONOSCI (2026-07-26, raport
+    // wlasciciela: "chciala sie zmiescic w minute i nagle urwala, nie
+    // powiedziala wszystkiego"). Sztywne 1500 tokenow i polecenie "najwyzej
+    // minute" byly dobre dla trzech agentek, a dusily narade calego zespolu.
+    // Teraz budzet rosnie z liczba osob i objetoscia materialu, a instrukcja
+    // nie narzuca czasu, tylko KOLEJNOSC: najwazniejsze naprzod, zeby nawet
+    // przerwana wypowiedz zawierala to, co istotne.
+    const limitMowy = Math.max(
+      2000,
+      Math.min(6000, 1200 + 320 * ile + Math.round(raportyDl / 40)),
+    )
+    const ileMinut = limitMowy >= 4500 ? 'dwie do trzech minut' : limitMowy >= 3000 ? 'okolo dwoch minut' : 'okolo minuty'
     wyslijResponseCreate('function-output:uruchom_zespol', {
       instructions:
         'Masz teraz PELNY wynik narady zespolu. To Twoja wiedza: pamietaj konkrety, liczby i rozbieznosci, bo wlasciciel bedzie dopytywal. ' +
-        'NA GLOS powiedz tylko esencje, najwyzej minute: jedno zdanie rekomendacji, potem najwazniejsze ustalenia po imieniu (kto co wniosl, konkretem, nie ogolnikiem), jedna rozbieznosc albo ryzyko jesli sa, i jeden konkretny nastepny krok. ' +
-        'Zakoncz pytaniem, o ktory watek rozwinac. NIE czytaj materialu po kolei, NIE powtarzaj tego samego dwa razy, NIE mow "nie wiem", jesli odpowiedz jest w materiale. ' +
+        `NA GLOS masz ${ileMinut}, ale mow tyle, ile temat naprawde wymaga, i ani slowa wiecej. ` +
+        'KOLEJNOSC jest wazniejsza niz dlugosc: zacznij od jednego zdania rekomendacji, potem najwazniejsze ustalenia po imieniu (kto co wniosl, konkretem, nie ogolnikiem), potem rozbieznosci i ryzyka, na koncu konkretny nastepny krok. ' +
+        'Dzieki tej kolejnosci nawet przerwana wypowiedz niesie to, co istotne. Nie przyspieszaj na koncu i nie skacz do puenty: gdy czujesz, ze materialu jest duzo, powiedz najwazniejsze i zapytaj, ktory watek rozwinac. ' +
+        'NIE czytaj materialu po kolei, NIE powtarzaj tego samego dwa razy, NIE mow "nie wiem", jesli odpowiedz jest w materiale. ' +
         'Gdy w materiale stoi "BRAK TRESCI W RAPORTACH", powiedz to wprost i zaproponuj, kogo uruchomic ponownie i z jakim pytaniem.',
-      max_output_tokens: 1500,
+      max_output_tokens: limitMowy,
     })
+    console.info(
+      '[realtime] limit wypowiedzi po naradzie:',
+      limitMowy,
+      'tokenow (agentek:',
+      ile + ', material:',
+      raportyDl,
+      'znakow)',
+    )
   }
 
   /**
