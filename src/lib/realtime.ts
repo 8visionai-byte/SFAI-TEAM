@@ -41,12 +41,19 @@ export type KtoMowi = 'user' | 'agent'
 
 /**
  * Zdarzenie orkiestracji zespolu (narzedzie uruchom_zespol, tylko COO):
- *  - 'start'  specjalista ruszyl do pracy (slug),
- *  - 'koniec' specjalista skonczyl,
- *  - 'raport' pelna tresc raportu specjalisty (pole tresc).
+ *  - 'start'   specjalista ruszyl do pracy (slug),
+ *  - 'koniec'  specjalista skonczyl,
+ *  - 'raport'  pelna tresc raportu specjalisty (pole tresc),
+ *  - 'sklada'  wszystkie raporty wrocily, COO sklada z nich jedna rekomendacje,
+ *  - 'gotowe'  synteza skonczona, za chwile COO zacznie mowic.
+ *
+ * Dwa ostatnie dodane 2026-07-26 po raporcie wlasciciela: "widze, ze zespol
+ * skonczyl, a ona dalej nie mowi". Miedzy koncem pracy specjalistek a poczatkiem
+ * wypowiedzi jest realny etap skladania i UI musi go pokazac, inaczej wyglada to
+ * na zwiechę. Pole `agent` jest wtedy puste.
  */
 export interface ZdarzenieZespolu {
-  typ: 'start' | 'koniec' | 'raport'
+  typ: 'start' | 'koniec' | 'raport' | 'sklada' | 'gotowe'
   agent: string
   tresc?: string
 }
@@ -883,12 +890,30 @@ export async function startRozmowa(
     // Zapal wszystkich naraz (UI: zespol rusza do pracy).
     wybrane.forEach((z) => opcje.onZespol?.({ typ: 'start', agent: z.agent }))
 
+    // KONTEKST DLA SPECJALISTKI (fix 2026-07-26). Wczesniej agentka dostawala
+    // samo zadanie od Lei, bez pytania wlasciciela. Przy pytaniu "jaki produkt
+    // powinnismy teraz stworzyc" Lea rozbijala je na waskie zlecenia w rodzaju
+    // "sprawdz trendy", nikt nie widzial calosci i nikt nie odpowiadal na
+    // pytanie glowne. Efekt: zespol pracowal, a Lea konczyla slowem "nie wiem".
+    // Teraz kazda dostaje ORYGINALNE pytanie plus swoja czesc.
+    const pytanieWlasciciela = ostatniaWypowiedzUsera.trim()
+    const zbudujZlecenie = (zadanie: string) =>
+      pytanieWlasciciela
+        ? [
+            `PYTANIE WLASCICIELA (kontekst calej narady): ${pytanieWlasciciela}`,
+            '',
+            `TWOJA CZESC: ${zadanie}`,
+            '',
+            'Odpowiedz ze swojej roli, ale pamietaj, po co to jest: Twoj wynik ma pomoc odpowiedziec na pytanie wlasciciela. Jesli z Twojej dzialki wynika cos wazniejszego niz sama Twoja czesc, powiedz to. Konkrety, liczby ze zrodlem i data, bez wypelniaczy. Gdy czegos nie wiesz, napisz wprost czego brakuje.',
+          ].join('\n')
+        : zadanie
+
     // Realne, ROWNOLEGLE wywolania specjalistow (Anthropic). sendMessage sam
     // lapie bledy i zwraca tekst, wiec Promise.all nigdy nie odrzuci.
     const raporty = await Promise.all(
       wybrane.map(async (z) => {
         const raport = await sendMessage(z.agent, [
-          { role: 'user', content: z.zadanie },
+          { role: 'user', content: zbudujZlecenie(z.zadanie) },
         ])
         opcje.onZespol?.({ typ: 'koniec', agent: z.agent })
         opcje.onZespol?.({ typ: 'raport', agent: z.agent, tresc: raport })
@@ -922,48 +947,86 @@ export async function startRozmowa(
     // Rozwiazanie: raporty skladamy w JEDNA rekomendacje TEKSTOWO (tanio, poza
     // sesja glosowa), a do modelu wpuszczamy tylko ja. Kontekst spada
     // kilkukrotnie, a Lea referuje wniosek zamiast czytac cudze raporty.
+    // UI: raporty wrocily, teraz COO sklada. Bez tego sygnalu wszystkie wezly
+    // sa juz zielone, a Lea milczy jeszcze kilkanascie sekund i wyglada to na
+    // zawieszenie (raport wlasciciela 2026-07-26).
+    opcje.onZespol?.({ typ: 'sklada', agent: '' })
     const tresc = await zsyntetyzujDoGlosu(polaczone, wybrane.length)
+    opcje.onZespol?.({ typ: 'gotowe', agent: '' })
 
     odeslijRaportyZespolu(callId, true, tresc)
   }
 
-  /** Gorny limit tego, co wpuszczamy do sesji glosowej jako wynik narady. */
-  const LIMIT_SYNTEZY = 1800
+  /**
+   * Gorny limit tresci narady wpuszczanej do sesji glosowej.
+   *
+   * 9 000 znakow to okolo 3 300 tokenow. Przy instrukcjach sesji (okolo 38 500
+   * znakow) zostaje jeszcze spory zapas okna kontekstu na sama rozmowe, a Lea
+   * dostaje MERYTORYCZNY material, nie streszczenie streszczenia.
+   * Historia limitu: 13 200 znakow surowych raportow wysadzalo kontekst (Lea
+   * urywala i zaczynala od poczatku), ale zejscie do 900 znakow bylo przesada w
+   * druga strone: na pytanie "jaki produkt zrobic" odpowiadala "nie wiem", mimo
+   * ze zespol wlasnie to zbadal (raport wlasciciela 2026-07-26).
+   */
+  const LIMIT_SYNTEZY = 9000
 
   /**
-   * Sklada raporty zespolu w jedna zwiezla rekomendacje DO POWIEDZENIA NA GLOS.
-   * Robi to zwyklym wywolaniem tekstowym (Anthropic), poza sesja realtime, wiec
-   * nie obciaza okna kontekstu rozmowy. Gdy synteza sie nie uda, wraca do
-   * przycietych raportow surowych: gorzej, ale rozmowa dziala dalej.
+   * Sklada raporty zespolu w JEDEN material dla Lei. Robi to zwyklym wywolaniem
+   * tekstowym (Anthropic), poza sesja realtime, wiec praca modelu glosowego nie
+   * rosnie o cale raporty. Wynik ma byc BOGATY W TRESC (konkrety, liczby ze
+   * zrodlem, rozbieznosci miedzy osobami), a o tym, ile z tego pojdzie na glos,
+   * decyduje osobna instrukcja przy response.create.
+   * Gdy synteza sie nie uda, wracamy do surowych raportow: gorzej poukladane,
+   * ale wlasciciel dostaje wiedze, a nie "nie wiem".
    */
   async function zsyntetyzujDoGlosu(
     surowe: string,
     ile: number,
   ): Promise<string> {
     const polecenie = [
-      'Ponizej sa raporty specjalistek z narady. Zloz je w JEDNA rekomendacje, ktora zostanie POWIEDZIANA NA GLOS wlascicielowi firmy.',
-      'Wymagania: maksymalnie 900 znakow, prosty polski, bez naglowkow, bez list punktowanych, bez markdown.',
-      'Struktura: najpierw jedno zdanie wniosku, potem to, co ustalily poszczegolne osoby (po imieniu, po jednym zdaniu na osobe, tylko te ktore wniosly cos istotnego), na koncu jeden konkretny nastepny krok.',
-      'Nie powtarzaj tego samego dwa razy. Nie czytaj raportow po kolei, destyluj. Zero zmyslonych liczb.',
+      'Ponizej sa raporty specjalistek z narady. Zloz je w JEDEN material roboczy dla siebie, na podstawie ktorego bedziesz rozmawiac z wlascicielem firmy.',
+      'To NIE jest tekst do przeczytania na glos, tylko Twoja wiedza o tym, co ustalil zespol. Wlasciciel bedzie dopytywal o szczegoly, wiec zachowaj konkrety.',
+      'ZACHOWAJ: konkretne rekomendacje, liczby razem ze zrodlem i data, nazwy, warunki i zastrzezenia, rozbieznosci miedzy osobami (kto sie z kim nie zgadza i dlaczego), oraz to, czego zespol NIE wie.',
+      'USUN: powtorzenia tej samej mysli, wypelniacze, uprzejmosci, opis wlasnego procesu ("przeanalizowalam", "zgodnie z zadaniem").',
+      'Struktura: 1) REKOMENDACJA w jednym zdaniu. 2) UZASADNIENIE w kilku zdaniach. 3) CO USTALILA KAZDA OSOBA, po imieniu, konkretami. 4) ROZBIEZNOSCI I RYZYKA. 5) NASTEPNY KROK. 6) CZEGO NIE WIEMY.',
+      'Maksymalnie 8000 znakow. Zero zmyslonych liczb: gdy raport nie podaje zrodla, napisz "(bez zrodla)".',
+      'Jesli raporty sa puste albo bez tresci, napisz wprost: "BRAK TRESCI W RAPORTACH" i wymien, kto nic nie wniosl. Nie udawaj, ze cos ustalono.',
       '',
       surowe,
     ].join('\n')
+    console.info(
+      '[realtime] narada: surowe raporty',
+      surowe.length,
+      'znakow z',
+      ile,
+      'raportow, licze synteze...',
+    )
     try {
       const synteza = await sendMessage('coo', [
         { role: 'user', content: polecenie },
       ])
       const czysta = synteza.trim()
-      if (czysta.length > 40) {
-        console.info('[realtime] synteza narady:', czysta.length, 'znakow z', surowe.length)
+      if (czysta.length > 120) {
+        console.info(
+          '[realtime] synteza narady gotowa:',
+          czysta.length,
+          'znakow (z',
+          surowe.length + ')',
+        )
         return czysta.slice(0, LIMIT_SYNTEZY)
       }
+      console.warn(
+        '[realtime] synteza podejrzanie krotka (',
+        czysta.length,
+        'znakow), ide na surowe raporty',
+      )
     } catch (e) {
       console.warn('[realtime] synteza narady nie wyszla, ide na surowe raporty', e)
     }
-    // Fallback: surowe raporty, ale przyciete twardo, zeby nie wysadzic kontekstu.
-    const zapas = Math.max(400, Math.floor(6000 / Math.max(1, ile)))
-    return surowe.length > zapas * ile
-      ? surowe.slice(0, zapas * ile) + ' [...]'
+    // Fallback: surowe raporty przyciete do tego samego limitu. Lepiej dac Lei
+    // material nieuporzadkowany niz zostawic ja bez wiedzy.
+    return surowe.length > LIMIT_SYNTEZY
+      ? surowe.slice(0, LIMIT_SYNTEZY) + '\n[...dalsza czesc raportow przycieta...]'
       : surowe
   }
 
@@ -979,10 +1042,15 @@ export async function startRozmowa(
     // Instrukcja + TWARDY limit dlugosci na te jedna odpowiedz. Bez limitu model
     // potrafil referowac narade kilka minut, co jest nie do sluchania i dobijalo
     // okno kontekstu sesji (raport wlasciciela 2026-07-26).
+    // Wynik narady dostajesz W CALOSCI (to Twoja wiedza), ale na glos idzie
+    // tylko esencja. Reszta zostaje w kontekscie na dopytania wlasciciela.
     wyslijResponseCreate('function-output:uruchom_zespol', {
       instructions:
-        'Zrefereruj wynik narady GLOSEM, zwiezle: najpierw jedno zdanie wniosku, potem kto co ustalil (po imieniu, krotko), na koniec jeden konkretny nastepny krok i pytanie, czy to robimy. Mow najwyzej minute. NIE czytaj raportow po kolei i NIE powtarzaj tego samego dwa razy. Gdy skonczysz, zatrzymaj sie i czekaj na odpowiedz wlasciciela.',
-      max_output_tokens: 1400,
+        'Masz teraz PELNY wynik narady zespolu. To Twoja wiedza: pamietaj konkrety, liczby i rozbieznosci, bo wlasciciel bedzie dopytywal. ' +
+        'NA GLOS powiedz tylko esencje, najwyzej minute: jedno zdanie rekomendacji, potem najwazniejsze ustalenia po imieniu (kto co wniosl, konkretem, nie ogolnikiem), jedna rozbieznosc albo ryzyko jesli sa, i jeden konkretny nastepny krok. ' +
+        'Zakoncz pytaniem, o ktory watek rozwinac. NIE czytaj materialu po kolei, NIE powtarzaj tego samego dwa razy, NIE mow "nie wiem", jesli odpowiedz jest w materiale. ' +
+        'Gdy w materiale stoi "BRAK TRESCI W RAPORTACH", powiedz to wprost i zaproponuj, kogo uruchomic ponownie i z jakim pytaniem.',
+      max_output_tokens: 1500,
     })
   }
 

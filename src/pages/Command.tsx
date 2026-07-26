@@ -19,6 +19,7 @@ import {
   X,
 } from 'lucide-react'
 import { coo, teamAgents, getAgent, type Agent } from '../data/agents'
+import { ukladMapy } from '../lib/geometriaMapy'
 import { hasApiKey, getMode } from '../lib/ai'
 import { runOrchestration, type ZdarzenieOrk } from '../lib/orchestrator'
 import {
@@ -437,124 +438,28 @@ function MapaNeuronu({
   const cy = h / 2
   const N = teamAgents.length
 
-  // Kompaktowy uklad na waskich ekranach (mobile): mniejsze portrety i etykiety.
-  // Desktop: duzy owal wypelniajacy CALY panel; imie POD awatarem, mikrofon jako
-  // nakladka NA awatarze. Rozmiary +~25% wzgledem poprzedniej wersji.
-  const compact = w < 640
-
-  // Docelowe (maksymalne) boki portretow w px. Desktop: COO 160, specjalista 130.
-  // Faktyczny rozmiar moze zmalec ponizej (odstep sasiadow, duze N), by uklad
-  // miescil sie dla dowolnej liczby agentow bez kolizji.
-  const specTarget = compact ? 74 : 130
-
-  // Zapas przy krawedzi panelu na podpis. UKLAD JEDNOLITY (2026-07-26): podpis
-  // KAZDEGO wezla stoi POD awatarem, wysrodkowany, nigdy radialnie w bok. Radialny
-  // podpis przy wezlach bocznych siegal blizej srodka niz krawedz portretu i
-  // wchodzil na twarz (raport wlasciciela: "opis wchodzi na awatara").
-  // Poziomo potrzebujemy juz tylko polowy podpisu (nie polowa + offset radialny).
-  const margXbaza = compact ? 74 : 116
-  // Pionowo: polowa portretu + odstep + wysokosc podpisu, bo podpis wisi pod
-  // dolnymi wezlami i nie moze wyjsc poza plotno.
-  const luzPodpisu = compact ? 8 : 12
-  const hPodpis = compact ? 30 : 46
-  const margY = (compact ? 60 : 84) + hPodpis
-
-  // Skala dla duzej liczby agentek (N>10): dodatkowo zmniejsza specjalistki.
-  const skalaN = N > 10 ? 10 / N : 1
-  const odstep = compact ? 10 : 18
-
-  /**
-   * Promienie owalu + najmniejszy odstep sasiadow (chord) i najmniejsza odleglosc
-   * wezla od srodka. Liczone DOKLADNIE z pozycji na owalu, nie z przyblizenia
-   * kolowego, bo owal bywa mocno splaszczony.
-   */
-  function owal(marg: number) {
-    const rx = Math.max(compact ? 40 : 120, w / 2 - marg)
-    let ry = Math.max(compact ? 100 : 150, h / 2 - margY)
-    // Na waskim mobile nie pozwalamy owalowi zrobic sie zbyt wysokim i chudym, bo
-    // wtedy wezly kumuluja sie przy biegunach (za maly odstep). Rundszy owal =
-    // rownomierne rozlozenie sasiadow.
-    if (compact) ry = Math.min(ry, rx * 2.4)
-    let adj = Infinity
-    let dist = Infinity
-    for (let i = 0; i < N; i++) {
-      const th = -Math.PI / 2 + i * ((2 * Math.PI) / N)
-      const px1 = cx + rx * Math.cos(th)
-      const py1 = cy + ry * Math.sin(th)
-      const d = Math.hypot(px1 - cx, py1 - cy)
-      if (d < dist) dist = d
-      const th2 = -Math.PI / 2 + ((i + 1) % N) * ((2 * Math.PI) / N)
-      const px2 = cx + rx * Math.cos(th2)
-      const py2 = cy + ry * Math.sin(th2)
-      const ad = Math.hypot(px1 - px2, py1 - py2)
-      if (ad < adj) adj = ad
-    }
-    if (!Number.isFinite(adj)) adj = 2 * rx
-    if (!Number.isFinite(dist)) dist = Math.min(rx, ry)
-    return { rx, ry, adj, dist }
-  }
-
-  /** Bok portretu specjalistki: docelowy*skalaN, ograniczony odstepem sasiadow. */
-  const bokSpec = (adj: number) =>
-    Math.max(
-      compact ? 40 : 92,
-      Math.min(Math.round(specTarget * skalaN), Math.round(adj - odstep)),
-    )
-  /**
-   * Szerokosc podpisu. Podpis stoi POD awatarem, wiec o kolizje bija sie podpisy
-   * SASIADOW na owalu: szerokosc nie moze przekroczyc odstepu sasiadow (minus luz).
-   * Dol 40 px, zeby przy duzym N imie nie lamalo sie po literze.
-   */
-  const bokPodpisu = (adj: number) =>
-    Math.max(
-      compact ? 40 : 76,
-      Math.min(compact ? 78 : 150, Math.round(adj - (compact ? 6 : 12))),
-    )
-
-  // PRZEBIEG 1: zapas pesymistyczny, tylko po to, zeby poznac realny rozmiar
-  // portretu i podpisu przy tej liczbie wezlow.
-  const p1 = owal(margXbaza)
-  const spec1 = bokSpec(p1.adj)
-  const ety1 = bokPodpisu(p1.adj)
-
-  // PRZEBIEG 2: realny zapas poziomy = wieksza z polowy portretu i polowy podpisu
-  // (oba stoja w tej samej osi pionowej) + 6 px luzu.
-  const margX = Math.min(
-    margXbaza,
-    Math.max(compact ? 44 : 72, Math.max(spec1, ety1) / 2 + 6),
-  )
-  const { rx: Rx, ry: Ry, adj: minAdj, dist: minDist } = owal(margX)
-  const specPx = bokSpec(minAdj)
-  // Bok portretu COO: docelowy, ale ograniczony tak, by najblizszy specjalista go
-  // nie dotykal (2*(odleglosc - promien specjalisty - luz)). Podloga trzyma sensowny
-  // rozmiar na bardzo waskich ekranach (dopuszczalne minimalne musniecie jak dawniej).
-  const cooCap = Math.round(2 * (minDist - specPx / 2 - (compact ? 6 : 10)))
-  const cooPx = Math.max(
-    compact ? 84 : 128,
-    Math.min(compact ? 116 : 160, cooCap),
-  )
-
-  // Krawedz wezla = promien portretu; nic konczy sie LEKKO POD awatarem (overlap
-  // ~4px), wiec nigdy nie ma przerwy miedzy nicia a okregiem (przypadek Mii).
-  const specEdge = specPx / 2 - 4
-  const cooEdge = cooPx / 2 - 4
-
-  // Bok przycisku-mikrofonu (nakladka przy dolnej krawedzi awatara) i to, o ile
-  // wystaje ponizej niej (transform translate(-50%,42%)).
-  const micPx = compact ? 34 : 40
-  const micWystaje = Math.round(0.42 * micPx)
-
-  // Podpis wisi POD awatarem: od srodka wezla w dol o promien portretu + luz.
-  // Mikrofon jest nakladka przy dolnej krawedzi awatara, wiec podpis musi
-  // zaczynac sie ponizej niego.
-  const offPodpis = specPx / 2 + micWystaje + luzPodpisu
-
-  // Szerokosc podpisu po drugim przebiegu + TWARDY zacisk: podpis nie moze wyjsc
-  // poza plotno (poziome przewijanie mapy jest niedopuszczalne).
-  const etyPx = Math.min(
-    bokPodpisu(minAdj),
-    Math.max(36, Math.round(2 * (w / 2 - Rx))),
-  )
+  // Caly uklad (promienie owalu, rozmiary portretow, podpisy) liczy czysta
+  // funkcja w lib/geometriaMapy.ts. Dzieki temu da sie go przetestowac bez
+  // przegladarki: testy/test-geometria.mjs sprawdza brak kolizji na siatce
+  // realnych rozmiarow okna i liczby agentek. Wlasciciel zglaszal nachodzace
+  // podpisy dwa razy, wiec regresja ma wychodzic w tescie, nie u niego.
+  const U = ukladMapy(w, h, N)
+  const {
+    compact,
+    Rx,
+    Ry,
+    specPx,
+    cooPx,
+    etyPx,
+    podpisPelny,
+    micPx,
+    micWystaje,
+    offPodpis,
+    specEdge,
+    cooEdge,
+    luzPodpisu,
+    hPodpis,
+  } = U
 
   /**
    * Promien obszaru ZAJETEGO przez wezel w zadanym kierunku. Wezel to nie samo
@@ -630,7 +535,7 @@ function MapaNeuronu({
   return (
     <div
       ref={stageRef}
-      className="relative w-full flex-1 min-h-[540px] sm:min-h-[720px]"
+      className="relative w-full flex-1 min-h-[560px] sm:min-h-[900px]"
     >
       {/* Warstwa 0: glebokie tlo sceny (radial + winieta + siatka) */}
       <div
@@ -963,11 +868,14 @@ function MapaNeuronu({
         // Druga linia podpisu: rozmowa > stan pracy > rola (rola tylko na desktopie).
         const stanKrotki =
           stan === 'active' ? 'Pracuje...' : stan === 'done' ? 'Gotowe' : null
+        // Druga linia: rozmowa > stan pracy > rola. Role pokazujemy tylko wtedy,
+        // gdy uklad ma na nia miejsce (podpisPelny); inaczej zostaje sam stan,
+        // a pelna rola jest w tooltipie, na kafelku zespolu i w profilu.
         const drugaLinia = wRozmowie
           ? etykietaRozmowy(rozmowaStan, imie)
-          : compact
-            ? stanKrotki
-            : a.role
+          : podpisPelny
+            ? a.role
+            : stanKrotki
 
         // Podpis (imie + rola) ZAWSZE POD awatarem, wysrodkowany. Jednolicie dla
         // kazdego wezla i dla COO: zaden podpis nie wchodzi na twarz sasiada ani
@@ -1202,6 +1110,19 @@ export default function Command() {
    * transkryptu i historii Centrum).
    */
   function obsluzZespolGlos(z: ZdarzenieZespolu) {
+    // Etap skladania: wszystkie raporty wrocily, COO robi z nich jedna
+    // rekomendacje. To trwa kilkanascie sekund i MUSI byc widoczne, inaczej
+    // mapa stoi zielona, a Lea milczy (raport wlasciciela 2026-07-26).
+    if (z.typ === 'sklada') {
+      setStanCoo('synth')
+      dopisz({ rodzaj: 'system', tekst: 'Raporty wrocily, skladam je w jedna rekomendacje...' })
+      return
+    }
+    if (z.typ === 'gotowe') {
+      setStanCoo('thinking')
+      return
+    }
+
     const a = getAgent(z.agent)
     const imie = a?.personImie ?? a?.name ?? z.agent
 
