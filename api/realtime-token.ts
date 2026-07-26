@@ -138,7 +138,7 @@ export default async function handler(req: any, res: any) {
   // znaku na token, wiec 40 000 znakow zostawialo kilka tysiecy tokenow
   // niewykorzystanych. Zapas ponizej zmierzonej granicy zostaje celowo, bo
   // wlasciciel edytuje Karte Mozgu i persony, a te rosna.
-  const MAX_INSTR = Number(process.env.MAX_INSTRUKCJE_ZNAKI ?? 46000)
+  const MAX_INSTR = Number(process.env.MAX_INSTRUKCJE_ZNAKI ?? 200000)
   const raw = typeof body?.instructions === 'string' ? body.instructions : ''
   const instructions = raw.length > 0
     ? raw.slice(0, MAX_INSTR)
