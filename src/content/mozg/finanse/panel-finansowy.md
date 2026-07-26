@@ -75,7 +75,7 @@ Wszystko, co wychodzi z konta co miesiąc, nawet gdy nie ma sprzedaży. To podst
 
 ## Budżet na marketing i kampanie
 
-Ile możemy wydać na pozyskanie klientów, w podziale na kanały. Bez tego Zoe i Mila nie wiedzą, w jakiej skali planować, a Vera nie policzy kosztu pozyskania klienta.
+Ile możemy wydać na pozyskanie klientów, w podziale na kanały. Bez tego Zoe i Jade nie wiedzą, w jakiej skali planować, a Vera nie policzy kosztu pozyskania klienta.
 
 | Pozycja | Kwota | Komentarz |
 |---|---|---|

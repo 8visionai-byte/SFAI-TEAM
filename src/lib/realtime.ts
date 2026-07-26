@@ -262,7 +262,7 @@ export async function startRozmowa(
                     // jakosc wdrozen, operacje to rozwoj firmy. Dopisane imie i realna rola,
                     // zeby model nie zlecal zadania po nazwie sluga. Opis narzedzia idzie
                     // poza pole instructions, wiec nie zjada budzetu 40000 znakow promptu.
-                    'slug agenta (imie i realna rola): wiedza-produkt (Sam, nasze produkty i uslugi) | operacje (Mia, rozwoj firmy i trendy) | analityk (Rae, research i internet) | pamiec-zespolu (Vera, finanse i wyceny) | copywriter (Mila, dostawa i jakosc wdrozen) | handlowiec (Jade, sprzedaz, oferta i lejek) | opiekun-klienta (Ella, obsluga klienta i relacje) | drugi-glos (Nora, drugi glos przy decyzjach i marka) | analityk-social (Zoe, marketing, kanaly i GEO) | copywriter-marki (Iga, pisze teksty, ktore czyta klient) | prawnik-ai (Ada, prawo, RODO, AI Act i zgodnosc)',
+                    'slug agenta (imie i realna rola): wiedza-produkt (Sam, nasze produkty i uslugi) | operacje (Mia, rozwoj firmy i trendy) | analityk (Rae, research i internet) | pamiec-zespolu (Vera, finanse i wyceny) | copywriter (Kaja, architektura rozwiazan AI: czy da sie i jak zbudowac) | handlowiec (Jade, sprzedaz, oferta i lejek) | opiekun-klienta (Ella, obsluga klienta i relacje) | drugi-glos (Nora, drugi glos przy decyzjach i marka) | analityk-social (Zoe, marketing, kanaly i GEO) | copywriter-marki (Iga, pisze teksty, ktore czyta klient) | prawnik-ai (Ada, prawo, RODO, AI Act i zgodnosc)',
                 },
                 zadanie: {
                   type: 'string',
@@ -335,6 +335,22 @@ export async function startRozmowa(
   // blad OpenAI 'conversation_already_has_active_response'.
   let aktywnaOdpowiedz = false
   let oczekujeResponseCreate = false
+  // Payload zakolejkowanego response.create (np. instrukcja referowania narady
+  // razem z limitem dlugosci). Bez tego kolejka gubila instrukcje i model
+  // referowal narade bez ograniczenia dlugosci.
+  let oczekujacyResponsePayload: unknown | undefined
+  // GUARD ANTY-POWTORKA (2026-07-26). Raport wlasciciela: po dluzszej wypowiedzi
+  // Lea urywala i zaczynala TE SAMA odpowiedz od poczatku. Zapamietujemy poczatek
+  // ostatniej wypowiedzi i gdy nowa zaczyna sie identycznie, anulujemy ja, zamiast
+  // pozwolic modelowi powtorzyc caly monolog.
+  let ostatniPoczatekAgenta = ''
+  let sprawdzonoPowtorke = false
+  /** Do porownan: same litery i cyfry, malymi, bez spacji i interpunkcji. */
+  const odcisk = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^0-9a-ząćęłńóśźż]/g, '')
+      .slice(0, 60)
   // Licznik nieskonsumowanych function_call_output. Podnoszony przy KAZDYM
   // wyslaniu function_call_output do modelu, zerowany przy wyslaniu response.create
   // (response.create konsumuje output). Zakolejkowany response.create wolno
@@ -542,6 +558,7 @@ export async function startRozmowa(
     if (typ === 'response.created') {
       aktywnaOdpowiedz = true
       licznikResponseCreated += 1
+      sprawdzonoPowtorke = false
       opcje.onStan('mowie')
       return
     }
@@ -559,6 +576,28 @@ export async function startRozmowa(
       transAgent += zd.delta
       opcje.onStan('mowie')
       opcje.onTranskrypt(transAgent.trim(), 'agent', false)
+      // Guard anty-powtorka: sprawdzamy RAZ na odpowiedz, gdy uzbiera sie dosc
+      // tekstu, zeby porownanie mialo sens. Identyczny poczatek = model rusza
+      // od nowa z ta sama kwestia, wiec przerywamy.
+      if (
+        !sprawdzonoPowtorke &&
+        ostatniPoczatekAgenta &&
+        transAgent.length >= 90
+      ) {
+        sprawdzonoPowtorke = true
+        if (odcisk(transAgent) === ostatniPoczatekAgenta) {
+          console.warn(
+            '[realtime] POWTORKA: odpowiedz zaczyna sie tak samo jak poprzednia, anuluje',
+          )
+          try {
+            dc?.send(JSON.stringify({ type: 'response.cancel' }))
+          } catch {
+            // kanal mogl paść, nastepne zdarzenia bledu zajma sie reszta
+          }
+          transAgent = ''
+          opcje.onStan('slucham')
+        }
+      }
       return
     }
     if (
@@ -568,6 +607,9 @@ export async function startRozmowa(
       const pelny =
         typeof zd?.transcript === 'string' ? zd.transcript : transAgent
       opcje.onTranskrypt(pelny.trim(), 'agent', true)
+      // Odcisk poczatku tej wypowiedzi: materiał porownawczy dla guardu powtorki.
+      const nowyOdcisk = odcisk(pelny)
+      if (nowyOdcisk.length >= 30) ostatniPoczatekAgenta = nowyOdcisk
       return
     }
 
@@ -589,8 +631,10 @@ export async function startRozmowa(
       // Po wyslaniu kolejka jest wyczyszczona (oczekujeResponseCreate=false).
       if (oczekujeResponseCreate) {
         oczekujeResponseCreate = false
+        const payload = oczekujacyResponsePayload
+        oczekujacyResponsePayload = undefined
         if (nieskonsumowanyOutput > 0) {
-          wyslijResponseCreateTeraz('kolejka-po-response-done')
+          wyslijResponseCreateTeraz('kolejka-po-response-done', payload)
         } else {
           console.info(
             '[realtime] pominieto zakolejkowany response.create: brak nowej tresci (guard powtorki)',
@@ -702,14 +746,15 @@ export async function startRozmowa(
    * response.done. Uzywane po odeslaniu raportow zespolu, bo user moze gadac
    * dalej podczas pracy zespolu i miec wtedy wlasna aktywna odpowiedz.
    */
-  function wyslijResponseCreate(powod: string) {
+  function wyslijResponseCreate(powod: string, response?: unknown) {
     if (!dc || dc.readyState !== 'open') return
     if (aktywnaOdpowiedz) {
       oczekujeResponseCreate = true
+      oczekujacyResponsePayload = response
       console.info('[realtime] response.create zakolejkowany, powod:', powod)
       return
     }
-    wyslijResponseCreateTeraz(powod)
+    wyslijResponseCreateTeraz(powod, response)
   }
 
   /**
@@ -853,7 +898,7 @@ export async function startRozmowa(
 
     // Zloz raporty w jeden string, przycinajac kazdy do ~1200 znakow.
     const LIMIT_RAPORTU = 1200
-    const tresc = raporty
+    const polaczone = raporty
       .map((r) => {
         const a = getAgent(r.agent)
         const imie = a?.personImie ?? a?.name ?? r.agent
@@ -866,7 +911,60 @@ export async function startRozmowa(
       })
       .join('\n\n')
 
+    // (nazwa 'polaczone', bo 'surowe' to wyzej lista zadan z argumentow modelu)
+    // SYNTEZA PRZED GLOSEM (fix 2026-07-26, raport wlasciciela: "Lea mowila
+    // 2-3 minuty, potem sie urwalo i zaczela od poczatku").
+    // Przyczyna: przy naradzie calego zespolu do sesji realtime wjezdzalo do
+    // 11 x 1200 znakow surowych raportow. Razem z instrukcjami (~40 000 znakow)
+    // i rosnacym audio to dobijalo do okna kontekstu modelu, ktory zaczynal
+    // obcinac konwersacje i tracil slad tego, co juz powiedzial, wiec ruszal
+    // od nowa. Do tego czytanie 11 raportow z natury trwa kilka minut.
+    // Rozwiazanie: raporty skladamy w JEDNA rekomendacje TEKSTOWO (tanio, poza
+    // sesja glosowa), a do modelu wpuszczamy tylko ja. Kontekst spada
+    // kilkukrotnie, a Lea referuje wniosek zamiast czytac cudze raporty.
+    const tresc = await zsyntetyzujDoGlosu(polaczone, wybrane.length)
+
     odeslijRaportyZespolu(callId, true, tresc)
+  }
+
+  /** Gorny limit tego, co wpuszczamy do sesji glosowej jako wynik narady. */
+  const LIMIT_SYNTEZY = 1800
+
+  /**
+   * Sklada raporty zespolu w jedna zwiezla rekomendacje DO POWIEDZENIA NA GLOS.
+   * Robi to zwyklym wywolaniem tekstowym (Anthropic), poza sesja realtime, wiec
+   * nie obciaza okna kontekstu rozmowy. Gdy synteza sie nie uda, wraca do
+   * przycietych raportow surowych: gorzej, ale rozmowa dziala dalej.
+   */
+  async function zsyntetyzujDoGlosu(
+    surowe: string,
+    ile: number,
+  ): Promise<string> {
+    const polecenie = [
+      'Ponizej sa raporty specjalistek z narady. Zloz je w JEDNA rekomendacje, ktora zostanie POWIEDZIANA NA GLOS wlascicielowi firmy.',
+      'Wymagania: maksymalnie 900 znakow, prosty polski, bez naglowkow, bez list punktowanych, bez markdown.',
+      'Struktura: najpierw jedno zdanie wniosku, potem to, co ustalily poszczegolne osoby (po imieniu, po jednym zdaniu na osobe, tylko te ktore wniosly cos istotnego), na koncu jeden konkretny nastepny krok.',
+      'Nie powtarzaj tego samego dwa razy. Nie czytaj raportow po kolei, destyluj. Zero zmyslonych liczb.',
+      '',
+      surowe,
+    ].join('\n')
+    try {
+      const synteza = await sendMessage('coo', [
+        { role: 'user', content: polecenie },
+      ])
+      const czysta = synteza.trim()
+      if (czysta.length > 40) {
+        console.info('[realtime] synteza narady:', czysta.length, 'znakow z', surowe.length)
+        return czysta.slice(0, LIMIT_SYNTEZY)
+      }
+    } catch (e) {
+      console.warn('[realtime] synteza narady nie wyszla, ide na surowe raporty', e)
+    }
+    // Fallback: surowe raporty, ale przyciete twardo, zeby nie wysadzic kontekstu.
+    const zapas = Math.max(400, Math.floor(6000 / Math.max(1, ile)))
+    return surowe.length > zapas * ile
+      ? surowe.slice(0, zapas * ile) + ' [...]'
+      : surowe
   }
 
   /**
@@ -878,7 +976,14 @@ export async function startRozmowa(
     // wzgledem wspolbieznosci prosi model o dokonczenie glosem (kolejkuje, gdy user
     // ma teraz wlasna aktywna odpowiedz - odpali sie na response.done z guardem).
     if (!odeslijFunctionOutput(callId, JSON.stringify({ ok, raporty }))) return
-    wyslijResponseCreate('function-output:uruchom_zespol')
+    // Instrukcja + TWARDY limit dlugosci na te jedna odpowiedz. Bez limitu model
+    // potrafil referowac narade kilka minut, co jest nie do sluchania i dobijalo
+    // okno kontekstu sesji (raport wlasciciela 2026-07-26).
+    wyslijResponseCreate('function-output:uruchom_zespol', {
+      instructions:
+        'Zrefereruj wynik narady GLOSEM, zwiezle: najpierw jedno zdanie wniosku, potem kto co ustalil (po imieniu, krotko), na koniec jeden konkretny nastepny krok i pytanie, czy to robimy. Mow najwyzej minute. NIE czytaj raportow po kolei i NIE powtarzaj tego samego dwa razy. Gdy skonczysz, zatrzymaj sie i czekaj na odpowiedz wlasciciela.',
+      max_output_tokens: 1400,
+    })
   }
 
   /**

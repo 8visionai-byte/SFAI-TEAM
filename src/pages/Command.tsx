@@ -260,6 +260,12 @@ interface PortretProps {
   glow: string
   /** wygaszenie w stanie idle */
   przygaszony?: boolean
+  /**
+   * Persona REALNIE teraz pracuje nad zadaniem (Lea planuje/sklada, specjalistka
+   * wykonuje zlecenie). Wlacza obracajacy sie pierscien myslenia i oddech wezla:
+   * z drugiego konca mapy widac, kto siedzi nad tematem, a kto czeka.
+   */
+  mysli?: boolean
 }
 
 /**
@@ -276,13 +282,14 @@ function Portret({
   pulsuj,
   glow,
   przygaszony = false,
+  mysli = false,
 }: PortretProps) {
   const [loaded, setLoaded] = useState(false)
   const [failed, setFailed] = useState(false)
 
   return (
     <div
-      className="avatar-hover relative"
+      className={`avatar-hover relative ${mysli ? 'node-working' : ''}`}
       style={{ width: boxPx, height: boxPx, ['--accent-ring' as string]: glow }}
     >
       {/* Puls aury jako osobna warstwa (nie koliduje ze statycznym ringiem) */}
@@ -290,6 +297,21 @@ function Portret({
         <span
           className="node-pulse pointer-events-none absolute inset-0 rounded-full"
           style={{ ['--glow' as string]: glow }}
+          aria-hidden
+        />
+      )}
+      {/* Pierscien myslenia: obracajacy sie luk swiatla po obwodzie portretu.
+          Lezy PONAD awatarem (z-20), tuz przy krawedzi, i skaluje grubosc z
+          rozmiarem wezla, zeby przy 12 personach nie robil sie kreska. */}
+      {mysli && (
+        <span
+          className="ring-thinking pointer-events-none absolute rounded-full"
+          style={{
+            inset: -3,
+            zIndex: 20,
+            ['--ring-color' as string]: agent.accent,
+            ['--ring-w' as string]: `${Math.max(3, Math.round(boxPx * 0.045))}px`,
+          }}
           aria-hidden
         />
       )}
@@ -425,17 +447,21 @@ function MapaNeuronu({
   // miescil sie dla dowolnej liczby agentow bez kolizji.
   const specTarget = compact ? 74 : 130
 
-  // Zapas przy krawedzi panelu na podpis (imie + rola) RADIALNIE NA ZEWNATRZ.
-  // BAZOWY (pesymistyczny) zapas: liczony dla NAJWIEKSZEGO portretu i NAJSZERSZEGO
-  // podpisu. Sluzy do pierwszego przejscia; drugie przejscie oddaje mapie tyle
-  // miejsca, ile realnie zostaje, gdy portret i podpis sa mniejsze (duze N).
-  const margXbaza = compact ? 100 : 176
-  const margY = compact ? 88 : 132
+  // Zapas przy krawedzi panelu na podpis. UKLAD JEDNOLITY (2026-07-26): podpis
+  // KAZDEGO wezla stoi POD awatarem, wysrodkowany, nigdy radialnie w bok. Radialny
+  // podpis przy wezlach bocznych siegal blizej srodka niz krawedz portretu i
+  // wchodzil na twarz (raport wlasciciela: "opis wchodzi na awatara").
+  // Poziomo potrzebujemy juz tylko polowy podpisu (nie polowa + offset radialny).
+  const margXbaza = compact ? 74 : 116
+  // Pionowo: polowa portretu + odstep + wysokosc podpisu, bo podpis wisi pod
+  // dolnymi wezlami i nie moze wyjsc poza plotno.
+  const luzPodpisu = compact ? 8 : 12
+  const hPodpis = compact ? 30 : 46
+  const margY = (compact ? 60 : 84) + hPodpis
 
   // Skala dla duzej liczby agentek (N>10): dodatkowo zmniejsza specjalistki.
   const skalaN = N > 10 ? 10 / N : 1
   const odstep = compact ? 10 : 18
-  const offDod = compact ? 28 : 44
 
   /**
    * Promienie owalu + najmniejszy odstep sasiadow (chord) i najmniejsza odleglosc
@@ -475,12 +501,15 @@ function MapaNeuronu({
       Math.min(Math.round(specTarget * skalaN), Math.round(adj - odstep)),
     )
   /**
-   * Szerokosc podpisu. Na mobile ADAPTACYJNA: przy 11-12 wezlach sasiedzi przy
-   * biegunach owalu stoja ~45 px od siebie, wiec sztywne 64 px kazalo podpisom
-   * na siebie nachodzic. Na desktopie zostaje 120 px (miejsca jest dosc).
+   * Szerokosc podpisu. Podpis stoi POD awatarem, wiec o kolizje bija sie podpisy
+   * SASIADOW na owalu: szerokosc nie moze przekroczyc odstepu sasiadow (minus luz).
+   * Dol 40 px, zeby przy duzym N imie nie lamalo sie po literze.
    */
   const bokPodpisu = (adj: number) =>
-    compact ? Math.max(40, Math.min(64, Math.round(adj - 6))) : 120
+    Math.max(
+      compact ? 40 : 76,
+      Math.min(compact ? 78 : 150, Math.round(adj - (compact ? 6 : 12))),
+    )
 
   // PRZEBIEG 1: zapas pesymistyczny, tylko po to, zeby poznac realny rozmiar
   // portretu i podpisu przy tej liczbie wezlow.
@@ -488,12 +517,11 @@ function MapaNeuronu({
   const spec1 = bokSpec(p1.adj)
   const ety1 = bokPodpisu(p1.adj)
 
-  // PRZEBIEG 2: realny zapas = polowa podpisu + offset podpisu od srodka wezla
-  // + 6 px luzu. Nigdy wiekszy od bazowego, wiec dla malej liczby wezlow uklad
-  // zostaje taki jak dotad, a przy 11-12 owal dostaje kilkanascie px wiecej.
+  // PRZEBIEG 2: realny zapas poziomy = wieksza z polowy portretu i polowy podpisu
+  // (oba stoja w tej samej osi pionowej) + 6 px luzu.
   const margX = Math.min(
     margXbaza,
-    Math.max(compact ? 56 : 120, spec1 / 2 + offDod + ety1 / 2 + 6),
+    Math.max(compact ? 44 : 72, Math.max(spec1, ety1) / 2 + 6),
   )
   const { rx: Rx, ry: Ry, adj: minAdj, dist: minDist } = owal(margX)
   const specPx = bokSpec(minAdj)
@@ -511,19 +539,47 @@ function MapaNeuronu({
   const specEdge = specPx / 2 - 4
   const cooEdge = cooPx / 2 - 4
 
-  // Podpis (imie + rola) na zewnatrz: od srodka wezla o promien portretu + zapas,
-  // by nie kolidowal z mikrofonem-nakladka przy dolnej krawedzi awatara.
-  const off = specPx / 2 + offDod
+  // Bok przycisku-mikrofonu (nakladka przy dolnej krawedzi awatara) i to, o ile
+  // wystaje ponizej niej (transform translate(-50%,42%)).
+  const micPx = compact ? 34 : 40
+  const micWystaje = Math.round(0.42 * micPx)
+
+  // Podpis wisi POD awatarem: od srodka wezla w dol o promien portretu + luz.
+  // Mikrofon jest nakladka przy dolnej krawedzi awatara, wiec podpis musi
+  // zaczynac sie ponizej niego.
+  const offPodpis = specPx / 2 + micWystaje + luzPodpisu
 
   // Szerokosc podpisu po drugim przebiegu + TWARDY zacisk: podpis nie moze wyjsc
   // poza plotno (poziome przewijanie mapy jest niedopuszczalne).
   const etyPx = Math.min(
     bokPodpisu(minAdj),
-    Math.max(36, Math.round(2 * (w / 2 - Rx - off))),
+    Math.max(36, Math.round(2 * (w / 2 - Rx))),
   )
 
-  // Bok przycisku-mikrofonu (nakladka przy dolnej krawedzi awatara).
-  const micPx = compact ? 34 : 40
+  /**
+   * Promien obszaru ZAJETEGO przez wezel w zadanym kierunku. Wezel to nie samo
+   * kolo portretu: pod nim wisi jeszcze mikrofon i podpis. Traktujemy calosc jak
+   * elipse o polosi poziomej = promien portretu i polosi pionowej W DOL
+   * powiekszonej o mikrofon i podpis. Dzieki temu nic startuje i konczy sie POZA
+   * podpisem, zamiast przecinac go w poprzek (raport wlasciciela: podpis Lei
+   * wchodzil na nici Elli i Jade).
+   */
+  function promienZajetosci(
+    ox: number,
+    oy: number,
+    promien: number,
+    dolDodatkowo: number,
+  ): number {
+    const a = promien
+    const b = oy > 0 ? promien + dolDodatkowo : promien
+    const qa = (ox / a) ** 2
+    const qb = (oy / b) ** 2
+    const q = qa + qb
+    return q > 0 ? 1 / Math.sqrt(q) : promien
+  }
+
+  // Ile miejsca pod portretem zajmuja mikrofon i podpis (do promienia zajetosci).
+  const dolWezla = micWystaje + luzPodpisu + hPodpis
 
   const wezly: Wezel[] = gotowe
     ? teamAgents.map((a, i) => {
@@ -536,12 +592,17 @@ function MapaNeuronu({
         // Kierunek NA ZEWNATRZ (od srodka do wezla): offset etykiety i mikrofonu.
         const ox = dx / len
         const oy = dy / len
-        // Nic: od krawedzi COO (sx,sy) do krawedzi wezla (ex,ey), nie srodek->srodek.
+        // Nic: od BRZEGU OBSZARU COO (sx,sy) do brzegu obszaru wezla (ex,ey), nie
+        // srodek->srodek i nie od samego kola portretu. Obszar obejmuje takze
+        // mikrofon i podpis pod awatarem, wiec nic idaca w dol startuje ponizej
+        // podpisu Lei, a nic dochodzaca do gornego wezla konczy sie pod jego
+        // podpisem. Bez tego podpisy lezaly na niciach (raport wlasciciela).
         // Gdy wezel jest blisko srodka (waski mobile, Rx na podlodze) i suma krawedzi
         // przekracza odleglosc, skaluj OBIE krawedzie proporcjonalnie, zeby nic nigdy
         // sie nie odwrocila i zostal min. widoczny odcinek (bez tego animacja by wariowala).
-        let sEdge = cooEdge
-        let eEdge = specEdge
+        let sEdge = promienZajetosci(ox, oy, cooEdge, dolWezla)
+        // Wezel patrzy na srodek, wiec jego kierunek to -o.
+        let eEdge = promienZajetosci(-ox, -oy, specEdge, dolWezla)
         const minSeg = 10
         if (sEdge + eEdge > len - minSeg) {
           const scale = Math.max(0, len - minSeg) / (sEdge + eEdge)
@@ -748,7 +809,9 @@ function MapaNeuronu({
       )}
 
       {/* COO w geometrycznym srodku. Klik w awatar = rozmowa glosowa; klik w imie
-          = profil. Mikrofon jako nakladka przy dolnej krawedzi awatara. */}
+          = profil. Mikrofon jako nakladka przy dolnej krawedzi awatara.
+          UWAGA: kotwica to PORTRET (top = cy - cooPx/2), nie caly blok z podpisem,
+          inaczej awatar Lei siedzi wyzej niz punkt, z ktorego wychodza nici. */}
       {gotowe &&
         (() => {
           const imieCoo = coo.personImie ?? coo.name
@@ -770,6 +833,7 @@ function MapaNeuronu({
               }
               pulsuj={wRozmowieCoo || cooAktywny}
               glow="#5B8DEFaa"
+              mysli={stanCoo === 'thinking' || stanCoo === 'synth'}
             />
           )
           return (
@@ -778,7 +842,11 @@ function MapaNeuronu({
                 'absolute z-10 flex flex-col items-center transition-opacity duration-300',
                 przyciemnionyCoo ? 'opacity-40' : 'opacity-100',
               ].join(' ')}
-              style={{ left: cx, top: cy, transform: 'translate(-50%,-50%)' }}
+              style={{
+                left: cx,
+                top: cy - cooPx / 2,
+                transform: 'translate(-50%,0)',
+              }}
             >
               {/* Awatar (klik = glos) + mikrofon-nakladka */}
               <div className="relative" style={{ width: cooPx, height: cooPx }}>
@@ -827,8 +895,17 @@ function MapaNeuronu({
                 )}
               </div>
 
-              {/* Imie pod awatarem (klik = profil) + status */}
-              <div className="mt-5 w-44 rounded-xl bg-zinc-950/70 px-3 py-1 text-center leading-tight backdrop-blur-sm">
+              {/* Imie pod awatarem (klik = profil) + status. Bez plytki-tla: nici
+                  omijaja teraz obszar podpisu geometrycznie (promienZajetosci),
+                  wiec przykrywka jest zbedna, a czysty tekst jest spojny z
+                  podpisami specjalistek. */}
+              <div
+                className="text-center leading-tight"
+                style={{
+                  marginTop: micWystaje + luzPodpisu,
+                  width: Math.max(etyPx, compact ? 96 : 168),
+                }}
+              >
                 {running ? (
                   <div className="text-sm font-semibold text-zinc-50">
                     {imieCoo}
@@ -845,7 +922,7 @@ function MapaNeuronu({
                     </span>
                   </Link>
                 )}
-                <div className="text-xs font-medium text-brand-soft">
+                <div className="line-clamp-2 text-xs font-medium text-brand-soft">
                   {wRozmowieCoo
                     ? etykietaRozmowy(rozmowaStan, imieCoo)
                     : stanCoo === 'thinking'
@@ -892,9 +969,11 @@ function MapaNeuronu({
             ? stanKrotki
             : a.role
 
-        // Podpis (imie + rola) NA ZEWNATRZ wzdluz wektora (ox, oy) od srodka.
-        const etyX = n.nx + n.ox * off
-        const etyY = n.ny + n.oy * off
+        // Podpis (imie + rola) ZAWSZE POD awatarem, wysrodkowany. Jednolicie dla
+        // kazdego wezla i dla COO: zaden podpis nie wchodzi na twarz sasiada ani
+        // na wlasny portret, niezaleznie od miejsca na owalu.
+        const etyX = n.nx
+        const etyY = n.ny + offPodpis
 
         const portret = (
           <Portret
@@ -909,6 +988,7 @@ function MapaNeuronu({
             pulsuj={wRozmowie || stan === 'active'}
             glow={`${a.accent}aa`}
             przygaszony={stan === 'idle' && !wRozmowie}
+            mysli={stan === 'active'}
           />
         )
 
@@ -974,16 +1054,16 @@ function MapaNeuronu({
               </div>
             </div>
 
-            {/* Imie (+ rola/status) RADIALNIE NA ZEWNATRZ. Klik w imie = profil.
-                Szerokosc jest wyliczona (etyPx), nie sztywna: przy 11-12 wezlach
-                na mobile podpisy sasiadow inaczej by na siebie wchodzily. */}
+            {/* Imie (+ rola/status) POD awatarem, wysrodkowane. Klik w imie = profil.
+                Szerokosc jest wyliczona (etyPx) z odstepu sasiadow, nie sztywna:
+                przy 11-12 wezlach podpisy sasiadow inaczej by na siebie wchodzily. */}
             <div
               className={`absolute z-10 text-center leading-tight transition-opacity duration-300 ${opacityCls}`}
               style={{
                 left: etyX,
                 top: etyY,
                 width: etyPx,
-                transform: 'translate(-50%,-50%)',
+                transform: 'translate(-50%,0)',
               }}
             >
               {running ? (
@@ -1012,8 +1092,9 @@ function MapaNeuronu({
                   a pelna rola jest na kafelku zespolu i w profilu. */}
               {drugaLinia && (
                 <div
-                  className="mt-0.5 text-[0.64rem] font-medium"
+                  className="mt-0.5 line-clamp-2 text-[0.64rem] font-medium"
                   style={{ color: rolaKolor }}
+                  title={drugaLinia}
                 >
                   <span className={rolaKolor ? undefined : 'text-zinc-400'}>
                     {drugaLinia}

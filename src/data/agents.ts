@@ -191,31 +191,35 @@ export const agents: Agent[] = [
   {
     slug: 'copywriter',
     // Slug 'copywriter' zostaje (adresy, awatar, subagent), choc od 2026-07-26
-    // Mila robi dostawe. Prawdziwa copywriterka to Iga (slug 'copywriter-marki').
-    name: 'Szefowa dostawy i jakosci wdrozen',
-    role: 'Dostawa i jakosc wdrozen',
+    // Kafelek 5 to architektura rozwiazan AI. Copywriting marki ma Iga
+    // (slug 'copywriter-marki'). Imie zmienione z Mila na Kaja, bo w mowie
+    // myllo sie z Mia (Kafelek 2), a zespol pracuje takze glosem.
+    name: 'Architektka rozwiazan AI',
+    role: 'Architektura rozwiazan AI',
     tileNo: '5',
-    accent: '#EB4B80', // rozowo-magenta poswiata awatara Mila (v2, 2026-07-23)
+    accent: '#EB4B80', // rozowo-magenta poswiata awatara (v2, 2026-07-23)
     claudeName: 'sf-copywriter',
     hasPrompt: true,
     mission:
-      'Pilnuje, zeby sprzedane wdrozenia byly zrobione wedlug standardu, mierzy realne godziny i buduje biblioteke wielokrotnego uzytku.',
+      'Odpowiada, czy da sie to zbudowac i jak: projektuje przeplyw rozwiazania, dobiera narzedzia i ocenia zlozonosc techniczna, zanim padnie obietnica dla klienta.',
     subagents: [
-      'Autorka standardow uslug',
-      'Kontrolerka odbioru',
-      'Rachmistrz godzin',
-      'Kurator biblioteki',
-      'Analityk wpadek',
+      'Projektant przeplywu',
+      'Analityk narzedzi i limitow',
+      'Projektant bazy wiedzy',
+      'Projektant rozwiazan glosowych',
+      'Szacownik zlozonosci',
+      'Bibliotekarz wzorcow',
     ],
     skills: [
-      'Definicja "gotowe" i lista kontrolna',
-      'Standard wdrozenia per usluga',
-      'Planowane kontra realne godziny',
-      'Wykorzystanie pojemnosci (prog 85%)',
-      'Rozrost zakresu jako zdarzenie',
-      'Biblioteka wielokrotnego uzytku',
+      'Ocena wykonalnosci w 4 kategoriach',
+      'Projekt przeplywu z punktem nadzoru',
+      'Dobor narzedzi z uzasadnieniem',
+      'Zlozonosc i widelki godzin dla Very',
+      'Punkty zalamania systemu',
+      'Biblioteka wzorcow rozwiazan',
+      'Glos techniczny przy kliencie',
     ],
-    personImie: 'Mila',
+    personImie: 'Kaja',
     elevenVoiceId: 'ErXwobaYiN019PkySvjV',
     realtimeVoice: 'coral', // zenski (zespol kobiecy, awatary 2026-07-23)
   },
@@ -394,7 +398,7 @@ export const agents: Agent[] = [
 /**
  * ROZKLAD GLOSOW REALTIME (pula zenska OpenAI), rowny na 12 person:
  *   marin   2  (Lea, Ella)
- *   coral   3  (Mia, Mila, Iga)
+ *   coral   3  (Mia, Kaja, Iga)
  *   sage    3  (Sam, Vera, Ada)
  *   alloy   2  (Rae, Nora)
  *   shimmer 2  (Jade, Zoe)

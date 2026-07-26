@@ -151,6 +151,59 @@ h3 {
   animation: nodePulse 1.6s ease-in-out infinite;
 }
 
+/* PIERSCIEN MYSLENIA: obracajacy sie luk swiatla po obwodzie awatara. Wlacza sie,
+   gdy agentka realnie pracuje nad zadaniem od Lei, i gdy Lea planuje albo sklada
+   odpowiedz. Kolor z --ring-color (akcent persony), zeby kazda swiecila swoim.
+   Maska radialna zostawia z gradientu tylko obreczy grubosci --ring-w. */
+@keyframes ringSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.ring-thinking {
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    transparent 186deg,
+    var(--ring-color, rgba(91, 141, 239, 0.95)) 300deg,
+    transparent 352deg
+  );
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--ring-w, 4px)),
+    #000 calc(100% - var(--ring-w, 4px))
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--ring-w, 4px)),
+    #000 calc(100% - var(--ring-w, 4px))
+  );
+  animation: ringSpin 2.6s linear infinite;
+}
+
+/* Oddech wezla, ktory pracuje: bardzo delikatna zmiana skali. Razem z pierscieniem
+   daje czytelny sygnal "ta osoba wlasnie mysli", widoczny katem oka z drugiego
+   konca mapy. Amplituda celowo mala, zeby uklad nie "skakal". */
+@keyframes workBreath {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.035);
+  }
+}
+.node-working {
+  animation: workBreath 2.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ring-thinking,
+  .node-working {
+    animation: none;
+  }
+}
+
 /* Delikatne migotanie chipow subagentow, gdy ich specjalista pracuje */
 @keyframes chipFlicker {
   0%,
