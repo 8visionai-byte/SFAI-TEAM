@@ -889,7 +889,11 @@ export function buildVoicePrompt(agentSlug: string): string {
   // ponad 28 000 znakow, a jej poczatek to szablony raportowe nadpisane przez
   // CHAT_RULES. Dzieki temu przy kazdej kolejnej zmianie skladu jest zapas i
   // koniec promptu (zasady rozmowy, nota o glosie) nie wpada pod twardy slice.
-  const PERSONA_LIMIT = agentSlug === 'coo' ? 6200 : 8000
+  // Po pomiarze realnego limitu (2026-07-26) sufit promptu urosl z 40 000 na
+  // 44 000 znakow, wiec odzyskane miejsce idzie tam, gdzie realnie poprawia
+  // odpowiedzi: w PERSONE. Lea ma trzy bloki, ktorych nie ma nikt inny
+  // (roster, lancuchy zadan, dluzsza hierarchia), stad jej limit nadal nizszy.
+  const PERSONA_LIMIT = agentSlug === 'coo' ? 9800 : 11000
   if (persona.length > PERSONA_LIMIT) {
     persona = persona.slice(0, PERSONA_LIMIT) + NOTA_PERSONA_CIETA
   }
@@ -948,8 +952,14 @@ export function buildVoicePrompt(agentSlug: string): string {
       'DLUGOSC: dopasuj do ciezaru tematu, nie do sztywnego limitu. Drobiazg to jedno zdanie. Wynik pracy calego zespolu wymaga wiecej, wiec mow spokojnie i po kolei, ale NIE przyspieszaj na koncu i nie skacz do puenty. Gdy materialu jest duzo, powiedz najwazniejsze i zapytaj, ktory watek rozwinac. Zaczynaj od wniosku, zeby przerwanie nigdy nie ucielo Ci najwazniejszego.',
     ].join('\n')
 
-  // Twardy sufit calosci, zeby zmiescic prompt + opisy narzedzi w budzecie instrukcji.
-  const LIMIT = 40000
+  // Twardy sufit calosci, zeby zmiescic prompt + opisy narzedzi w budzecie
+  // instrukcji OpenAI (16 384 tokeny, limit API, nie do podniesienia).
+  // 44 000 znakow to wynik POMIARU na zywym API (2026-07-26): realne prompty
+  // person, z polskimi znakami i markdownem, przechodza do okolo 48 000 znakow
+  // (2,93 znaku na token). Wczesniejsze 40 000 bylo oszacowaniem i zostawialo
+  // okolo 2 700 znakow niewykorzystanych. Zapas do 48 000 zostaje celowo: opisy
+  // narzedzi ida osobno, a wlasciciel edytuje Karte Mozgu i persony.
+  const LIMIT = 44000
   let out = zloz(persona, card)
   // Gdy calosc przekracza sufit (Karta Mozgu, nadpis persony i wlasne umiejetnosci
   // sa edytowalne przez wlasciciela i nie maja limitu dlugosci), tniemy W KOLEJNOSCI

@@ -117,7 +117,7 @@ const SLUGI = [
     /^\s*slug: '([a-z-]+)'/gm,
   ),
 ].map((m) => m[1])
-const LIMIT = 40000
+const LIMIT = 44000
 
 console.log(
   `scenariusz: pamiec=${PAMIEC} fakty=${FAKTY} nadpis=${NADPIS} skille=${SKILLE} karta=${

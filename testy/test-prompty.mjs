@@ -238,7 +238,11 @@ sprawdz(
   'budzet: twardy slice(0, LIMIT) zostaje jako ostatnie zabezpieczenie',
   blokVoice.includes('out.length > LIMIT ? out.slice(0, LIMIT) : out'),
 )
-sprawdz('budzet: sufit promptu glosowego to 40000 znakow', /const LIMIT = 40000/.test(blokVoice))
+// Sufit 44000 to WYNIK POMIARU na zywym API (2026-07-26), nie oszacowanie:
+// realne prompty person z polskimi znakami przechodza do okolo 48000 znakow
+// (2,93 znaku na token przy limicie 16384 tokenow OpenAI). Gdy ktos chce go
+// ruszyc, ma najpierw przemierzyc: testy/pomiar-limitu-instrukcji.mjs.
+sprawdz('budzet: sufit promptu glosowego to 44000 znakow', /const LIMIT = 44000/.test(blokVoice))
 
 const startChat = zrodloAi.indexOf('export function buildSystemPrompt')
 const blokChat = zrodloAi.slice(startChat, zrodloAi.indexOf('function maWebSearch', startChat))
